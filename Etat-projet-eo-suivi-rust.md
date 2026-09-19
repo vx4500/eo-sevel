@@ -1,6 +1,18 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.0** — Dernière mise à jour de ce document : 19 septembre 2026.
+Version actuelle : **2.15.1** — Dernière mise à jour de ce document : 19 septembre 2026.
+
+### Version 2.15.1 — seuil de la panne de ventilation corrigé
+
+Version Rust 2.15.1 : l'alerte « Ventilation commandée à X % depuis 20 min
+sans effet » (`eo-regul`) se déclenchait dès que la commande dépassait 60 %,
+alors que le commentaire du code visait une ventilation « à fond » — à 66 %,
+le régulateur a encore de la marge pour pousser plus fort, ce n'est donc pas
+forcément une panne de ventilateur, de gradateur ou de trappe : la
+température peut simplement mettre plus de 20 minutes à redescendre par
+forte chaleur. Le seuil passe à 95 % (commande **et** minimum sur la
+fenêtre de 20 minutes) pour ne déclencher cette alerte critique que lorsque
+la ventilation tourne vraiment à son maximum sans effet.
 
 ### Version 2.15.0 — équipements EO_Awel, EO_Laezh et EO_Stasion
 

@@ -869,7 +869,7 @@ async fn detecter_ventilation_inefficace(
     let Some(actuelle) = temperature else {
         return Ok(());
     };
-    if decision.mode != Mode::Auto || decision.ventil < 60.0 {
+    if decision.mode != Mode::Auto || decision.ventil < 95.0 {
         let _ = fermer_alerte(pool, salle.salle_id, "ventilation_inefficace").await;
         return Ok(());
     }
@@ -883,12 +883,13 @@ async fn detecter_ventilation_inefficace(
     .fetch_optional(pool)
     .await?;
     let mini_ventil: Option<i64> = ligne.and_then(|ligne| ligne.try_get("mini_ventil").ok());
-    // Il faut que la commande soit restée haute sur toute la fenêtre, sinon on
-    // observe un simple à-coup de régulation, pas une panne.
+    // Il faut que la commande soit restée à fond sur toute la fenêtre, sinon
+    // on observe un simple à-coup de régulation — ou une charge de chaleur
+    // que la ventilation n'a pas encore fini de compenser — pas une panne.
     let Some(mini_ventil) = mini_ventil else {
         return Ok(());
     };
-    if depuis_dixiemes(mini_ventil) < 60.0 {
+    if depuis_dixiemes(mini_ventil) < 95.0 {
         return Ok(());
     }
     let ligne = sqlx::query(
