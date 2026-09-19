@@ -1,0 +1,110 @@
+{% extends "base.html" %}{% block title %}Structure · EO_Sevel{% endblock %}{% block content %}
+<style>
+.surface-diagnostic{min-width:260px;max-width:440px;border-left:4px solid #64748b;padding:10px 14px;background:#f1f5f9;color:#172033;border-radius:6px}
+.surface-danger{border-color:#b91c1c;background:#fef2f2}.surface-attention{border-color:#b45309;background:#fffbeb}.surface-favorable{border-color:#15803d;background:#f0fdf4}
+.surface-diagnostic p{font-size:.88rem;line-height:1.4}.surface-form{min-width:260px;max-width:440px;display:grid;gap:10px;padding:12px 0}.surface-form input,.surface-form select{max-width:100%;box-sizing:border-box}.surface-form small{line-height:1.4}
+.salle-ventilation{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.salle-badge{border-left:4px solid #64748b;background:#f1f5f9;color:#172033;border-radius:6px;padding:6px 10px;font-size:.85rem}
+.salle-badge.inconnu{border-color:#94a3b8;background:#f8fafc;color:#475569}
+.salle-badge.renseigne{border-color:#0369a1;background:#f0f9ff}
+</style>
+<h1>Structure de l'élevage</h1><p>Activez l’analyse en renseignant la surface et le secteur de chaque case dans « Régler les dimensions et le secteur ». <a href="#references-surfaces">Consulter les règles et les études</a>.</p><p class="muted">Les sites et zones définis ici deviennent les choix officiels des bandes. Une structure liée à un historique n’est jamais supprimée.</p>
+{% if comparaison_stades %}<details class="card" open><summary><b>Comparaison porcs / m² par stade</b></summary><p class="muted">Additionne les cases ayant un secteur et une surface renseignés (voir « Régler les dimensions et le secteur » sur chaque case). Une case sans secteur n'est comptée nulle part.</p><div class="rust-scroll"><table><thead><tr><th>Stade</th><th>Porcs</th><th>Surface utile totale</th><th>m² / porc</th></tr></thead><tbody>{% for s in comparaison_stades %}<tr><td>{{ s.stade }}</td><td>{{ s.porcs }}</td><td>{{ s.surface }} m²</td><td>{{ s.par_animal if s.par_animal is not none else '—' }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+{% if comparaison_salles %}<details class="card"><summary><b>Comparaison porcs / m² par salle</b></summary><p class="muted">Surface au sol de la salle (longueur × largeur, saisies à sa création), comparée à l'effectif total réellement présent dans ses cases. Repère complémentaire au secteur/surface saisis case par case ci-dessus — n'exclut pas d'obstacle ni d'équipement, contrairement à la surface utile.</p><div class="rust-scroll"><table><thead><tr><th>Salle</th><th>Site</th><th>Porcs + truies</th><th>Surface salle</th><th>m² / animal</th></tr></thead><tbody>{% for s in comparaison_salles %}<tr><td>{{ s.salle }}</td><td>{{ s.site }}</td><td>{{ s.porcs }}</td><td>{{ s.surface }} m²{% if s.surface is none %} —{% endif %}</td><td>{{ s.par_animal if s.par_animal is not none else '—' }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+{% if comparaison_sites %}<details class="card"><summary><b>Comparaison porcs / m² par site</b></summary><p class="muted">Somme de toutes les salles dimensionnées (longueur × largeur) du site.</p><div class="rust-scroll"><table><thead><tr><th>Site</th><th>Porcs + truies</th><th>Surface totale</th><th>m² / animal</th></tr></thead><tbody>{% for s in comparaison_sites %}<tr><td>{{ s.site }}{% if s.partiel %} <small class="muted">(salles non dimensionnées exclues)</small>{% endif %}</td><td>{{ s.porcs }}</td><td>{{ s.surface }} m²</td><td>{{ s.par_animal }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+{% if session.peut_modifier %}
+<datalist id="types-salle"><option value="Verraterie"><option value="Maternité"><option value="Post-sevrage"><option value="Engraissement"><option value="Quarantaine"><option value="Local technique"></datalist>
+<datalist id="modes-chauffage"><option value="Aucun"><option value="Gaz radiant"><option value="Gaz air pulsé"><option value="Électrique"><option value="Chauffage au sol"></datalist>
+<datalist id="voies-ventil"><option value="Plafond"><option value="Toiture"><option value="Fosse"><option value="Pignon"><option value="Gaine"></datalist>
+<div class="rust-grid">
+<form class="card" id="form-ajouter-site" method="post" action="/structure/site"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Ajouter un site / une zone</h3>
+<div class="fab-choix" role="radiogroup" aria-label="Mode de saisie">
+  <label><input type="radio" name="mode-site" value="simple" checked><span>Simple</span></label>
+  <label><input type="radio" name="mode-site" value="complet"><span>Complet</span></label>
+</div>
+<label>Code<input name="code" required></label>
+<label>Nom<input name="nom"></label>
+<div id="site-mode-complet" hidden><label>Zone<input name="zone" placeholder="ex. Site principal, naissage…"></label></div>
+<button>Ajouter</button></form>
+<form class="card" id="form-ajouter-salle" method="post" action="/structure/salle"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Ajouter une salle</h3>
+<div class="fab-choix" role="radiogroup" aria-label="Mode de saisie">
+  <label><input type="radio" name="mode-salle" value="simple" checked><span>Simple</span></label>
+  <label><input type="radio" name="mode-salle" value="complet"><span>Complet</span></label>
+</div>
+<label>Site<select name="site_id" required>{% for s in sites %}<option value="{{ s.id }}">{{ s.nom or s.code }}{% if s.zone %} · {{ s.zone }}{% endif %}</option>{% endfor %}</select></label>
+<label>Nom<input name="nom" required></label>
+<label>Type<input name="type" list="types-salle" placeholder="Maternité, post-sevrage…"></label>
+<div id="salle-mode-complet" hidden>
+<label>RFID<input name="rfid"></label>
+<p class="muted">Longueur et largeur donnent la surface au sol de la salle, utilisée dans les comparaisons porcs/m² ci-dessus — utile même sans détailler chaque case.</p>
+<div class="rust-actions"><label>Longueur (m)<input type="number" step="0.01" min="0" name="longueur"></label><label>Largeur (m)<input type="number" step="0.01" min="0" name="largeur"></label></div>
+<label>Hauteur (m)<input type="number" step="0.01" min="0" name="hauteur"></label>
+<p class="muted">La hauteur sert au calcul de renouvellement d'air en Ambiance et ventilation, pas à la densité.</p>
+<label>Mode de chauffage<input name="mode_chauffage" list="modes-chauffage"></label>
+</div>
+<button>Ajouter</button></form>
+<script>
+(function(){
+  [['form-ajouter-site','mode-site','site-mode-complet'],['form-ajouter-salle','mode-salle','salle-mode-complet']].forEach(function(t){
+    var form = document.getElementById(t[0]);
+    var bloc = document.getElementById(t[2]);
+    if(!form || !bloc) return;
+    form.querySelectorAll('input[name="' + t[1] + '"]').forEach(function(r){
+      r.addEventListener('change', function(){ bloc.hidden = r.value !== 'complet'; });
+    });
+  });
+})();
+</script>
+<form class="card" id="form-ajouter-case" method="post" action="/structure/case"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Ajouter une case</h3>
+<div class="fab-choix" role="radiogroup" aria-label="Mode de saisie">
+  <label><input type="radio" name="mode-case" value="simple" checked><span>Simple</span></label>
+  <label><input type="radio" name="mode-case" value="complet"><span>Complet</span></label>
+</div>
+<label>Salle<select name="salle_id" required>{% for s in salles %}<option value="{{ s.id }}">{{ s.site }} · {{ s.nom }}</option>{% endfor %}</select></label>
+<label>Nom<input name="nom" required></label>
+<label>Places porcs (hors maternité)<input type="number" name="nb_max_porcs" min="0"></label>
+<label>N° vanne<input name="num_vanne"></label>
+<div id="case-mode-complet" hidden>
+<label>Places truies maternité<input type="number" name="nb_max_truies" min="0"></label>
+<label>RFID<input name="rfid"></label>
+<p class="muted">Repères de surface (facultatif) — mêmes réglages que « Régler les dimensions et le secteur » sur la case, en une seule fois.</p>
+<label>Secteur de cette case<select name="secteur">
+{% for value,label in [('', 'À renseigner'),('verraterie','Verraterie (reproductrices)'),('gestantes','Gestantes'),('maternite','Maternité'),('ps','PS · Post-sevrage'),('pe','PE · Pré-engraissement'),('engraissement','Engraissement')] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+</select></label>
+<label>Mode de logement<select name="logement">
+{% for value,label in [('', 'À renseigner'),('groupe','Porcs sevrés en groupe (PS / PE / engraissement)'),('reproductrices','Reproductrices en groupe après saillie'),('individuel','Reproductrices en logement individuel'),('liberte','Maternité liberté'),('bloquee','Maternité avec contention')] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+</select></label>
+<p class="muted">Saisir <b>soit les m², soit longueur × largeur</b>, en dimensions intérieures.</p>
+<label>Surface totale intérieure (m²)<input name="surface" inputmode="decimal" placeholder="ex. 15,6"></label>
+<div class="rust-actions"><label>Longueur (m)<input name="longueur" inputmode="decimal" placeholder="ex. 5,2"></label><label>Largeur (m)<input name="largeur" inputmode="decimal" placeholder="ex. 3"></label></div>
+<label>Surface inaccessible à déduire (m²)<input name="exclue" inputmode="decimal" placeholder="0"></label>
+<label>Poids vif de contrôle / sortie prévu (kg, PS–PE–engraissement)<input name="poids" inputmode="decimal" placeholder="ex. 115"></label>
+<label>Objectif personnalisé de surface utile (m²/animal, facultatif)<input name="objectif" inputmode="decimal"></label>
+</div>
+<button>Ajouter</button></form>
+<script>
+(function(){
+  var bloc = document.getElementById('case-mode-complet');
+  var form = document.getElementById('form-ajouter-case');
+  if(!bloc || !form) return;
+  form.querySelectorAll('input[name="mode-case"]').forEach(function(r){
+    r.addEventListener('change', function(){ bloc.hidden = r.value !== 'complet'; });
+  });
+})();
+</script>
+</div>{% endif %}
+<h2>Salles, cases et vannes</h2>{% for s in salles %}<details class="card"><summary><b>{{ s.site }} · {{ s.nom }}</b> — {{ s.type or 'sans type' }}</summary>
+{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/structure/salle/{{ s.id }}/modifier"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Nom<input name="nom" value="{{ s.nom }}" required></label><label>Type<input name="type" list="types-salle" value="{{ s.type or '' }}"></label><label>RFID<input name="rfid" value="{{ s.rfid or '' }}"></label><label>Longueur (m)<input type="number" step="0.01" min="0" name="longueur" value="{{ s.longueur or '' }}"></label><label>Largeur (m)<input type="number" step="0.01" min="0" name="largeur" value="{{ s.largeur or '' }}"></label><label>Hauteur (m)<input type="number" step="0.01" min="0" name="hauteur" value="{{ s.hauteur or '' }}"></label><label>Mode de chauffage<input name="mode_chauffage" list="modes-chauffage" value="{{ s.mode_chauffage or '' }}"></label><button>Modifier</button></form>{% endif %}
+<div class="salle-ventilation">
+<span class="salle-badge {{ 'renseigne' if s.surface_salle else 'inconnu' }}">{% if s.surface_salle %}{{ s.surface_salle }} m² · {{ s.volume_salle }} m³{% else %}Dimensions non renseignées{% endif %}</span>
+<span class="salle-badge {{ 'renseigne' if s.renouvellements_heure else 'inconnu' }}">{% if s.renouvellements_heure %}{{ s.renouvellements_heure }} volumes/h{% if s.debit_extraction %} · extraction {{ s.debit_extraction }} m³/h{% endif %}{% if s.debit_insufflation %} · insufflation {{ s.debit_insufflation }} m³/h{% endif %}{% else %}Renouvellement d'air inconnu (dimensions et/ou débit ventilateur manquants){% endif %}</span>
+</div>
+<details><summary>Ventilateurs déclarés ({{ s.ventilateurs|length }})</summary>
+<div class="rust-scroll"><table><tr><th>Nom</th><th>Position</th><th>Fonction</th><th>Voie</th><th>Ø (mm)</th><th>Débit (m³/h)</th><th>Sortie IPX</th><th>Actif</th><th></th></tr>{% for v in s.ventilateurs %}<tr><td colspan="9">{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/structure/ventilateur/{{ v.id }}/modifier"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="nom" value="{{ v.nom }}" required size="10"><select name="position"><option value="exterieur" {% if v.position=='exterieur' %}selected{% endif %}>Extérieur</option><option value="interieur" {% if v.position=='interieur' %}selected{% endif %}>Intérieur</option></select><select name="fonction"><option value="extraction" {% if v.fonction=='extraction' %}selected{% endif %}>Extraction</option><option value="insufflation" {% if v.fonction=='insufflation' %}selected{% endif %}>Insufflation</option></select><input name="voie" list="voies-ventil" value="{{ v.voie or '' }}" size="8" placeholder="Voie"><input type="number" step="1" min="0" name="diametre_mm" value="{{ v.diametre_mm or '' }}" size="4" placeholder="Ø mm"><input type="number" step="1" min="0" name="debit_m3h" value="{{ v.debit_m3h or '' }}" size="5" placeholder="m³/h"><input name="ipx_sortie" value="{{ v.ipx_sortie or '' }}" size="8" placeholder="Sortie IPX"><label><input type="checkbox" name="actif" value="1" {% if v.actif %}checked{% endif %}> actif</label><button>Enregistrer</button></form><form method="post" action="/structure/ventilateur/{{ v.id }}/supprimer" onsubmit="return confirm('Supprimer ce ventilateur ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% else %}<b>{{ v.nom }}</b> — {{ v.position }}/{{ v.fonction }}{% if v.voie %} · {{ v.voie }}{% endif %}{% if v.debit_m3h %} · {{ v.debit_m3h }} m³/h{% endif %}{% if not v.actif %} · <span class="muted">inactif</span>{% endif %}{% endif %}</td></tr>{% endfor %}</table></div>
+{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/structure/salle/{{ s.id }}/ventilateur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="nom" required placeholder="Nom (ex. Extraction plafond 1)" size="14"><select name="position"><option value="exterieur">Extérieur</option><option value="interieur">Intérieur</option></select><select name="fonction"><option value="extraction">Extraction</option><option value="insufflation">Insufflation</option></select><input name="voie" list="voies-ventil" placeholder="Voie (plafond, fosse…)" size="10"><input type="number" step="1" min="0" name="diametre_mm" placeholder="Ø mm" size="4"><input type="number" step="1" min="0" name="debit_m3h" placeholder="Débit m³/h si connu" size="6"><input name="ipx_sortie" placeholder="Sortie IPX" size="8"><button>Ajouter le ventilateur</button></form>{% endif %}
+</details>
+{% if session.peut_modifier %}<div class="rust-actions"><form method="post" action="/structure/salle/{{ s.id }}/ordre"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="direction" value="haut"><button class="ghost">Monter</button></form><form method="post" action="/structure/salle/{{ s.id }}/ordre"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="direction" value="bas"><button class="ghost">Descendre</button></form><form method="post" action="/structure/salle/{{ s.id }}/supprimer" onsubmit="return confirm('Supprimer cette salle uniquement si elle est vide et sans historique ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></div>{% endif %}
+<div class="rust-scroll"><table><tr><th>Case</th><th>Vanne</th><th>Porcs</th><th>Truies maternité</th><th>Porcelets sous mère / nourrice</th><th>RFID</th><th>Réussite écho</th><th>Surface et occupation</th><th></th></tr>{% for c in cases %}{% if c.salle_id == s.id %}<tr><td>{{ c.nom }}</td><td>{{ c.num_vanne or '—' }}</td><td><b>{{ c.porcs_presents }}</b> / {{ c.nb_max_porcs or '—' }}</td><td><b>{{ c.truies_presentes }}</b> / {{ c.nb_max_truies or '—' }}</td><td><b>{{ c.porcelets_presents }}</b></td><td>{{ c.rfid or '—' }}</td><td>{% if c.echo_stats.taux_pleine is not none %}<b>{{ c.echo_stats.taux_pleine }} %</b><br><small class="muted">{{ c.echo_stats.pleines }}/{{ c.echo_stats.echos }} échos</small>{% else %}<span class="muted">—</span>{% endif %}</td><td>{% include 'surface_case.html' %}</td><td>{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/structure/case/{{ c.id }}/rfid"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="nom" value="{{ c.nom }}" required aria-label="Nom de la case"><input name="nb_max_porcs" value="{{ c.nb_max_porcs or '' }}" size="3" placeholder="Porcs"><input name="nb_max_truies" value="{{ c.nb_max_truies or '' }}" size="3" placeholder="Truies"><input name="num_vanne" value="{{ c.num_vanne or '' }}" size="6" placeholder="Vanne"><input name="rfid" value="{{ c.rfid or '' }}" placeholder="RFID"><button>Enregistrer</button></form><form method="post" action="/structure/case/{{ c.id }}/supprimer" onsubmit="return confirm('Supprimer cette case uniquement si elle est vide et sans historique ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% endif %}{% endfor %}</table></div></details>{% endfor %}
+<h2>Sites et zones</h2><div class="rust-grid">{% for s in sites %}<div class="card">{% if session.peut_modifier %}<form method="post" action="/structure/site/{{ s.id }}/modifier"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Code<input name="code" value="{{ s.code }}" required></label><label>Nom<input name="nom" value="{{ s.nom or '' }}"></label><label>Zone<input name="zone" value="{{ s.zone or '' }}"></label><button>Enregistrer</button></form><form method="post" action="/structure/site/{{ s.id }}/supprimer" onsubmit="return confirm('Supprimer ce site uniquement s’il est totalement inutilisé ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% else %}<b>{{ s.nom or s.code }}</b><p>{{ s.code }} · {{ s.zone or 'zone non définie' }}</p>{% endif %}</div>{% endfor %}</div>
+{% include 'surface_references.html' %}
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}GTE · EO_Sevel{% endblock %}
+{% block content %}
+<style>
+/* Impression du GTE : A4 paysage, tableaux déroulés, en-têtes répétés */
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff}
+  .no-print,.gte-period,.gte-shortcuts,#page-alert{display:none!important}
+  .gte-print-entete{display:block!important}
+  .rust-scroll{overflow:visible!important}
+  table{width:100%;font-size:9.5pt;border-collapse:collapse}
+  thead{display:table-header-group}
+  tr,section,.card{break-inside:avoid;page-break-inside:avoid}
+  h1{font-size:16pt;margin:0 0 6px}
+  h2{font-size:13pt;margin:14px 0 4px;break-after:avoid;page-break-after:avoid}
+  h3{font-size:11pt;margin:10px 0 3px;break-after:avoid;page-break-after:avoid}
+  p,.help{font-size:9pt;margin:3px 0}
+  a{color:#000;text-decoration:none}
+  th,td{padding:3px 5px;border:1px solid #bbb}
+  th{background:#eee;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}
+.gte-print-entete{display:none}
+</style>
+<div class="no-print rust-actions" style="justify-content:flex-end">
+  <button type="button" onclick="window.print()">Imprimer le GTE</button>
+</div>
+<p class="gte-print-entete">GTE — période du {{ synthese_debut|date_fr }} au {{ synthese_fin|date_fr }}</p>
+<h1>GTE — Gestion Technico-Économique</h1>
+<p>Indicateurs par lot, bandes actives et archivées comprises. Le périmètre calculé dépend des phases réellement présentes pour ce lot (aliment livré, ventes enregistrées, truies rattachées, animaux achetés) — une case vide signifie une donnée manquante, pas un résultat nul.</p>
+<form class="card gte-period" method="get" action="/gte"><div><h2>Période des résultats</h2><p class="muted">Les ventes, livraisons d’aliment et achats d’animaux sont calculés uniquement entre ces deux dates.</p></div><label>Date de début<input type="date" name="debut" value="{{ date_debut or '' }}"></label><label>Date de fin<input type="date" name="fin" value="{{ date_fin or '' }}"></label><button>Calculer</button><div class="gte-shortcuts" aria-label="Périodes rapides">{% for mois in [3,12,24,36] %}<a class="button{% if periode == mois %} active{% endif %}" href="/gte?periode={{ mois }}">{{ mois }} derniers mois</a>{% endfor %}<a href="/gte">Toute la période</a></div></form>
+
+<h2>Synthèse GTE — structure du livret GT-Porc</h2>
+<p class="help">Période du {{ synthese_debut|date_fr }} au {{ synthese_fin|date_fr }}, soit {{ synthese_jours }} jours{% if synthese_par_defaut %} — douze mois glissants, faute de bornes saisies ci-dessus{% endif %}. Tout est recalculé en direct depuis les saisies.</p>
+{% if orientation %}
+<p class="help">Référence : <b>{{ orientation.libelle }}</b>{% if orientation.elevages %}, {{ orientation.elevages }} élevages{% endif %}. {{ livret.source }}<br>{{ livret.avertissement }}</p>
+{% else %}
+<p class="help">Le livret ne publie pas de colonne pour le type d’élevage actif : les références restent vides, les valeurs de l’élevage sont calculées normalement.</p>
+{% endif %}
+{% for bloc in blocs %}
+<h3>{{ bloc.titre }}</h3>
+<div class="rust-scroll"><table><thead><tr><th>Indicateur</th><th>Élevage</th><th>Référence IFIP</th><th>Écart</th></tr></thead><tbody>
+{% for l in bloc.lignes %}<tr>
+<td>{{ l.libelle }}{% if l.raison %}<br><small class="muted">{{ l.raison }}</small>{% endif %}</td>
+<td><b>{{ l.valeur if l.valeur is not none else '—' }}</b></td>
+<td>{{ l.reference if l.reference is not none else '—' }}</td>
+<td>{% if l.valeur is not none and l.reference is not none %}{{ ((l.valeur - l.reference) * 100)|round / 100 }}{% else %}—{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% endfor %}
+{% if aliment_non_ventile_kg %}<p class="help">{{ aliment_non_ventile_kg }} kg d’aliment de la période ne sont rattachés à aucun stade (livraisons « tous stades » ou stade non renseigné). Ils comptent dans l’indice de consommation global, pas dans les indices par phase. Précisez leur stade depuis Économie &gt; Aliment pour affiner.</p>{% endif %}
+<p class="help">Poids vifs déduits des poids carcasse au rendement de {{ rendement }} %. {{ livret.rendement_source }} Modifiable par le réglage <code>rendement_carcasse_pct</code>.</p>
+
+<h2>Détail par lot</h2>
+{% if session.recoit_achats %}<p class="help">Les animaux reçus par achat (écran Réception) sont imputés comme charge d'entrée du lot : la MSA ne retient que l'aliment, la colonne « Marge après achat » déduit en plus le prix payé pour les animaux.</p>{% endif %}
+{% if session.a_truies %}<section class="card"><h2>Renouvellement du cheptel</h2><p>Taux de renouvellement (12 mois glissants) : <b>{{ renouvellement }}{% if renouvellement is not none %} %{% endif %}{% if renouvellement is none %}—{% endif %}</b></p></section>{% endif %}
+<div class="rust-scroll"><table><thead><tr>
+<th>Lot</th><th>Site</th><th>Porcs vendus</th><th>Poids produit (kg)</th><th>Aliment (kg)</th><th>IC (kg/kg)</th><th>Coût aliment</th><th>Coût aliment/porc</th><th>MSA</th>{% if session.recoit_achats %}<th>Animaux achetés</th><th>Coût d'achat</th><th>Coût d'achat/animal</th><th>Marge après achat</th>{% endif %}{% if session.a_truies %}<th>Truies</th><th>Marge brute/truie</th>{% endif %}
+</tr></thead><tbody>
+{% for b in bandes %}<tr>
+<td><a href="/bande/{{ b.id }}"><b>{{ b.code }}</b></a></td>
+<td>{{ b.site or '—' }}</td>
+<td>{{ b.porcs }}</td>
+<td>{{ b.poids }}</td>
+<td>{{ b.aliment_kg }}</td>
+<td>{{ b.ic if b.ic is not none else '—' }}</td>
+<td>{{ b.cout_aliment|euro }}</td>
+<td>{{ (b.cout_par_porc|euro) if b.cout_par_porc is not none else '—' }}</td>
+<td>{{ b.msa|euro }}</td>
+{% if session.recoit_achats %}<td>{{ b.entres }}</td><td>{{ b.cout_achat|euro }}</td><td>{{ (b.achat_par_animal|euro) if b.achat_par_animal is not none else '—' }}</td><td>{{ b.marge_apres_achat|euro }}</td>{% endif %}
+{% if session.a_truies %}<td>{{ b.truies }}</td><td>{{ (b.marge_brute_truie|euro) if b.marge_brute_truie is not none else '—' }}</td>{% endif %}
+</tr>{% else %}<tr><td colspan="15" class="rust-empty">Aucun lot avec des données économiques ou d'effectif exploitables</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

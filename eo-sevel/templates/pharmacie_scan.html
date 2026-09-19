@@ -1,0 +1,188 @@
+{% extends "base.html" %}{% block title %}Entrée pharmacie par scan — EO_Sevel{% endblock %}{% block content %}
+<h1>Entrée pharmacie par scan</h1>
+<p class="muted"><a href="/pharmacie">← Pharmacie</a>{% if associations %} — {{ associations }} code(s) déjà associé(s){% endif %}</p>
+
+{% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
+
+<section class="card">
+  <div id="scan-indisponible" hidden>
+    <p><b class="danger">La caméra n'est pas accessible.</b></p>
+    <p class="muted">Les navigateurs n'autorisent la caméra qu'en HTTPS. Ouvrez cette page par son adresse sécurisée plutôt que par l'adresse IP du serveur. Vous pouvez malgré tout saisir le code à la main ci-dessous.</p>
+  </div>
+
+  <div id="scan-zone">
+    <video id="scan-video" playsinline muted style="width:100%;max-width:480px;background:#000;border-radius:8px"></video>
+    <p class="rust-actions">
+      <button type="button" id="scan-demarrer">Activer la caméra</button>
+      <button type="button" class="ghost" id="scan-arreter" hidden>Arrêter</button>
+    </p>
+    <p id="scan-etat" class="muted">Visez le carré de points sur la boîte — c'est lui qui porte le lot et la péremption, pas le code-barres à barres.</p>
+  </div>
+
+  <details id="scan-manuel"><summary>Saisir le code à la main</summary>
+    <label>Code relevé sur la boîte<input id="scan-saisie" placeholder="(01)08427711153207(17)280219(10)766G-2" autocomplete="off"></label>
+    <button type="button" id="scan-analyser-manuel">Analyser</button>
+    <p class="muted">Utile quand le code est abîmé, ou pour rattraper une boîte déjà ouverte.</p>
+  </details>
+</section>
+
+<section class="card" id="scan-resultat" hidden>
+  <h2>Vérifiez avant d'enregistrer</h2>
+  <p id="scan-message"></p>
+  <form method="post" action="/pharmacie/scan/enregistrer">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <input type="hidden" name="cle" id="champ-cle">
+    <input type="hidden" name="code" id="champ-code">
+    <div class="rust-grid">
+      <div>
+        <label>Produit
+          <input name="produit" id="champ-produit" list="liste-produits" required autocomplete="off">
+          <datalist id="liste-produits">{% for p in produits %}<option value="{{ p }}">{% endfor %}</datalist>
+        </label>
+        <p class="muted">Un produit inconnu de la pharmacie sera créé.</p>
+      </div>
+      <div>
+        <label>Numéro de lot<input name="lot" id="champ-lot" autocomplete="off"></label>
+        <label>Péremption<input type="date" name="peremption" id="champ-peremption"></label>
+      </div>
+      <div>
+        <label>Nombre de boîtes<input name="boites" id="champ-boites" inputmode="decimal" value="1"></label>
+        <label>Doses par boîte<input name="unites_par_boite" id="champ-unites" inputmode="decimal" value="1"></label>
+        <p class="muted">Scanner une boîte de cinquante doses doit ajouter cinquante doses au stock, pas une.</p>
+      </div>
+    </div>
+    <p id="scan-total" class="muted"></p>
+    <button>Enregistrer l'entrée</button>
+  </form>
+</section>
+
+{% if derniers %}
+<section class="card"><h2>Dernières entrées scannées</h2><div class="rust-scroll"><table>
+<tr><th>Date</th><th>Produit</th><th>Quantité</th><th>Lot</th><th>Péremption</th></tr>
+{% for d in derniers %}<tr><td>{{ d.date|date_fr }}</td><td>{{ d.produit }}</td><td>{{ d.quantite }}</td><td>{{ d.lot or '—' }}</td><td>{% if d.peremption %}{{ d.peremption|date_fr }}{% else %}—{% endif %}</td></tr>{% endfor %}
+</table></div></section>
+{% endif %}
+
+<script>
+(function () {
+  var video = document.getElementById('scan-video');
+  var etat = document.getElementById('scan-etat');
+  var resultat = document.getElementById('scan-resultat');
+  var message = document.getElementById('scan-message');
+  var csrf = document.querySelector('input[name="csrf_token"]').value;
+  var flux = null, detecteur = null, boucle = null, dernierCode = '';
+
+  function dit(texte, danger) {
+    etat.innerHTML = '';
+    var noeud = document.createTextNode(texte);
+    if (danger) {
+      var fort = document.createElement('b');
+      fort.className = 'danger';
+      fort.appendChild(noeud);
+      etat.appendChild(fort);
+    } else {
+      etat.appendChild(noeud);
+    }
+  }
+
+  function total() {
+    var b = parseFloat(document.getElementById('champ-boites').value) || 0;
+    var u = parseFloat(document.getElementById('champ-unites').value) || 0;
+    var t = document.getElementById('scan-total');
+    t.textContent = (b > 0 && u > 0) ? ('Entrée en stock : ' + (b * u) + ' unité(s).') : '';
+  }
+  ['champ-boites', 'champ-unites'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', total);
+  });
+
+  function analyser(code) {
+    if (!code || code === dernierCode) { return; }
+    dernierCode = code;
+    if (navigator.vibrate) { navigator.vibrate(60); }
+    var donnees = new FormData();
+    donnees.append('csrf_token', csrf);
+    donnees.append('code', code);
+    fetch('/pharmacie/scan/analyser', { method: 'POST', body: donnees, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        resultat.hidden = false;
+        message.textContent = d.message || '';
+        document.getElementById('champ-cle').value = d.cle || '';
+        document.getElementById('champ-code').value = d.brut || '';
+        document.getElementById('champ-lot').value = d.lot || '';
+        document.getElementById('champ-peremption').value = d.peremption || '';
+        document.getElementById('champ-produit').value = d.produit || '';
+        document.getElementById('champ-unites').value = d.unites_par_boite || 1;
+        total();
+        // Le produit inconnu est ce qui demande une action : on y amène le
+        // doigt directement plutôt que de laisser chercher.
+        if (!d.connu) { document.getElementById('champ-produit').focus(); }
+        resultat.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+      .catch(function () { dit('Analyse impossible : le serveur n’a pas répondu.', true); });
+  }
+
+  document.getElementById('scan-analyser-manuel').addEventListener('click', function () {
+    dernierCode = '';
+    analyser(document.getElementById('scan-saisie').value.trim());
+  });
+
+  // Le décodage est fait par le téléphone. BarcodeDetector lit le Data Matrix
+  // nativement sur Chrome Android ; ailleurs, la saisie manuelle prend le
+  // relais plutôt que d'embarquer une bibliothèque de décodage.
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices) {
+    document.getElementById('scan-indisponible').hidden = false;
+    document.getElementById('scan-zone').hidden = true;
+    document.getElementById('scan-manuel').open = true;
+    return;
+  }
+
+  function demarrer() {
+    BarcodeDetector.getSupportedFormats().then(function (formats) {
+      var voulus = ['data_matrix', 'qr_code', 'ean_13', 'ean_8', 'code_128'].filter(
+        function (f) { return formats.indexOf(f) !== -1; });
+      if (!voulus.length) { throw new Error('aucun format lisible'); }
+      detecteur = new BarcodeDetector({ formats: voulus });
+      return navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 } }
+      });
+    }).then(function (media) {
+      flux = media;
+      video.srcObject = media;
+      return video.play();
+    }).then(function () {
+      document.getElementById('scan-demarrer').hidden = true;
+      document.getElementById('scan-arreter').hidden = false;
+      dit('Caméra active. Approchez le carré de points à dix centimètres.');
+      boucle = setInterval(function () {
+        if (!detecteur || video.readyState < 2) { return; }
+        detecteur.detect(video).then(function (codes) {
+          if (codes && codes.length) { analyser(codes[0].rawValue); }
+        }).catch(function () { /* image illisible : on retentera */ });
+      }, 400);
+    }).catch(function (e) {
+      dit('Caméra indisponible : ' + (e && e.message ? e.message : e), true);
+      document.getElementById('scan-manuel').open = true;
+    });
+  }
+
+  function arreter() {
+    if (boucle) { clearInterval(boucle); boucle = null; }
+    if (flux) { flux.getTracks().forEach(function (t) { t.stop(); }); flux = null; }
+    video.srcObject = null;
+    document.getElementById('scan-demarrer').hidden = false;
+    document.getElementById('scan-arreter').hidden = true;
+    dit('Caméra arrêtée.');
+  }
+
+  document.getElementById('scan-demarrer').addEventListener('click', demarrer);
+  document.getElementById('scan-arreter').addEventListener('click', arreter);
+  // Une caméra qui reste allumée en arrière-plan vide la batterie et retient
+  // le matériel : on la libère dès que la page n'est plus visible.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && flux) { arreter(); }
+  });
+  window.addEventListener('pagehide', arreter);
+})();
+</script>
+{% endblock %}

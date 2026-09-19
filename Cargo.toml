@@ -1,0 +1,51 @@
+[package]
+name = "eo-sevel"
+version = "2.14.9"
+edition = "2021"
+description = "EO_Sevel - suivi d'élevage porcin et régulation d'ambiance, compatible avec les bases SQLite v1.65"
+license = "proprietary"
+
+# Deux binaires, et c'est délibéré. Le serveur web et le démon de régulation ne
+# partagent aucun code : ils se parlent uniquement par la base. Un déploiement,
+# une migration de schéma ou un plantage de l'application n'arrête donc jamais
+# la ventilation, et inversement.
+[[bin]]
+name = "eo-sevel"
+path = "src/main.rs"
+
+[[bin]]
+name = "eo-regul"
+path = "src/bin/eo-regul.rs"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8", features = ["macros", "multipart"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+chrono = { version = "0.4", features = ["serde"] }
+csv = "1.3"
+dashmap = "6.1"
+hex = "0.4"
+minijinja = { version = "2.7", features = ["loader", "json", "preserve_order"] }
+lopdf = "0.44"
+pbkdf2 = "0.12"
+rand = "0.8"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+regex = "1.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "migrate"] }
+subtle = "2.6"
+thiserror = "2.0"
+tokio = { version = "1.43", features = ["macros", "process", "rt-multi-thread", "signal", "fs", "time"] }
+tower-http = { version = "0.6", features = ["compression-full", "fs", "limit", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.12", features = ["v4"] }
+mdns-sd = "0.21.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

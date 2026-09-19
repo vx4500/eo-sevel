@@ -1,0 +1,9 @@
+[Unit]
+Description=Surveille le dépôt d'un nouveau zip EO_Sevel
+
+[Path]
+PathExists=/var/lib/eo-sevel/maj/eo-sevel-nouvelle-version.zip
+Unit=eo-sevel-update.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Mise à jour contrôlée de EO_Sevel depuis un zip déposé localement
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh

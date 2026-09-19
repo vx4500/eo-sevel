@@ -1,0 +1,28 @@
+[Unit]
+Description=EO_Sevel - régulation de ventilation
+# Volontairement indépendant du serveur web : la ventilation ne doit pas
+# s'arrêter parce que l'application est arrêtée, mise à jour ou en panne.
+After=network.target
+
+[Service]
+Type=simple
+User=eo-sevel
+WorkingDirectory=/opt/eo-sevel
+Environment=ELEVAGE_DATA=/var/lib/eo-sevel
+Environment=EO_REGUL_INTERVALLE=30
+# Tant que la comparaison avec la régulation en place n'est pas terminée,
+# laisser ce mode à 1 : le démon calcule, enregistre et alerte, mais n'écrit
+# rien sur l'automate. Passer à 0 salle par salle, pas d'un coup.
+Environment=EO_REGUL_SIMULATION=1
+ExecStart=/opt/eo-sevel/eo-regul
+# Redémarrage systématique et rapide : ce service pilote de la ventilation,
+# une sortie inattendue doit être rattrapée en quelques secondes.
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/eo-sevel
+
+[Install]
+WantedBy=multi-user.target

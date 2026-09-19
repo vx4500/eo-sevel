@@ -1,0 +1,150 @@
+{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% block title %}Carte de l'automate — EO_Sevel{% endblock %}{% block content %}
+<h1>Carte de l'automate</h1>
+<p class="muted"><a href="/ambiance">← Ambiance</a> · <a href="/ambiance/ipx">Explorateur et réglages</a></p>
+
+{% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
+
+{% if hotes %}
+<form class="card rust-actions" method="get" action="/ambiance/ipx/carte">
+  <label>Automate<select name="hote" onchange="this.form.submit()">{% for h in hotes %}<option value="{{ h }}"{% if h == hote %} selected{% endif %}>{{ h }}</option>{% endfor %}</select></label>
+  <button class="ghost">Relire</button>
+</form>
+{% else %}
+<div class="rust-empty">Aucun automate enregistré. Renseignez son adresse dans <a href="/ambiance/ipx">Explorateur et réglages</a>.</div>
+{% endif %}
+
+{% for s in sections %}
+<section class="card">
+  <h2>{{ s.nom }}{% if s.objets %} <span class="rust-badge">{{ s.objets|length }}</span>{% endif %}</h2>
+  {% if s.note %}<p class="muted">{{ s.note }}</p>{% endif %}
+
+  {% if s.a_renseigner %}
+  <p class="rust-empty">Ni motif de nom ni plage d'identifiants. Repérez un objet de ce bloc dans l'<a href="/ambiance/ipx">explorateur</a>, puis indiquez ci-dessous soit un fragment de son nom, soit sa plage d'identifiants.</p>
+  {% elif not s.objets %}
+  <p class="rust-empty">{% if s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
+  {% else %}
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Identifiant</th><th>Nom dans l'automate</th><th>Valeur</th><th>Votre nom</th><th>Salle</th><th></th></tr></thead>
+    <tbody>
+    {% for o in s.objets %}
+    <tr>
+      <td><code>{{ o.id }}</code></td>
+      <td>{{ o.nom_ipx }}</td>
+      <td>{% if o.valeur is not none %}{{ o.valeur }}{% if o.unite %} {{ o.unite }}{% endif %}{% if o.valeur_convertie is not none %}<br><b>{{ o.valeur_convertie }}</b> <span class="muted">converti{% if o.formule %} ({{ o.formule }}){% endif %}</span>{% elif o.formule or o.coefficient != 1.0 or o.decalage != 0.0 %}<br><span class="muted danger">conversion invalide</span>{% endif %}{% elif o.etat is not none %}{% if o.etat %}marche{% else %}arrêt{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if o.nom %}{{ o.nom }}{% else %}<span class="muted">non rangé</span>{% endif %}</td>
+      <td>{{ o.salle or '—' }}</td>
+      <td>
+        {% if session.peut_modifier %}
+        <details><summary>{% if o.point_id %}Modifier{% else %}Ranger{% endif %}</summary>
+          <form method="post" action="/ambiance/ipx/carte/affecter">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+            <input type="hidden" name="hote" value="{{ hote }}">
+            <input type="hidden" name="chemin" value="{{ o.chemin }}">
+            <input type="hidden" name="nom_ipx" value="{{ o.nom_ipx }}">
+            <label>Nom<input name="nom" value="{{ o.nom or o.nom_ipx }}"></label>
+            <label>Rôle<select name="role">{% for r in roles %}<option value="{{ r.code }}"{% if r.code == o.role %} selected{% endif %}>{{ r.libelle }}</option>{% endfor %}</select></label>
+            <label>Salle<select name="salle_id"><option value="">—</option>{% for sa in salles %}<option value="{{ sa.id }}"{% if o.salle_id == sa.id %} selected{% endif %}>{{ sa.nom }}</option>{% endfor %}</select></label>
+            {% if s.source == 'ana' %}
+            {{ select_capteur('formule-carte-' ~ o.id) }}
+            <label>Formule de conversion<input id="formule-carte-{{ o.id }}" name="formule" value="{{ o.formule or '' }}" placeholder="ex. ((X * 0,00323) - 0,25) / 0,028"></label>
+            <small class="muted">X représente la valeur brute lue sur l'automate. Opérateurs acceptés : + - * / ^ et parenthèses. Laisser vide pour garder la valeur brute, ou utiliser coefficient/décalage ci-dessous pour une simple conversion linéaire.</small>
+            <label>Coefficient<input name="coefficient" inputmode="decimal" value="{{ o.coefficient if o.coefficient != 1.0 else '' }}" placeholder="1"></label>
+            <label>Décalage<input name="decalage" inputmode="decimal" value="{{ o.decalage if o.decalage != 0.0 else '' }}" placeholder="0"></label>
+            <small class="muted">Ignorés si une formule est renseignée.</small>
+            {% endif %}
+            {% if s.commandable %}<label><input type="checkbox" name="commandable" style="width:auto"{% if o.pilotable %} checked{% endif %}> Autoriser la commande</label>{% endif %}
+            <button>Enregistrer</button>
+          </form>
+        </details>
+        {% if s.commandable and o.pilotable and o.point_id %}
+        <details><summary>Commander</summary>
+          <form method="post" action="/ambiance/ipx/point/{{ o.point_id }}/commander" onsubmit="return confirm('Envoyer cette valeur à « {{ o.nom or o.nom_ipx }} » ? Cela agit sur le matériel.')">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+            <label>Valeur<input name="valeur" inputmode="decimal" required placeholder="0 ou 1 pour un relais"></label>
+            <button>Envoyer</button>
+          </form>
+        </details>
+        {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+
+  {% if session.peut_modifier %}
+  <details><summary>Règle de cette section</summary>
+    <form method="post" action="/ambiance/ipx/section">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+      <input type="hidden" name="id" value="{{ s.id }}">
+      <div class="rust-grid">
+        <div>
+          <label>Nom<input name="nom" value="{{ s.nom }}" required></label>
+          <label>Source<select name="source"><option value="io"{% if s.source == 'io' %} selected{% endif %}>États logiques (io)</option><option value="ana"{% if s.source == 'ana' %} selected{% endif %}>Valeurs analogiques (ana)</option></select></label>
+        </div>
+        <div>
+          <label>Motif de nom<input name="motif" value="{{ s.motif or '' }}" placeholder="x-010v ; ]Fault"></label>
+          <label>Premier identifiant<input type="number" name="id_debut" value="{{ s.id_debut if s.id_debut is not none else '' }}"></label>
+          <label>Dernier identifiant<input type="number" name="id_fin" value="{{ s.id_fin if s.id_fin is not none else '' }}"></label>
+          <small class="muted">Un motif l'emporte sur la plage. Plusieurs fragments se séparent par un point-virgule ; la casse est ignorée.</small>
+        </div>
+        <div>
+          <label><input type="checkbox" name="commandable" style="width:auto"{% if s.commandable %} checked{% endif %}> Ce bloc se commande</label>
+          <label>Ordre<input type="number" name="ordre" value="{{ s.ordre }}"></label>
+          <label>Note<input name="note" value="{{ s.note or '' }}"></label>
+        </div>
+      </div>
+      <button>Enregistrer la section</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if restes %}
+<section class="card"><h2>Hors section <span class="rust-badge">{{ restes|length }}</span></h2>
+<p class="muted">Ces objets existent sur l'automate mais n'entrent dans aucune section. Pour les ranger, ajoutez une section portant un fragment de leur nom comme motif.</p>
+<div class="rust-scroll"><table>
+  <thead><tr><th>Identifiant</th><th>Nom dans l'automate</th><th>Valeur</th><th>Votre nom</th><th>Salle</th></tr></thead>
+  <tbody>
+  {% for o in restes %}
+  <tr>
+    <td><code>{{ o.id }}</code></td>
+    <td>{{ o.nom_ipx }}</td>
+    <td>{% if o.valeur is not none %}{{ o.valeur }}{% if o.unite %} {{ o.unite }}{% endif %}{% elif o.etat is not none %}{% if o.etat %}marche{% else %}arrêt{% endif %}{% else %}—{% endif %}</td>
+    <td>{{ o.nom or '—' }}</td>
+    <td>{{ o.salle or '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+</section>
+{% endif %}
+
+{% if session.peut_modifier %}
+<section class="card"><h2>Ajouter une section</h2>
+<form method="post" action="/ambiance/ipx/section">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <div class="rust-grid">
+    <div>
+      <label>Nom<input name="nom" required placeholder="Entrées digitales"></label>
+      <label>Source<select name="source"><option value="io">États logiques (io)</option><option value="ana">Valeurs analogiques (ana)</option></select></label>
+    </div>
+    <div>
+      <label>Motif de nom<input name="motif" placeholder="x-010v ; ]Fault"></label>
+      <label>Premier identifiant<input type="number" name="id_debut"></label>
+      <label>Dernier identifiant<input type="number" name="id_fin"></label>
+      <small class="muted">Renseignez l'un ou l'autre : un motif de nom, ou une plage d'identifiants.</small>
+    </div>
+    <div>
+      <label><input type="checkbox" name="commandable" style="width:auto"> Ce bloc se commande</label>
+      <label>Ordre<input type="number" name="ordre" value="70"></label>
+      <label>Note<input name="note"></label>
+    </div>
+  </div>
+  <button>Créer la section</button>
+</form>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,29 @@
+{# Liste des capteurs analogiques GCE/IPX800 courants, avec leur formule
+   « brut → valeur réelle » telle que documentée par le constructeur. Choisir
+   un capteur remplit le champ formule identifié par `input_id` ; le texte
+   reste ensuite librement modifiable, ce n'est qu'un point de départ. #}
+{% macro select_capteur(input_id) %}
+<label>Capteur connu (remplit la formule ci-dessous)
+  <select onchange="if(this.value){document.getElementById('{{ input_id }}').value=this.value;} this.selectedIndex=0;">
+    <option value="">— choisir un capteur pour préremplir —</option>
+    <optgroup label="Tension / pinces ampèremétriques">
+      <option value="X * 0.00323">Sortie 0-10 V (Volt)</option>
+      <option value="X * 0.00323">Pince ampèremétrique X400CT10A</option>
+      <option value="X * 0.00646">Pince ampèremétrique X400CT20A</option>
+      <option value="X * 0.01615">Pince ampèremétrique X400CT50A</option>
+      <option value="X * 0.0323">Pince ampèremétrique X400CT100A</option>
+    </optgroup>
+    <optgroup label="Température">
+      <option value="(X * 0.323) - 50">Sonde TC4012</option>
+      <option value="((X * 0.00323) - 1.63) / 0.0326">Sonde TC5050</option>
+      <option value="((X * 0.00323) - 0.25) / 0.028">Sonde TC100</option>
+    </optgroup>
+    <optgroup label="Autres capteurs X400/X200">
+      <option value="X * 0.09775">Luminosité LS100</option>
+      <option value="(((X * 0.00323) / 3.3) - 0.1515) / 0.00636">Hygrométrie RH-SH100</option>
+      <option value="X / 100">pH X200PH</option>
+      <option value="X - 2500">ORP X200ORP</option>
+    </optgroup>
+  </select>
+</label>
+{% endmacro %}

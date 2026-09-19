@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% macro select_point(nom_champ, valeur_actuelle, candidats, salle_id, ecriture=false) %}
+<select name="{{ nom_champ }}">
+  <option value="">— Aucun —</option>
+  {% if valeur_actuelle %}<option value="{{ valeur_actuelle }}" selected>Valeur actuelle : {{ valeur_actuelle }}</option>{% endif %}
+  {% for p in candidats %}
+    {% set chemin = p.chemin_ecriture if ecriture and p.chemin_ecriture else p.chemin %}
+    {% if chemin %}<option value="{{ chemin }}"{% if chemin == valeur_actuelle %} selected{% endif %}>{{ p.nom }}{% if p.salle_id == salle_id %} (cette salle){% elif p.salle %} ({{ p.salle }}){% else %} (non affecté){% endif %}</option>{% endif %}
+  {% endfor %}
+</select>
+{% endmacro %}
+{% block title %}Ambiance et ventilation — EO_Sevel{% endblock %}{% block content %}
+<style>
+.ambiance-seuils{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.ambiance-seuil{border-left:4px solid #64748b;background:#f1f5f9;color:#172033;border-radius:6px;padding:4px 10px;font-size:.85rem}
+.ambiance-seuil.inconnu{border-color:#94a3b8;background:#f8fafc;color:#64748b;font-style:italic}
+.ambiance-graphs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:10px 0}
+.ambiance-graph-bloc h4{margin:0 0 4px;font-size:.85rem;font-weight:600}
+.ambiance-graph-bloc svg{width:100%;height:90px;background:#f8fafc;border-radius:6px}
+.ambiance-graph-vide{font-size:.82rem;color:#94a3b8;padding:8px 0}
+
+/* Salles : la carte prend une pastille de couleur qui résume l'état d'un
+   coup d'œil, et les deux mesures qui comptent le plus au quotidien
+   (température, ventilation) sortent en gros chiffres plutôt que noyées
+   dans un tableau à six colonnes. */
+.ambiance-room{border-left:5px solid #cbd5e1}
+.ambiance-room.etat-ok{border-left-color:#22c55e}
+.ambiance-room.etat-alerte{border-left-color:#ef4444}
+.ambiance-room.etat-repli{border-left-color:#f59e0b}
+.ambiance-room-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.ambiance-etat-pastille{font-size:11px;font-weight:750;padding:4px 9px;border-radius:999px;background:#eef1f4;color:#475569;white-space:nowrap}
+.ambiance-etat-pastille.etat-ok{background:#dcfce7;color:#166534}
+.ambiance-etat-pastille.etat-alerte{background:#fee2e2;color:#991b1b}
+.ambiance-etat-pastille.etat-repli{background:#fef3c7;color:#92400e}
+.ambiance-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:12px 0}
+.ambiance-tile{background:#f8faf9;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ambiance-tile-principale{background:#eef5f1}
+.ambiance-tile.danger{background:#fef2f2;border-color:#fca5a5}
+.ambiance-tile-label{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.ambiance-tile-valeur{font-size:1.9rem;line-height:1.15;color:var(--ink);font-weight:700}
+.ambiance-tile-valeur small{font-size:1rem;font-weight:500;color:var(--muted);margin-left:2px}
+.ambiance-tile-valeur.petite{font-size:1.05rem;font-weight:600}
+.ambiance-tile.danger .ambiance-tile-valeur{color:#991b1b}
+.ambiance-tile-sub{font-size:11.5px;color:var(--muted)}
+</style>
+<h1>Ambiance &amp; ventilation</h1>
+<p class="muted"><a href="/ambiance/ipx/carte">Carte de l'automate : entrées et sorties par bloc →</a> · <a href="/ambiance/ipx">Explorateur et réglages</a> · <a href="/ambiance/comportement">Comportement &amp; climat</a></p>
+
+{% if demon.jamais_demarre %}
+<div class="card"><p><b class="danger">La régulation n'a jamais tourné sur cette base.</b></p><p class="muted">Le service <code>eo-regul</code> lit les réglages ci-dessous, interroge l'automate et écrit ici ce qu'il mesure. Tant qu'il n'est pas démarré, cette page reste vide — c'est normal, et c'est voulu : rien ne se met en route tout seul.</p></div>
+{% elif not demon.actif %}
+<div class="card"><p><b class="danger">{{ demon.texte }}</b></p><p class="muted">Les valeurs affichées plus bas datent d'avant l'arrêt. Elles ne reflètent plus les salles.</p></div>
+{% else %}
+<div class="card"><p>{{ demon.texte }} — {{ demon.cycles }} cycles{% if demon.erreurs %}, <b class="danger">{{ demon.erreurs }} en échec</b>{% endif %}{% if demon.version %} — version {{ demon.version }}{% endif %}</p></div>
+{% endif %}
+
+{% if alertes %}
+<section class="card"><h2>Alertes en cours</h2><div class="rust-scroll"><table><tr><th>Salle</th><th>Depuis</th><th>Message</th><th></th></tr>
+{% for a in alertes %}<tr><td>{{ a.salle or '—' }}</td><td>{{ a.debut }}</td><td>{% if a.gravite == 'critique' %}<b class="danger">{{ a.message }}</b>{% else %}{{ a.message }}{% endif %}</td><td>{% if session.peut_modifier %}<form method="post" action="/ambiance/alerte/{{ a.id }}/acquitter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Vu</button></form>{% endif %}</td></tr>{% endfor %}
+</table></div><p class="muted">Acquitter une alerte ne la corrige pas : elle reste ouverte tant que la cause dure, et se referme d'elle-même au retour à la normale.</p></section>
+{% endif %}
+
+{% if eclairages %}
+<section class="card"><h2>Éclairage</h2>
+<p class="muted">Commande manuelle des sorties d'éclairage déclarées dans <a href="/ambiance/ipx">l'inventaire IPX</a> (rôle « éclairage », pilotable). Aucune extinction automatique n'est programmée pour l'instant : à éteindre à la main en sortant, comme à l'allumage.</p>
+<div class="rust-scroll"><table><tr><th>Salle</th><th>Nom</th><th></th></tr>
+{% for e in eclairages %}<tr><td>{{ e.salle or '—' }}</td><td>{{ e.nom }}</td><td>{% if session.peut_modifier %}<div class="rust-actions">
+<form method="post" action="/ambiance/ipx/point/{{ e.id }}/commander" onsubmit="return confirm('Allumer « {{ e.nom }} » ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="valeur" value="1"><button>Allumer</button></form>
+<form method="post" action="/ambiance/ipx/point/{{ e.id }}/commander" onsubmit="return confirm('Éteindre « {{ e.nom }} » ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="valeur" value="0"><button class="ghost">Éteindre</button></form>
+</div>{% endif %}</td></tr>{% endfor %}
+</table></div>
+</section>
+{% endif %}
+
+{% for s in salles %}
+{% set hors_temp = s.actif and s.t is not none and ((s.t_alerte_min is not none and s.t < s.t_alerte_min) or (s.t_alerte_max is not none and s.t > s.t_alerte_max)) %}
+{% set hors_hygro = s.actif and s.h is not none and s.h_alerte_max is not none and s.h > s.h_alerte_max %}
+{% set etat = 'etat-repli' if (s.actif and not s.sonde_ok) else ('etat-alerte' if (s.actif and (hors_temp or hors_hygro or s.mesure_agee)) else ('etat-ok' if s.actif else '')) %}
+<section class="card ambiance-room {{ etat }}" id="salle-{{ s.id }}" data-salle="{{ s.id }}"{% if s.t_alerte_min is not none %} data-t-min="{{ s.t_alerte_min }}"{% endif %}{% if s.t_alerte_max is not none %} data-t-max="{{ s.t_alerte_max }}"{% endif %}{% if s.h_alerte_max is not none %} data-h-max="{{ s.h_alerte_max }}"{% endif %}>
+  <div class="ambiance-room-head">
+    <h2 style="margin:0">{{ s.nom }}
+      {% if s.actif and s.pilote %}<span class="rust-badge">pilotée</span>
+      {% elif s.actif %}<span class="rust-badge">observation</span>
+      {% else %}<span class="rust-badge">inactive</span>{% endif %}
+      <span class="rust-badge danger js-mode-securite"{% if s.mode != 'securite' %} hidden{% endif %}>repli de sécurité</span>
+    </h2>
+    {% if s.actif %}<span class="ambiance-etat-pastille {{ etat }}">{% if etat == 'etat-repli' %}Ventilation en repli{% elif etat == 'etat-alerte' %}À surveiller{% else %}Normal{% endif %}</span>{% endif %}
+  </div>
+  <p class="muted">{{ s.site or 'Sans site' }}{% if s.type %} — {{ s.type }}{% endif %}{% if s.bande %} — bande {{ s.bande }}{% if s.jour_bande is not none %}, jour {{ s.jour_bande }}{% endif %}{% endif %}</p>
+
+  {% if s.preconditionnement %}
+  <p class="muted">Préconditionnement en cours : bande {{ s.preconditionnement.bande or s.preconditionnement.bande_id }} attendue le {{ s.preconditionnement.arrivee_prevue }} ({{ s.preconditionnement.heures_avant }} h de préchauffage). {% if session.peut_modifier %}<form style="display:inline" method="post" action="/ambiance/salle/{{ s.id }}/preconditionnement/supprimer" onsubmit="return confirm('Annuler ce préconditionnement ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Annuler</button></form>{% endif %}</p>
+  {% endif %}
+
+  {% if s.actif %}
+  {% if s.message %}<p class="muted">{{ s.message }}</p>{% endif %}
+  <p class="js-message-repli"{% if s.sonde_ok %} hidden{% endif %}><b class="danger">Mesure inutilisable : ventilation de repli à {{ s.ventil_securite }} %.</b></p>
+  {% for a in s.alertes %}<p>{% if a.gravite == 'critique' %}<b class="danger">{{ a.message }}</b>{% else %}{{ a.message }}{% endif %}</p>{% endfor %}
+
+  <div class="ambiance-tiles">
+    <div class="ambiance-tile ambiance-tile-principale{% if hors_temp %} danger{% endif %}">
+      <span class="ambiance-tile-label">Température</span>
+      <b class="ambiance-tile-valeur js-t-valeur">{% if s.t is not none %}{{ s.t }}<small>°C</small>{% else %}—{% endif %}</b>
+      <span class="ambiance-tile-sub">Consigne {{ s.consigne_theorique }} °C{% if s.courbe_nom %} · {{ s.courbe_nom }}{% endif %}</span>
+    </div>
+    <div class="ambiance-tile ambiance-tile-principale{% if not s.sonde_ok %} danger{% endif %}">
+      <span class="ambiance-tile-label">Ventilation</span>
+      <b class="ambiance-tile-valeur js-ventil-valeur">{% if s.ventil is not none %}{{ s.ventil }}<small>%</small>{% else %}—{% endif %}</b>
+      <span class="ambiance-tile-sub">{% if not s.sonde_ok %}Repli à {{ s.ventil_securite }} %{% else %}entre {{ s.ventil_min }} % et {{ s.ventil_max }} %{% endif %}</span>
+    </div>
+    <div class="ambiance-tile{% if hors_hygro %} danger{% endif %}">
+      <span class="ambiance-tile-label">Hygrométrie</span>
+      <b class="ambiance-tile-valeur js-h-valeur">{% if s.h is not none %}{{ s.h }}<small>%</small>{% else %}—{% endif %}</b>
+      <span class="ambiance-tile-sub">{% if s.h_alerte_max is not none %}alerte au-delà de {{ s.h_alerte_max }} %{% else %}seuil non réglé{% endif %}</span>
+    </div>
+    <div class="ambiance-tile">
+      <span class="ambiance-tile-label">Lumière</span>
+      <b class="ambiance-tile-valeur js-lux-valeur">{% if s.lux is not none %}{{ s.lux }}{% else %}—{% endif %}</b>
+    </div>
+    <div class="ambiance-tile{% if s.mesure_agee %} danger{% endif %}">
+      <span class="ambiance-tile-label">Dernière mesure</span>
+      <b class="ambiance-tile-valeur petite js-age-valeur">{{ s.mesure_age_texte or 'jamais mesurée' }}</b>
+    </div>
+  </div>
+  {% if session.peut_modifier %}<p class="muted"><a href="#reglages-{{ s.id }}" onclick="document.getElementById('reglages-{{ s.id }}').open=true">Régler les seuils d'alerte et la consigne →</a></p>{% endif %}
+
+  <div class="ambiance-graphs" data-graphes="{{ s.id }}">
+    <div class="ambiance-graph-bloc" data-grandeur="t"><h4>Température (48 h)</h4><svg viewBox="0 0 300 90" preserveAspectRatio="none"></svg></div>
+    <div class="ambiance-graph-bloc" data-grandeur="h"><h4>Hygrométrie (48 h)</h4><svg viewBox="0 0 300 90" preserveAspectRatio="none"></svg></div>
+    <div class="ambiance-graph-bloc" data-grandeur="ventil"><h4>Ventilation (48 h)</h4><svg viewBox="0 0 300 90" preserveAspectRatio="none"></svg></div>
+  </div>
+  <p class="muted"><a href="/ambiance/salle/{{ s.id }}/historique">Historique complet avec sélection de date →</a> · <a href="/ambiance/salle/{{ s.id }}/historique.json?heures=48">données brutes des 48 dernières heures (JSON)</a></p>
+  {% else %}
+  <p class="rust-empty">Salle non suivie. Renseignez l'automate et cochez « Mesurer » pour commencer à enregistrer, sans rien piloter.</p>
+  {% endif %}
+
+  {% if session.peut_modifier %}
+  <details id="reglages-{{ s.id }}"><summary>Réglages</summary>
+  <form method="post" action="/ambiance/salle/{{ s.id }}">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <div class="rust-grid">
+      <div>
+        <h3>Raccordement</h3>
+        <label>Automate (adresse){% if not s.ipx_hote and (s.actif or s.pilote) %} <span class="rust-badge danger">non renseignée</span>{% endif %}<input name="ipx_hote" value="{{ s.ipx_hote or '' }}" list="dl-hotes" placeholder="à saisir, ex. 192.168.1.250"></label>
+        <datalist id="dl-hotes">{% for h in hotes %}<option value="{{ h }}">{% endfor %}</datalist>
+        <label>Entrée température{{ select_point('entree_t', s.entree_t, s.points_t, s.id) }}</label>
+        <label>Entrée hygrométrie{{ select_point('entree_h', s.entree_h, s.points_h, s.id) }}</label>
+        <label>Entrée luminosité{{ select_point('entree_lux', s.entree_lux, s.points_lux, s.id) }}</label>
+        <label>Sortie ventilation{{ select_point('sortie_ventil', s.sortie_ventil, s.points_ventil, s.id, ecriture=true) }}</label>
+        <p class="muted">Les capteurs proposés sont ceux déjà rangés dans <a href="/ambiance/ipx/carte">la carte de l'automate</a> ou <a href="/ambiance/ipx">l'Explorateur</a> avec le rôle correspondant. Rien à cette liste ? Rangez d'abord le point là-bas, avec le bon rôle (température, humidité, luminosité ou ventilation).</p>
+        <label><input type="checkbox" name="actif" style="width:auto"{% if s.actif %} checked{% endif %}> Mesurer et enregistrer</label>
+        <label><input type="checkbox" name="pilote" style="width:auto"{% if s.pilote %} checked{% endif %}> Piloter la ventilation</label>
+        <p class="muted">Deux cases distinctes, et c'est volontaire. « Mesurer » se contente de lire et d'archiver. « Piloter » autorise l'écriture sur l'automate. Laissez une salle en mesure seule le temps de comparer avec la régulation en place : c'est la seule façon honnête de vérifier avant de confier.</p>
+      </div>
+      <div>
+        <h3>Consigne</h3>
+        <label>Courbe suivant l'âge de la bande<select name="courbe_id"><option value="">Aucune : consigne fixe</option>{% for c in courbes %}<option value="{{ c.id }}"{% if s.courbe_id == c.id %} selected{% endif %}>{{ c.nom }} ({{ c.points }} points)</option>{% endfor %}</select></label>
+        <label>Consigne fixe (°C)<input name="t_cible_fixe" inputmode="decimal" value="{{ s.t_cible_fixe }}"></label>
+        <label>Plage de régulation (°C)<input name="plage" inputmode="decimal" value="{{ s.plage }}"></label>
+        <label>Ventilation minimale (%)<input name="ventil_min" inputmode="decimal" value="{{ s.ventil_min }}"></label>
+        <label>Ventilation maximale (%)<input name="ventil_max" inputmode="decimal" value="{{ s.ventil_max }}"></label>
+        <p class="muted">À la consigne, la ventilation est au minimum ; à la consigne plus la plage, au maximum. Le minimum n'est pas qu'un réglage de confort : c'est lui qui évacue l'ammoniac même quand il fait froid.</p>
+      </div>
+      <div>
+        <h3>Hygrométrie et anticipation</h3>
+        <label>Hygrométrie cible (%)<input name="hygro_cible" inputmode="decimal" value="{{ s.hygro_cible if s.hygro_cible is not none else '' }}"></label>
+        <label>Influence (% de ventilation par point au-dessus)<input name="hygro_influence" inputmode="decimal" value="{{ s.hygro_influence }}"></label>
+        <label>Anticipation (0 = purement réactif)<input name="anticipation" inputmode="decimal" value="{{ s.anticipation }}"></label>
+        <p class="muted">L'anticipation tient compte de la vitesse à laquelle la salle se réchauffe. Un bâtiment a des heures d'inertie : attendre le dépassement, c'est toujours corriger avec un cran de retard. Commencez à 0, montez par pas de 0,5.</p>
+      </div>
+      <div>
+        <h3>Sécurité et alertes</h3>
+        <label>Ventilation de repli (%)<input name="ventil_securite" inputmode="decimal" value="{{ s.ventil_securite }}"></label>
+        <label>Alerte température basse (°C)<input name="t_alerte_min" inputmode="decimal" value="{{ s.t_alerte_min if s.t_alerte_min is not none else '' }}"></label>
+        <label>Alerte température haute (°C)<input name="t_alerte_max" inputmode="decimal" value="{{ s.t_alerte_max if s.t_alerte_max is not none else '' }}"></label>
+        <label>Alerte hygrométrie haute (%)<input name="h_alerte_max" inputmode="decimal" value="{{ s.h_alerte_max if s.h_alerte_max is not none else '' }}"></label>
+        <p class="muted">La ventilation de repli s'applique dès que la mesure devient inutilisable — sonde absente, valeur figée ou aberrante. Choisissez-la assez haute pour tenir la salle quelques heures sans surveillance, jamais zéro.</p>
+      </div>
+    </div>
+    <button>Enregistrer</button>
+  </form>
+  </details>
+  <details><summary>Préconditionnement (préchauffage avant arrivée)</summary>
+    <form method="post" action="/ambiance/salle/{{ s.id }}/preconditionnement">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+      <label>Bande attendue<select name="bande_id" required><option value="">— sélectionner —</option>{% for b in bandes_actives %}<option value="{{ b.id }}"{% if s.preconditionnement and s.preconditionnement.bande_id == b.id %} selected{% endif %}>{{ b.code }}</option>{% endfor %}</select></label>
+      <label>Arrivée prévue<input type="datetime-local" name="arrivee_prevue" required value="{{ s.preconditionnement.arrivee_prevue if s.preconditionnement else '' }}"></label>
+      <label>Heures de préchauffage avant l'arrivée<input type="number" min="0" max="72" step="0.5" name="heures_avant" value="{{ s.preconditionnement.heures_avant if s.preconditionnement else 8 }}"></label>
+      <p class="muted">Fait démarrer la courbe de consigne au jour 0 dès l'heure indiquée, comme si la bande venait d'arriver — jusqu'au transfert réel, qui reprend toujours la main, ou 48 h après l'heure prévue si rien n'est arrivé.</p>
+      <button>Enregistrer</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% else %}
+<div class="rust-empty">Aucune salle enregistrée. Créez vos salles dans « Structure », puis revenez les configurer ici.</div>
+{% endfor %}
+
+<script>
+// Rafraîchissement discret : on relit l'état toutes les trente secondes. En
+// cas d'échec on ne touche à rien — mieux vaut une valeur visiblement datée
+// qu'un tableau vidé qui laisserait croire à une panne.
+(function () {
+  var MINUTE = 60000;
+  function texte(salle, classe, valeur, unite) {
+    var cible = salle.querySelector(classe);
+    if (!cible) { return; }
+    cible.textContent = (valeur === null || valeur === undefined) ? '—' : valeur + (unite || '');
+  }
+  function rafraichir() {
+    fetch('/ambiance/etat.json', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        (data.salles || []).forEach(function (s) {
+          var salle = document.querySelector('[data-salle="' + s.id + '"]');
+          if (!salle || !s.actif) { return; }
+          texte(salle, '.js-t-valeur', s.t, ' °C');
+          texte(salle, '.js-h-valeur', s.h, ' %');
+          texte(salle, '.js-lux-valeur', s.lux, '');
+          texte(salle, '.js-ventil-valeur', s.ventil, ' %');
+          var horsTemp = s.t != null && ((s.t_alerte_min != null && s.t < s.t_alerte_min) || (s.t_alerte_max != null && s.t > s.t_alerte_max));
+          var horsHygro = s.h != null && s.h_alerte_max != null && s.h > s.h_alerte_max;
+          var etat = !s.sonde_ok ? 'etat-repli' : (horsTemp || horsHygro || s.mesure_agee ? 'etat-alerte' : 'etat-ok');
+          var pastille = salle.querySelector('.ambiance-etat-pastille');
+          [salle, pastille].forEach(function (element) {
+            if (!element) { return; }
+            element.classList.remove('etat-repli', 'etat-alerte', 'etat-ok');
+            element.classList.add(etat);
+          });
+          if (pastille) { pastille.textContent = etat === 'etat-repli' ? 'Ventilation en repli' : (etat === 'etat-alerte' ? 'À surveiller' : 'Normal'); }
+          [['.js-t-valeur', horsTemp], ['.js-h-valeur', horsHygro], ['.js-ventil-valeur', !s.sonde_ok], ['.js-age-valeur', !!s.mesure_agee]].forEach(function (item) {
+            var valeur = salle.querySelector(item[0]);
+            if (valeur) { valeur.closest('.ambiance-tile').classList.toggle('danger', item[1]); }
+          });
+          var repli = salle.querySelector('.js-message-repli');
+          if (repli) { repli.hidden = !!s.sonde_ok; }
+          var mode = salle.querySelector('.js-mode-securite');
+          if (mode) { mode.hidden = s.mode !== 'securite'; }
+          var ventil = salle.querySelector('.js-ventil-valeur');
+          if (ventil) {
+            ventil.parentElement.querySelector('.ambiance-tile-sub').textContent = !s.sonde_ok ? 'Repli à ' + s.ventil_securite + ' %' : 'entre ' + s.ventil_min + ' % et ' + s.ventil_max + ' %';
+          }
+          var age = salle.querySelector('.js-age-valeur');
+          if (age) {
+            age.innerHTML = '';
+            var contenu = document.createTextNode(s.mesure_age_texte || 'jamais mesurée');
+            if (s.mesure_agee) {
+              var fort = document.createElement('b');
+              fort.className = 'danger';
+              fort.appendChild(contenu);
+              age.appendChild(fort);
+            } else {
+              age.appendChild(contenu);
+            }
+          }
+        });
+      })
+      .catch(function () { /* on garde l'affichage précédent */ });
+  }
+  setInterval(rafraichir, MINUTE / 2);
+})();
+
+// Graphiques : un petit SVG par grandeur (température, hygrométrie,
+// ventilation), tracé côté navigateur à partir de l'historique JSON déjà
+// exposé par /ambiance/salle/{id}/historique.json. Aucune bibliothèque de
+// graphique : un polyline suffit pour 48h de mesures.
+(function () {
+  var COULEURS = { t: '#0369a1', h: '#15803d', ventil: '#b45309' };
+  var UNITES = { t: '°C', h: '%', ventil: '%' };
+
+  function tracerCourbe(svg, points, options) {
+    options = options || {};
+    svg.innerHTML = '';
+    if (!points || points.length < 2) {
+      var texte = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      texte.setAttribute('x', 8); texte.setAttribute('y', 45);
+      texte.setAttribute('font-size', '11'); texte.setAttribute('fill', '#94a3b8');
+      texte.textContent = 'Pas assez de mesures';
+      svg.appendChild(texte);
+      return;
+    }
+    var valeurs = points.map(function (p) { return p[1]; });
+    var seuils = (options.seuils || []).filter(function (v) { return v !== null && v !== undefined; });
+    var mini = Math.min.apply(null, valeurs.concat(seuils));
+    var maxi = Math.max.apply(null, valeurs.concat(seuils));
+    if (mini === maxi) { mini -= 1; maxi += 1; }
+    var marge = (maxi - mini) * 0.1;
+    mini -= marge; maxi += marge;
+    var t0 = points[0][0], t1 = points[points.length - 1][0];
+    var largeur = 300, hauteur = 90, pad = 4;
+    function x(ts) { return pad + (t1 === t0 ? 0 : (ts - t0) / (t1 - t0) * (largeur - 2 * pad)); }
+    function y(v) { return hauteur - pad - (v - mini) / (maxi - mini) * (hauteur - 2 * pad); }
+    var ns = 'http://www.w3.org/2000/svg';
+    (options.seuils || []).forEach(function (seuil) {
+      if (seuil === null || seuil === undefined) { return; }
+      var ligne = document.createElementNS(ns, 'line');
+      ligne.setAttribute('x1', pad); ligne.setAttribute('x2', largeur - pad);
+      ligne.setAttribute('y1', y(seuil)); ligne.setAttribute('y2', y(seuil));
+      ligne.setAttribute('stroke', '#b91c1c'); ligne.setAttribute('stroke-width', '1');
+      ligne.setAttribute('stroke-dasharray', '4,3');
+      svg.appendChild(ligne);
+    });
+    var chemin = points.map(function (p, i) {
+      return (i === 0 ? 'M' : 'L') + x(p[0]).toFixed(1) + ',' + y(p[1]).toFixed(1);
+    }).join(' ');
+    var trace = document.createElementNS(ns, 'path');
+    trace.setAttribute('d', chemin);
+    trace.setAttribute('fill', 'none');
+    trace.setAttribute('stroke', options.couleur || '#0369a1');
+    trace.setAttribute('stroke-width', '1.6');
+    svg.appendChild(trace);
+    [['dernier', points[points.length - 1][1]], ['mini', Math.min.apply(null, valeurs)], ['maxi', Math.max.apply(null, valeurs)]]
+      .forEach(function (paire, i) {
+        var libelle = document.createElementNS(ns, 'text');
+        libelle.setAttribute('x', 4); libelle.setAttribute('y', 11 + i * 11);
+        libelle.setAttribute('font-size', '9'); libelle.setAttribute('fill', '#475569');
+        libelle.textContent = paire[0] + ' ' + paire[1].toFixed(1) + (options.unite || '');
+        svg.appendChild(libelle);
+      });
+  }
+
+  document.querySelectorAll('[data-graphes]').forEach(function (conteneur) {
+    var salleId = conteneur.getAttribute('data-graphes');
+    var section = conteneur.closest('section');
+    var seuilTMin = section ? section.getAttribute('data-t-min') : null;
+    var seuilTMax = section ? section.getAttribute('data-t-max') : null;
+    var seuilHMax = section ? section.getAttribute('data-h-max') : null;
+    fetch('/ambiance/salle/' + encodeURIComponent(salleId) + '/historique.json?heures=48', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        var series = data.series || {};
+        conteneur.querySelectorAll('.ambiance-graph-bloc').forEach(function (bloc) {
+          var grandeur = bloc.getAttribute('data-grandeur');
+          var svg = bloc.querySelector('svg');
+          var options = { couleur: COULEURS[grandeur], unite: UNITES[grandeur] };
+          if (grandeur === 't') { options.seuils = [seuilTMin ? parseFloat(seuilTMin) : null, seuilTMax ? parseFloat(seuilTMax) : null]; }
+          if (grandeur === 'h') { options.seuils = [seuilHMax ? parseFloat(seuilHMax) : null]; }
+          tracerCourbe(svg, series[grandeur] || [], options);
+        });
+      })
+      .catch(function () {
+        conteneur.querySelectorAll('svg').forEach(function (svg) {
+          svg.outerHTML = '<p class="ambiance-graph-vide">Historique indisponible</p>';
+        });
+      });
+  });
+})();
+</script>
+{% endblock %}

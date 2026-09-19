@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Génétique · EO_Sevel{% endblock %}
+{% block content %}{% include "workflow_ui.html" %}<div class="workflow">
+<h1>Génétique</h1><p>Lignées suivies avec leur fournisseur, leurs index (prolificité, croissance, indice de consommation) et leur contrat de renouvellement.</p>
+<section class="card"><h2>Génétique achetée</h2><p>Tous les achats de génétique (verrats, cochettes, redevances) enregistrés dans Économie.</p><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th>Animaux</th><th>Montant HT</th><th>Bandes</th><th>Part / bande</th></tr></thead><tbody>{% for a in achats_genetique %}<tr><td>{{ a.date|date_fr }}</td><td>{{ a.fournisseur or '—' }}</td><td>{{ a.designation or '—' }}</td><td>{{ a.nb_animaux or '—' }}</td><td>{{ a.montant_ht|euro if a.montant_ht is not none else '—' }}</td><td>{% if a.toutes_bandes %}Toutes les bandes ({{ a.nb_bandes }}){% elif a.nb_bandes > 0 %}{{ a.bandes_affectees }} ({{ a.nb_bandes }}){% else %}Non affecté{% endif %}</td><td>{{ a.montant_par_bande|euro if a.montant_par_bande is not none else '—' }}</td></tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucun achat de génétique enregistré — <a href="/imports">importer un document</a> ou saisir sur Économie.</td></tr>{% endfor %}</tbody></table></div></section>
+<h2>Mes lignées suivies</h2>
+{% if session.peut_modifier %}<form class="card rust-actions" method="post" action="/genetique"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label>Nom de la lignée<input name="nom" required></label>
+<label>Fournisseur<input name="fournisseur"></label>
+<label>Index prolificité<input name="index_prolificite" inputmode="decimal"></label>
+<label>Index croissance<input name="index_croissance" inputmode="decimal"></label>
+<label>Index IC<input name="index_ic" inputmode="decimal"></label>
+<label>Contrat de renouvellement<input name="contrat_renouvellement"></label>
+<label>Note<input name="note"></label>
+<button>Ajouter la lignée</button></form>{% endif %}
+<div class="rust-scroll"><table><thead><tr><th>Lignée</th><th>Fournisseur</th><th>Index prolificité</th><th>Index croissance</th><th>Index IC</th><th>Contrat</th><th>Truies rattachées</th><th>Note</th><th></th></tr></thead><tbody>{% for l in lignees %}<tr><td><b>{{ l.nom }}</b></td><td>{{ l.fournisseur or '—' }}</td><td>{{ l.index_prolificite or '—' }}</td><td>{{ l.index_croissance or '—' }}</td><td>{{ l.index_ic or '—' }}</td><td>{{ l.contrat_renouvellement or '—' }}</td><td>{{ l.truies }}</td><td>{{ l.note or '—' }}</td><td>{% if session.peut_modifier %}<form method="post" action="/genetique/{{ l.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="9" class="rust-empty">Aucune lignée enregistrée</td></tr>{% endfor %}</tbody></table></div>
+</div>{% endblock %}

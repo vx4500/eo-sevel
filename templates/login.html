@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% block title %}Connexion — EO_Sevel{% endblock %}
+{% block body_class %}login-page{% endblock %}
+{% block content %}
+<div class="card login-card">
+  <img class="login-brand" src="/static/ei-ory-emmanuel.png?v={{ app_version }}" alt="EI ORY Emmanuel">
+  <h1>EO_Sevel</h1><p class="muted">Version Rust {{ app_version }}</p>
+  {% if demo_portal %}<p>Démonstration indépendante. Utilisez l’identifiant et le mot de passe de 48 h transmis par Emmanuel ORY. Contact : <a href="mailto:vx4500@gmail.com">vx4500@gmail.com</a>.</p>{% endif %}
+  {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
+  <form method="post" action="/login">
+    <label>Identifiant<input name="identifiant" autocomplete="username" required autofocus></label>
+    <label>Mot de passe<input name="mdp" type="password" autocomplete="current-password" required></label>
+    <button type="submit" style="width:100%;margin-top:12px">Se connecter</button>
+  </form>
+</div>
+{% endblock %}

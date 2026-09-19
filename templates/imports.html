@@ -1,0 +1,72 @@
+{% extends "base.html" %}{% block title %}Importer un document · EO_Sevel{% endblock %}{% block content %}
+<h1>Importer un document</h1>
+{% if session.peut_modifier %}
+<section class="card"><h2>Vous avez un fichier, ou une facture à saisir à la main ?</h2>
+<div class="rust-choice-xl" role="radiogroup" aria-label="Importer ou saisir">
+  <label><input type="radio" name="assistant-mode" value="importer"><span><span class="ic" aria-hidden="true">📥</span>Importer un fichier</span></label>
+  <label><input type="radio" name="assistant-mode" value="saisir"><span><span class="ic" aria-hidden="true">✍️</span>Saisir une facture à la main</span></label>
+</div>
+
+<div id="bloc-importer" hidden>
+<p>PDF, ou CSV (facture, truies, historique, génétique, eau/électricité) : <b>un seul dépose-fichier</b>, le type est reconnu automatiquement. Jusqu’à 5 PDF à la fois (8 Mo et 30 pages chacun), un seul CSV à la fois. Les photos et scans de PDF sont lus par reconnaissance de caractères. Si un fichier manque une bande ou un montant, la page suivante vous le demandera avant toute validation.</p>
+<form method="post" action="/import-fichier" enctype="multipart/form-data" class="rust-dropzone-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label class="rust-dropzone" for="fichier-import"><span class="icon" aria-hidden="true">📎</span><span class="texte"><b id="fichier-libelle">Cliquez ici pour choisir un fichier</b><small>PDF (jusqu’à 5 à la fois) ou un seul CSV</small></span><input type="file" id="fichier-import" name="fichier" accept="application/pdf,.pdf,.csv,text/csv" multiple required></label>
+<button>Analyser le fichier</button>
+</form>
+<script>
+(function(){
+  var input = document.getElementById('fichier-import');
+  var libelle = document.getElementById('fichier-libelle');
+  if(!input || !libelle) return;
+  var defaut = libelle.textContent;
+  input.addEventListener('change', function(){
+    if(input.files.length === 0){ libelle.textContent = defaut; }
+    else if(input.files.length === 1){ libelle.textContent = input.files[0].name; }
+    else { libelle.textContent = input.files.length + ' fichiers sélectionnés'; }
+  });
+})();
+</script>
+<p class="rust-empty">Modèles CSV si besoin : <a href="/truies/modele.csv">truies</a> · <a href="/truies/import-historique/modele.csv">historique truie</a> · <a href="/economique/factures/modele.csv">factures</a> · <a href="/economique/genetique/modele.csv">génétique</a> · <a href="/energie/modele.csv">eau/électricité</a>.</p>
+</div>
+
+<div id="bloc-saisir" hidden>
+<p>Quelle section ?</p>
+<div class="fab-choix" role="radiogroup" aria-label="Section de saisie">
+  <label><input type="radio" name="assistant-section" value="aliment"><span>🌾 Aliment</span></label>
+  <label><input type="radio" name="assistant-section" value="veto"><span>💉 Vétérinaire</span></label>
+  <label><input type="radio" name="assistant-section" value="semence"><span>🧪 Semence</span></label>
+  <label><input type="radio" name="assistant-section" value="genetique"><span>🧬 Génétique</span></label>
+  <label><input type="radio" name="assistant-section" value="vente"><span>💰 Vente de porcs</span></label>
+  <label><input type="radio" name="assistant-section" value="valorisation"><span>📊 Valorisation / retenue</span></label>
+</div>
+<p id="lien-saisir" class="rust-badge" hidden></p>
+</div>
+</section>
+<script>
+(function(){
+  var modeImporter = document.getElementById('bloc-importer');
+  var modeSaisir = document.getElementById('bloc-saisir');
+  document.querySelectorAll('input[name="assistant-mode"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      modeImporter.hidden = r.value !== 'importer';
+      modeSaisir.hidden = r.value !== 'saisir';
+    });
+  });
+  var lien = document.getElementById('lien-saisir');
+  document.querySelectorAll('input[name="assistant-section"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      var url = '/economique#saisie-' + r.value;
+      lien.hidden = false;
+      lien.innerHTML = '→ <a href="' + url + '">Ouvrir la saisie ' + r.parentElement.textContent.trim() + '</a>';
+      window.location.href = url;
+    });
+  });
+})();
+</script>
+{% else %}<p>Votre profil ne permet pas d’importer des documents.</p>{% endif %}
+{% if groupes_imports %}<h2>Documents économiques déjà importés</h2>
+{% for g in groupes_imports %}<details class="card" {% if g.recent %}open{% endif %}><summary><b>{{ g.secteur }}</b> — {{ g.nombre }} import{% if g.nombre > 1 %}s{% endif %}</summary>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Fichier</th><th>Statut</th><th>Intégration</th></tr></thead><tbody>{% for import in g.lignes %}<tr><td>{{ import.cree_le }}</td><td>{{ import.nom_fichier or '—' }}</td><td><span class="rust-badge{% if import.statut == 'apercu' %} warning{% endif %}">{{ import.statut }}</span></td><td>{% if import.statut == 'apercu' %}<a class="button" href="/economique/import/{{ import.token }}">Ventiler et valider</a>{% else %}{{ import.applique_le or '—' }}{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+</details>{% endfor %}
+{% endif %}
+{% endblock %}

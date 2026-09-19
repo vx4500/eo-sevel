@@ -1,0 +1,192 @@
+{% extends "base.html" %}{% block content %}
+{% if alertes.delai_attente_total > 0 or alertes.commandes_vente_ouvertes > 0 %}
+<section class="dashboard-panel alert-panel" aria-label="Alertes de traitement">
+  <div class="dashboard-section-head compact"><div><span class="section-code">ALERTES</span><div><h2>Alertes à traiter</h2><p>Sécurité sanitaire et suivi commercial.</p></div></div></div>
+  <div class="dashboard-action-list">
+    {% if alertes.delai_attente_total > 0 %}
+    <div class="alert-line">
+      <strong>{{ alertes.delai_attente_total }} animal(aux) sous délai d'attente</strong>
+      <span>Ne pas envoyer à l'abattoir ni en vente directe avant la fin du délai.</span>
+      <div class="rust-scroll"><table><thead><tr><th>Animal</th><th>Produit</th><th>Traité le</th><th>Fin d'attente</th></tr></thead><tbody>
+        {% for a in alertes.delai_attente_truies %}<tr><td>Truie {{ a.reference }}</td><td>{{ a.produit or '—' }}</td><td>{{ a.date_traitement|date_fr }}</td><td><b>{{ a.fin_attente|date_fr }}</b></td></tr>{% endfor %}
+        {% for a in alertes.delai_attente_charcutiers %}<tr><td>{{ a.reference }}</td><td>{{ a.produit or '—' }}</td><td>{{ a.date_traitement|date_fr }}</td><td><b>{{ a.fin_attente|date_fr }}</b></td></tr>{% endfor %}
+      </tbody></table></div>
+    </div>
+    {% endif %}
+    {% if alertes.commandes_vente_ouvertes > 0 %}
+    <div class="alert-line">
+      <strong>{{ alertes.commandes_vente_ouvertes }} commande(s) de vente directe non traitée(s)</strong>
+      <span><a href="/vente-directe/commandes">Ouvrir les commandes</a></span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+<section class="dashboard-toolbar">
+  <div>
+    <span class="dashboard-eyebrow">Centre de pilotage</span>
+    <h1>Tableau de bord élevage</h1>
+    <p>Situation au {{ aujourd_hui|date_fr }} · {% if stats.band_configured %}{{ stats.band_configured }} bande(s) configurée(s){% else %}<a href="/parametres#conduite-bandes">conduite à configurer</a>{% endif %} · {{ stats.band_active }} cycle(s) ouvert(s) · {{ stats.truies }} truie(s)</p>
+  </div>
+  <div class="dashboard-actions">
+    <a href="/quotidien" class="dashboard-button secondary">Contrôle quotidien</a>
+    <a href="/bandes" class="dashboard-button primary">Gérer les bandes</a>
+  </div>
+</section>
+
+<section class="dashboard-kpis" aria-label="Indicateurs principaux">
+  <div class="dashboard-kpi"><span class="kpi-symbol">B</span><div><b>{{ stats.band_configured }}</b><small>Bandes configurées · {{ stats.band_active }} cycles ouverts</small></div></div>
+  <div class="dashboard-kpi"><span class="kpi-symbol">T</span><div><b>{{ stats.truies }}</b><small>Truies actives</small></div></div>
+  <div class="dashboard-kpi"><span class="kpi-symbol">PV</span><div><b>{{ stats.porcs_vendus_annee }}</b><small>Porcs vendus {{ annee }}</small></div></div>
+  <div class="dashboard-kpi"><span class="kpi-symbol">€/kg</span><div><b>{% if stats.prix_ht_kg is not none %}{{ stats.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</b><small>Prix HT {{ annee }}</small></div></div>
+  <div class="dashboard-kpi"><span class="kpi-symbol">M5</span><div><b>{% if stats.prix_dernieres_ventes is not none %}{{ stats.prix_dernieres_ventes|decimal3 }} €{% else %}—{% endif %}</b><small>Moyenne 5 ventes</small></div></div>
+  <div class="dashboard-kpi alert-kpi"><span class="kpi-symbol">P</span><div><b>{{ stats.morts_annee }}</b><small>Pertes déclarées {{ annee }}</small></div></div>
+  <div class="dashboard-kpi"><span class="kpi-symbol">€</span><div><b>{{ stats.marge|euro }}</b><small>Marge partielle</small></div></div>
+</section>
+
+<section class="band-control">
+  <div class="dashboard-section-head">
+    <div><span class="section-code">CYCLE</span><div><h2>Conduite des bandes</h2><p>Échéancier technique de l’insémination au départ abattoir.</p></div></div>
+    <a href="/planning">Ouvrir le planning complet</a>
+  </div>
+
+  {% for l in bandes %}
+  <article class="band-process-card">
+    <div class="band-command-head">
+      <div class="band-identity">
+        <span class="band-label">Bande</span>
+        <a href="/bande/{{ l.id }}" class="band-process-code">{{ l.code }}</a>
+        {% if l.num_officiel %}<span class="band-official">N° {{ l.num_officiel }}</span>{% endif %}
+        {% if l.flux.emplacements %}<div class="band-locations" aria-label="Emplacement actuel des animaux de la bande {{ l.code }}"><strong>Emplacements actuels et ventilation</strong>{% for e in l.flux.emplacements %}<span><b>{{ e.animaux }}</b> · {{ e.batiment }} / {{ e.salle }} · {{ e.effectif }}{% if e.climat_t is defined %} · <a href="/ambiance#salle-{{ e.salle_id }}">{% if e.climat_t is not none %}{{ e.climat_t }} °C{% else %}T° —{% endif %}{% if e.climat_h is not none %} · {{ e.climat_h }} %{% endif %}{% if e.climat_ventil is not none %} · ventil {{ e.climat_ventil }} %{% endif %}{% if e.climat_sonde_ok == false %} <span class="warning-value">mesure inutilisable</span>{% endif %}</a>{% endif %}</span>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="band-facts">
+        <div><small>Stade actuel</small><strong>{{ l.stade }}</strong></div>
+        <div><small>Âge de la bande</small><strong>{% if l.age is not none %}J{{ l.age }}{% else %}Non calculé{% endif %}</strong></div>
+        <div><small>Effectif truies</small><strong{% if l.truies == 0 %} class="warning-value"{% endif %}>{{ l.truies }}</strong></div>
+        <div><small>Site</small><strong>{% if l.site %}{{ l.site }}{% else %}Non renseigné{% endif %}</strong></div>
+        {% if l.flux.emplacements %}{% set principal = l.flux.emplacements[0] %}
+        <div><small>Température</small><strong>{% if principal.climat_t is defined and principal.climat_t is not none %}{{ principal.climat_t }} °C{% else %}—{% endif %}</strong>{% if principal.climat_t is defined %}<svg class="band-climat-courbe" data-salle="{{ principal.salle_id }}" data-grandeur="t" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>{% endif %}</div>
+        <div><small>Hygrométrie</small><strong>{% if principal.climat_h is defined and principal.climat_h is not none %}{{ principal.climat_h }} %{% else %}—{% endif %}</strong>{% if principal.climat_h is defined %}<svg class="band-climat-courbe" data-salle="{{ principal.salle_id }}" data-grandeur="h" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>{% endif %}</div>
+        <div><small>Ventilation</small><strong>{% if principal.climat_ventil is defined and principal.climat_ventil is not none %}{{ principal.climat_ventil }} %{% else %}—{% endif %}</strong>{% if principal.climat_ventil is defined %}<svg class="band-climat-courbe" data-salle="{{ principal.salle_id }}" data-grandeur="ventil" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>{% endif %}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="band-cycle-head">
+      <span>Avancement du cycle</span>
+      <b>{{ l.progression }} %</b>
+    </div>
+    <div class="band-progress" role="progressbar" aria-label="Avancement de la bande {{ l.code }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ l.progression }}"><span style="width:{{ l.progression }}%"></span><i class="band-progress-arrow" style="left:{{ l.progression }}%" aria-hidden="true">➜</i></div>
+
+    <div class="band-flow-strip" aria-label="Flux de la bande {{ l.code }}">
+      {% if l.reproduction.derniere_echo_date %}<span><small>Écho confirmée</small><b>{{ l.reproduction.derniere_echo_resultat or '—' }}</b><em>{{ l.reproduction.derniere_echo_date|date_fr }}</em></span>{% endif %}
+      {% if l.reproduction.taux_pleine is not none %}<span><small>Réussite à l’écho</small><b>{{ l.reproduction.taux_pleine }} %</b><em>{{ l.reproduction.pleines }}/{{ l.reproduction.ia }} IA</em></span>{% endif %}
+      <span><small>Truies ayant mis bas</small><b>{{ l.flux.naissances.truies_mises_bas }}</b></span>
+      <span><small>Porcelets nés au total</small><b>{{ l.flux.naissances.porcelets_nes }}</b></span>
+      <span><small>Moyenne par truie</small><b>{{ l.flux.naissances.moyenne_par_truie }}</b></span>
+      <span><small>Truies → verraterie</small><b>{{ l.flux.verraterie }}</b></span>
+      <span><small>Truies en attente</small><b>{{ l.flux.attente }}</b></span>
+      <span><small>Truies réformées</small><b>{{ l.flux.reformees }}</b></span>
+      <span><small>Porcelets sevrés</small><b>{{ l.flux.sevres }}</b></span>
+      <span><small>Porcs vendus</small><b>{{ l.flux.vendus }}</b>{% if l.flux.derniere_vente %}<em>{{ l.flux.derniere_vente|date_fr }}</em>{% endif %}</span>
+    </div>
+
+    <div class="band-steps" role="list" aria-label="Étapes techniques de la bande {{ l.code }}">
+      {% for e in l.etapes %}
+      <div class="band-step{% if e.terminee %} is-done{% endif %}{% if e.actuelle %} is-current{% endif %}" role="listitem">
+        <span class="band-stage-code">{{ e.repere }}</span>
+        <div class="band-stage-copy"><b>{{ e.nom }}</b><small>{% if e.date %}{{ e.date|date_fr }}{% else %}Date à définir{% endif %}</small></div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="band-next is-{{ l.urgence }}">
+      <span class="next-signal" aria-hidden="true"></span>
+      <div class="next-copy"><small>Prochaine intervention</small><strong>{{ l.prochaine }}</strong></div>
+      {% if l.prochaine_date %}<div class="next-date"><b>{{ l.prochaine_date|date_fr }}</b>{% if l.prochaine_delai %}<small>{{ l.prochaine_delai }}</small>{% endif %}</div>{% endif %}
+      <a href="/bande/{{ l.id }}" class="band-open">Ouvrir la fiche bande</a>
+    </div>
+  </article>
+  {% else %}
+  <div class="dashboard-empty"><span>B</span><div><h3>Aucune bande active</h3><p>Créez ou réactivez une bande pour afficher son échéancier technique.</p></div><a href="/bandes">Gérer les bandes</a></div>
+  {% endfor %}
+</section>
+
+{% if capacites %}
+<section class="dashboard-panel">
+  <div class="dashboard-section-head compact"><div><span class="section-code">CAP</span><div><h2>Capacités par étape</h2><p>Occupation instantanée des bâtiments.</p></div></div></div>
+  <div class="capacity-grid">{% for c in capacites %}<div class="capacity-card"><div><b>{{ c.occupation }}</b>{% if not c.a_configurer %}<span>/ {{ c.capacite }}</span>{% endif %}</div><strong>{{ c.libelle }}</strong>{% if c.a_configurer %}<small><a href="/parametres#capacites">capacité à renseigner</a></small>{% else %}<small>{{ c.places_disponibles }} place(s) disponible(s)</small>{% endif %}</div>{% endfor %}</div>
+</section>
+{% endif %}
+
+<div class="dashboard-lower-grid">
+  <section class="dashboard-panel sales-panel">
+    <div class="dashboard-section-head compact"><div><span class="section-code">€/KG</span><div><h2>Dernières ventes</h2><p>Évolution du prix net au kilogramme.</p></div></div><a href="/economique">Suivi économique</a></div>
+    {% if dernieres_ventes %}<div class="sale-chart" aria-label="Prix HT au kilo des dix dernières ventes">{% for p in dernieres_ventes %}<div class="sale-chart-point"><b>{{ p.prix_ht_kg|decimal3 }}</b><div class="sale-chart-bar" style="height:{{ p.hauteur }}px"></div><small>{{ p.date|date_fr }}</small></div>{% endfor %}</div>{% else %}<p class="rust-empty">Aucune vente avec poids et montant.</p>{% endif %}
+  </section>
+
+  <section class="dashboard-panel action-panel">
+    <div class="dashboard-section-head compact"><div><span class="section-code">IA</span><div><h2>Inséminations à prévoir</h2><p>Truies en attente d’intervention.</p></div></div><a href="/inseminations">Tout afficher</a></div>
+    <div class="dashboard-action-list">{% for i in inseminations %}<div><strong>{{ i.num_travail }}</strong><span>{{ i.date_prevue|date_fr }}</span></div>{% else %}<p class="muted">Aucune insémination en attente.</p>{% endfor %}</div>
+  </section>
+
+  <section class="dashboard-panel action-panel">
+    <div class="dashboard-section-head compact"><div><span class="section-code">À FAIRE</span><div><h2>Tâches ouvertes</h2><p>Travaux restant à traiter.</p></div></div><a href="/taches">Tout afficher</a></div>
+    <div class="dashboard-action-list">{% for t in taches %}<div><strong>{{ t.titre }}</strong><span>{% if t.echeance %}{{ t.echeance|date_fr }}{% else %}Sans échéance{% endif %}</span></div>{% else %}<p class="muted">Aucune tâche ouverte.</p>{% endfor %}</div>
+  </section>
+
+  <section class="dashboard-panel monthly-panel">
+    <div class="dashboard-section-head compact"><div><span class="section-code">MOIS</span><div><h2>Prix HT mensuel</h2><p>Synthèse des apports.</p></div></div></div>
+    <div class="rust-scroll"><table><thead><tr><th>Mois</th><th>Porcs</th><th>€/kg HT</th></tr></thead><tbody>{% for p in prix_tendance %}<tr><td>{{ p.mois }}</td><td>{{ p.porcs }}</td><td>{% if p.prix_ht_kg is not none %}<b>{{ p.prix_ht_kg|decimal3 }}</b>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="3" class="rust-empty">Aucune vente</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</div>
+
+<script>
+// Petites courbes de climat (48 h) sous température/hygrométrie/ventilation
+// de chaque bande : un fetch par salle occupée (pas par bande, pour éviter
+// de redemander deux fois la même salle si plusieurs cartes la partagent),
+// puis un tracé minimaliste — pas de bibliothèque pour trois points de repère.
+(function () {
+  var COULEURS = { t: '#0369a1', h: '#15803d', ventil: '#b45309' };
+  var svgs = document.querySelectorAll('.band-climat-courbe');
+  if (!svgs.length) { return; }
+  var parSalle = {};
+  svgs.forEach(function (svg) {
+    var salle = svg.getAttribute('data-salle');
+    if (!salle) { return; }
+    (parSalle[salle] = parSalle[salle] || []).push(svg);
+  });
+  Object.keys(parSalle).forEach(function (salle) {
+    fetch('/ambiance/salle/' + encodeURIComponent(salle) + '/historique.json?heures=48', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        var series = data.series || {};
+        parSalle[salle].forEach(function (svg) {
+          var grandeur = svg.getAttribute('data-grandeur');
+          var points = series[grandeur] || [];
+          if (points.length < 2) { svg.remove(); return; }
+          var valeurs = points.map(function (p) { return p[1]; });
+          var mini = Math.min.apply(null, valeurs), maxi = Math.max.apply(null, valeurs);
+          if (mini === maxi) { mini -= 1; maxi += 1; }
+          var t0 = points[0][0], t1 = points[points.length - 1][0];
+          var largeur = 120, hauteur = 28, pad = 2;
+          function x(ts) { return pad + (t1 === t0 ? 0 : (ts - t0) / (t1 - t0) * (largeur - 2 * pad)); }
+          function y(v) { return hauteur - pad - (v - mini) / (maxi - mini) * (hauteur - 2 * pad); }
+          var chemin = points.map(function (p, i) {
+            return (i === 0 ? 'M' : 'L') + x(p[0]).toFixed(1) + ',' + y(p[1]).toFixed(1);
+          }).join(' ');
+          var trace = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          trace.setAttribute('d', chemin);
+          trace.setAttribute('fill', 'none');
+          trace.setAttribute('stroke', COULEURS[grandeur] || '#0369a1');
+          trace.setAttribute('stroke-width', '1.4');
+          svg.appendChild(trace);
+        });
+      })
+      .catch(function () {
+        parSalle[salle].forEach(function (svg) { svg.remove(); });
+      });
+  });
+})();
+</script>
+{% endblock %}
