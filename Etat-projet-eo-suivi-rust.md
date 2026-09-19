@@ -1,6 +1,15 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.14.9** — Dernière mise à jour de ce document : 18 septembre 2026.
+Version actuelle : **2.15.0** — Dernière mise à jour de ce document : 19 septembre 2026.
+
+### Version 2.15.0 — équipements EO_Awel, EO_Laezh et EO_Stasion
+
+Version Rust 2.15.0 : nouvelle rubrique « Mes équipements » après « Ma
+gestion ». EO_Awel regroupe la ventilation existante ; EO_Laezh prépare la
+supervision de la machine à lait pour porcelets ; EO_Stasion prépare la
+supervision de la station Domino de pesée et de tri. Les deux derniers écrans
+signalent clairement qu'ils sont en préparation tant que leurs automates ne
+sont pas raccordés.
 
 ### Version 2.14.9 — limiter la longueur de l'historique d'une truie, emplacement en lecture seule
 

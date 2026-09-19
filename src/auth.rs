@@ -228,7 +228,7 @@ fn section_for_path(path: &str) -> Option<&'static str> {
         "reception" => Some("reception"),
         "genetique" => Some("genetique"),
         "energie" => Some("energie"),
-        "ambiance" => Some("ambiance"),
+        "ambiance" | "equipements" => Some("ambiance"),
         "vente-directe" | "commande" => Some("vente"),
         "documents-obligatoires" => Some("documents"),
         "imports" | "import" | "import-pdf" => Some("imports"),

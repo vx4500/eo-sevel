@@ -307,13 +307,22 @@
       {% if 'stock' in session.pages %}<a href="/aliment-previsions"><b>Aliment</b><small>Livraisons, silos, prévisions de commande</small></a>
       <a href="/stock"><b>Stocks</b><small>Inventaires et consommables</small></a>{% endif %}
       {% if 'energie' in session.pages %}<a href="/energie"><b>Eau et électricité</b><small>Relevés de compteurs</small></a>{% endif %}
-      {% if 'ambiance' in session.pages %}<a href="/ambiance"><b>Ambiance et ventilation</b><small>Températures, hygrométrie, régulation</small></a>{% endif %}
     </div>
     <div class="rust-sub-groupe"><h3>Sanitaire et papiers</h3>
       {% if 'sanitaire' in session.pages %}<a href="/sanitaire"><b>Sanitaire</b><small>Protocoles, traitements, délais d’attente</small></a>
       <a href="/pharmacie"><b>Pharmacie</b><small>Stock de produits et ordonnances</small></a>
       <a href="/resolution-problemes"><b>Résolution de problèmes</b><small>Conduite à tenir devant un symptôme</small></a>{% endif %}
       {% if 'documents' in session.pages %}<a href="/documents-obligatoires"><b>Documents obligatoires</b><small>Registre d’élevage, contrôles</small></a>{% endif %}
+    </div>
+  </div></div>{% endif %}
+
+  {% if 'ambiance' in session.pages %}
+  <div class="rust-menu" data-rubrique="Mes équipements"><button type="button" aria-expanded="false">Mes équipements <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
+    <div class="rust-sub-groupe"><h3>Automatismes de l’élevage</h3>
+      <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
+      <a href="/ambiance"><b>EO_Awel</b><small>Ventilation, températures et alertes</small></a>
+      <a href="/equipements/laezh"><b>EO_Laezh</b><small>Machine à lait pour porcelets</small></a>
+      <a href="/equipements/stasion"><b>EO_Stasion</b><small>Station de pesée et de tri Domino</small></a>
     </div>
   </div></div>{% endif %}
 

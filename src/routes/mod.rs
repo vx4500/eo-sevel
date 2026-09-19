@@ -114,6 +114,9 @@ pub fn router(state: AppState) -> Router {
         .route("/demo/suggestion", post(demo_portal::suggestion))
         .route("/logout", get(logout))
         .route("/mon-compte/mdp", get(password_page).post(password_post))
+        .route("/equipements", get(equipements))
+        .route("/equipements/laezh", get(equipement_laezh))
+        .route("/equipements/stasion", get(equipement_stasion))
         .route("/ambiance", get(ambiance::page))
         .route("/ambiance/etat.json", get(ambiance::etat_json))
         .route("/ambiance/ipx", get(ambiance::ipx_page))
@@ -813,6 +816,54 @@ fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String
         .render(context)
         .map_err(|error| AppError::Internal(error.into()))?;
     Ok(Html(body))
+}
+
+/// Regroupe les équipements connectés ou prévus de l'élevage. Chaque écran
+/// indique son état pour ne pas confondre une préparation avec une donnée lue.
+async fn equipements(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let mut contexte = context(&session);
+    contexte.insert(
+        "equipements".into(),
+        json!([
+            {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
+            {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
+            {"nom":"EO_Stasion", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/stasion", "action":"Préparer EO_Stasion"}
+        ]),
+    );
+    render(&state, "equipements.html", Value::Object(contexte))
+}
+
+async fn equipement_laezh(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let mut contexte = context(&session);
+    contexte.insert("nom".into(), json!("EO_Laezh"));
+    contexte.insert("titre".into(), json!("Machine à lait pour porcelets"));
+    contexte.insert("etat".into(), json!("En préparation"));
+    contexte.insert("description".into(), json!("Le pilotage prévoit la préparation du lait par pesée, la circulation vers les 26 cases et le nettoyage quotidien de la boucle."));
+    contexte.insert("automate".into(), json!("Schneider TM221CE24R"));
+    contexte.insert("liaison".into(), json!("Automate non encore raccordé à EO_Sevel"));
+    contexte.insert("points".into(), json!(["Cuve : poids, niveau et température", "Distribution : circulation et consommation par case", "Nettoyage : cycle CIP et confirmation de fin"]));
+    render(&state, "equipement_detail.html", Value::Object(contexte))
+}
+
+async fn equipement_stasion(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let mut contexte = context(&session);
+    contexte.insert("nom".into(), json!("EO_Stasion"));
+    contexte.insert("titre".into(), json!("Station de pesée et de tri Domino"));
+    contexte.insert("etat".into(), json!("En préparation"));
+    contexte.insert("description".into(), json!("La station pèse chaque porc puis l’oriente vers la porte de sortie attribuée. EO_Sevel recevra les lectures de l’automate sans prendre la main sur les sécurités locales."));
+    contexte.insert("automate".into(), json!("Schneider TM221CE24T"));
+    contexte.insert("liaison".into(), json!("Lecture Modbus TCP à configurer depuis l’automate"));
+    contexte.insert("points".into(), json!(["Pesée stable et présence dans la cage", "Porte de sortie choisie et compteurs de tri", "Historique des pesées et identification RFID"]));
+    render(&state, "equipement_detail.html", Value::Object(contexte))
 }
 
 fn session_value(session: &SessionData) -> Value {

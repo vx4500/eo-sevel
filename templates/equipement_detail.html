@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ nom }} — EO_Sevel{% endblock %}
+{% block content %}
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>{{ nom }}</h1><p>{{ titre }}</p></div>
+  <span class="equipment-state attente">{{ etat }}</span>
+</section>
+<section class="card equipment-overview"><h2>État du raccordement</h2><p>{{ description }}</p><dl class="equipment-specs"><div><dt>Automate prévu</dt><dd>{{ automate }}</dd></div><div><dt>Communication</dt><dd>{{ liaison }}</dd></div></dl></section>
+<section class="card"><h2>Données prévues dans EO_Sevel</h2><ul class="equipment-points">{% for point in points %}<li>{{ point }}</li>{% endfor %}</ul></section>
+<p><a href="/equipements">← Retour à Mes équipements</a></p>
+{% endblock %}
