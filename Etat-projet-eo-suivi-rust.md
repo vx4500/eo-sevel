@@ -1,6 +1,14 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.1** — Dernière mise à jour de ce document : 19 septembre 2026.
+Version actuelle : **2.15.2** — Dernière mise à jour de ce document : 19 septembre 2026.
+
+### Version 2.15.2 — EO_Treizh, EO_Kren et visuel des équipements
+
+Version Rust 2.15.2 : la station Domino de pesée et de tri porte le nom
+EO_Treizh. Ajout d’EO_Kren pour la distribution d’aliment filaire :
+passerelle Kren-Link en Ethernet/PoE, nœuds Kren-Node sur bus CAN. Les pages
+« Mes équipements » utilisent maintenant le visuel sombre de supervision
+testé, sans modifier le thème général du logiciel.
 
 ### Version 2.15.1 — seuil de la panne de ventilation corrigé
 
@@ -14,11 +22,11 @@ forte chaleur. Le seuil passe à 95 % (commande **et** minimum sur la
 fenêtre de 20 minutes) pour ne déclencher cette alerte critique que lorsque
 la ventilation tourne vraiment à son maximum sans effet.
 
-### Version 2.15.0 — équipements EO_Awel, EO_Laezh et EO_Stasion
+### Version 2.15.0 — équipements EO_Awel, EO_Laezh et EO_Treizh
 
 Version Rust 2.15.0 : nouvelle rubrique « Mes équipements » après « Ma
 gestion ». EO_Awel regroupe la ventilation existante ; EO_Laezh prépare la
-supervision de la machine à lait pour porcelets ; EO_Stasion prépare la
+supervision de la machine à lait pour porcelets ; EO_Treizh prépare la
 supervision de la station Domino de pesée et de tri. Les deux derniers écrans
 signalent clairement qu'ils sont en préparation tant que leurs automates ne
 sont pas raccordés.

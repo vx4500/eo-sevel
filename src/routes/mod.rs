@@ -116,7 +116,8 @@ pub fn router(state: AppState) -> Router {
         .route("/mon-compte/mdp", get(password_page).post(password_post))
         .route("/equipements", get(equipements))
         .route("/equipements/laezh", get(equipement_laezh))
-        .route("/equipements/stasion", get(equipement_stasion))
+        .route("/equipements/treizh", get(equipement_treizh))
+        .route("/equipements/kren", get(equipement_kren))
         .route("/ambiance", get(ambiance::page))
         .route("/ambiance/etat.json", get(ambiance::etat_json))
         .route("/ambiance/ipx", get(ambiance::ipx_page))
@@ -830,7 +831,8 @@ async fn equipements(
         json!([
             {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
-            {"nom":"EO_Stasion", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/stasion", "action":"Préparer EO_Stasion"}
+            {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
+            {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
         ]),
     );
     render(&state, "equipements.html", Value::Object(contexte))
@@ -851,18 +853,33 @@ async fn equipement_laezh(
     render(&state, "equipement_detail.html", Value::Object(contexte))
 }
 
-async fn equipement_stasion(
+async fn equipement_treizh(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
 ) -> AppResult<Html<String>> {
     let mut contexte = context(&session);
-    contexte.insert("nom".into(), json!("EO_Stasion"));
+    contexte.insert("nom".into(), json!("EO_Treizh"));
     contexte.insert("titre".into(), json!("Station de pesée et de tri Domino"));
     contexte.insert("etat".into(), json!("En préparation"));
     contexte.insert("description".into(), json!("La station pèse chaque porc puis l’oriente vers la porte de sortie attribuée. EO_Sevel recevra les lectures de l’automate sans prendre la main sur les sécurités locales."));
     contexte.insert("automate".into(), json!("Schneider TM221CE24T"));
     contexte.insert("liaison".into(), json!("Lecture Modbus TCP à configurer depuis l’automate"));
     contexte.insert("points".into(), json!(["Pesée stable et présence dans la cage", "Porte de sortie choisie et compteurs de tri", "Historique des pesées et identification RFID"]));
+    render(&state, "equipement_detail.html", Value::Object(contexte))
+}
+
+async fn equipement_kren(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let mut contexte = context(&session);
+    contexte.insert("nom".into(), json!("EO_Kren"));
+    contexte.insert("titre".into(), json!("Distribution automatisée d’aliment"));
+    contexte.insert("etat".into(), json!("Architecture définie"));
+    contexte.insert("description".into(), json!("EO_Kren prépare une distribution d’aliment filaire, fiable et économique. Une passerelle centrale communique en Ethernet avec EO_Sevel et pilote les cartes satellites placées près des auges."));
+    contexte.insert("automate".into(), json!("Kren-Link · ESP32-WROOM-32E ou ESP32-S3"));
+    contexte.insert("liaison".into(), json!("Ethernet RJ45 / PoE vers le serveur, bus CAN filaire vers les Kren-Node"));
+    contexte.insert("points".into(), json!(["Kren-Link : LAN8720A RMII, alimentation 3,3 V et CAN SN65HVD230", "Kren-Node : pilotage local des moteurs et doseurs d’auge", "Bus CAN : terminaison 120 Ω débrayable par cavalier", "À raccorder ensuite : niveau d’aliment, doses servies, défaut moteur et historique par case"]));
     render(&state, "equipement_detail.html", Value::Object(contexte))
 }
 

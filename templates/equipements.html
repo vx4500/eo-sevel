@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Mes équipements — EO_Sevel{% endblock %}
-{% block content %}
+{% block content %}<div class="equipment-console">
 <section class="equipment-head">
   <div><p class="equipment-eyebrow">AUTOMATISMES DE L’ÉLEVAGE</p><h1>Mes équipements</h1><p>Retrouvez ici les outils connectés à l’élevage et leur état de raccordement.</p></div>
   <a class="button" href="/ambiance">Ouvrir EO_Awel</a>
@@ -14,5 +14,5 @@
   </article>
 {% endfor %}
 </div>
-<section class="card equipment-note"><h2>Raccordement des équipements</h2><p>EO_Awel utilise déjà les salles et les points de l’automate d’ambiance. EO_Laezh et EO_Stasion seront activés après le raccordement de leurs automates ; leurs pages indiquent les données prévues.</p></section>
-{% endblock %}
+<section class="card equipment-note"><h2>Raccordement des équipements</h2><p>EO_Awel utilise déjà les salles et les points de l’automate d’ambiance. EO_Laezh, EO_Treizh et EO_Kren restent clairement signalés comme en préparation tant que leurs automates ne sont pas raccordés.</p></section>
+</div>{% endblock %}
