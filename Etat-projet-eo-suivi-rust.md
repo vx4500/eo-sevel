@@ -1,6 +1,18 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.2** — Dernière mise à jour de ce document : 19 septembre 2026.
+Version actuelle : **2.15.3** — Dernière mise à jour de ce document : 20 septembre 2026.
+
+### Version 2.15.3 — filtres de lignes sur les rapports GTE et coûts de bande
+
+Version Rust 2.15.3 : sur la fiche bande, le « Détail des dépenses » propose
+des cases à cocher par catégorie et par fournisseur (ex. exclure un
+fournisseur de semence comme Yxia ou DanBred) — le total affiché se
+recalcule en direct. Sur le GTE, chaque bloc et chaque ligne d'indicateur
+peuvent être masqués individuellement (choix mémorisé sur l'appareil),
+pour ne garder que ce qui compte à l'impression ou à la lecture. D'après
+les modèles GTE/GTTT Cooperl fournis par Emmanuel : un rapprochement plus
+complet du GTTT vers ce format (3 années + référence nationale) est prévu
+dans une prochaine version.
 
 ### Version 2.15.2 — EO_Treizh, EO_Kren et visuel des équipements
 

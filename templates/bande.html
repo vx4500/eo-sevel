@@ -10,7 +10,66 @@
 </div></details>
 <section class="card"><h2>Flux de la bande</h2><div class="band-flow-detail"><div><b>{{ flux.truies_cycle }}</b><span>truies suivies dans le cycle</span></div><div><b>{{ flux.verraterie }}</b><span>vers la verraterie</span></div><div><b>{{ flux.attente }}</b><span>en attente d’une nouvelle bande</span></div><div><b>{{ flux.reformees }}</b><span>réformées</span></div><div><b>{{ flux.sevres }}</b><span>porcelets sevrés</span></div><div><b>{{ flux.vendus }}</b><span>porcs vendus</span></div></div>{% if flux.ventes %}<h3>Sorties et ventes</h3><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Porcs vendus</th></tr></thead><tbody>{% for vente in flux.ventes %}<tr><td>{{ vente.date|date_fr }}</td><td>{{ vente.nombre }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">Aucune vente enregistrée pour cette bande.</p>{% endif %}</section>
 <section class="card"><h2>Coût économique de la bande</h2><p>Une facture affectée à plusieurs bandes est répartie à parts égales, comme dans le tableau "Résultat par bande" d'Économie.</p><div class="band-flow-detail">{% for c in couts_bande %}<div><b>{{ c.montant|euro }}</b><span>{{ c.categorie }}</span></div>{% endfor %}</div>
-<details><summary><b>Détail des dépenses</b> ({{ lignes_depenses|length }} ligne{% if lignes_depenses|length > 1 %}s{% endif %})</summary><div class="rust-scroll"><table><thead><tr><th>Catégorie</th><th>Date</th><th>Fournisseur / produit</th><th>Montant</th></tr></thead><tbody>{% for l in lignes_depenses %}<tr><td>{{ l.categorie }}</td><td>{{ l.date|date_fr }}</td><td>{{ l.libelle }}{% if l.partage > 1 %} <small>(÷{{ l.partage }} bandes)</small>{% endif %}</td><td>{{ l.montant|euro }}</td></tr>{% else %}<tr><td colspan="4" class="rust-empty">Aucune dépense affectée à cette bande</td></tr>{% endfor %}</tbody></table></div></details>
+<details id="depenses-detail"><summary><b>Détail des dépenses</b> ({{ lignes_depenses|length }} ligne{% if lignes_depenses|length > 1 %}s{% endif %})</summary>
+<p class="help">Décochez une catégorie ou un fournisseur pour le retirer de l'affichage et du total ci-dessous (ex. comparer avec/sans un fournisseur de semence).</p>
+<div class="rust-actions" id="depenses-filtres"></div>
+<p><b>Total affiché : </b><span id="depenses-total-affiche">—</span></p>
+<div class="rust-scroll"><table id="depenses-table"><thead><tr><th>Catégorie</th><th>Date</th><th>Fournisseur / produit</th><th>Montant</th></tr></thead><tbody>{% for l in lignes_depenses %}<tr data-categorie="{{ l.categorie }}" data-fournisseur="{{ l.libelle }}" data-montant="{{ l.montant }}"><td>{{ l.categorie }}</td><td>{{ l.date|date_fr }}</td><td>{{ l.libelle }}{% if l.partage > 1 %} <small>(÷{{ l.partage }} bandes)</small>{% endif %}</td><td>{{ l.montant|euro }}</td></tr>{% else %}<tr><td colspan="4" class="rust-empty">Aucune dépense affectée à cette bande</td></tr>{% endfor %}</tbody></table></div></details>
+<script>(function(){
+  var details = document.getElementById('depenses-detail');
+  if (!details) return;
+  var table = document.getElementById('depenses-table');
+  var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-categorie]'));
+  var filtresDiv = document.getElementById('depenses-filtres');
+  var totalSpan = document.getElementById('depenses-total-affiche');
+  if (!rows.length) { totalSpan.textContent = (0).toFixed(2) + ' €'; return; }
+  function valeurs(attr) {
+    var vues = {}, out = [];
+    rows.forEach(function(r){ var v = r.getAttribute(attr); if (!vues[v]) { vues[v] = true; out.push(v); } });
+    return out;
+  }
+  var categories = valeurs('data-categorie');
+  var fournisseurs = valeurs('data-fournisseur');
+  function groupe(titre, attr, valeurs) {
+    var wrap = document.createElement('div');
+    var label = document.createElement('b');
+    label.textContent = titre + ' : ';
+    wrap.appendChild(label);
+    valeurs.forEach(function(v){
+      var lbl = document.createElement('label');
+      lbl.style.marginRight = '10px';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.dataset.filtreAttr = attr;
+      cb.dataset.filtreValeur = v;
+      cb.addEventListener('change', appliquer);
+      lbl.appendChild(cb);
+      lbl.appendChild(document.createTextNode(' ' + v));
+      wrap.appendChild(lbl);
+    });
+    filtresDiv.appendChild(wrap);
+  }
+  groupe('Catégories', 'data-categorie', categories);
+  groupe('Fournisseurs', 'data-fournisseur', fournisseurs);
+  function appliquer() {
+    var exclusCategorie = {}, exclusFournisseur = {};
+    filtresDiv.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      if (!cb.checked) {
+        if (cb.dataset.filtreAttr === 'data-categorie') exclusCategorie[cb.dataset.filtreValeur] = true;
+        else exclusFournisseur[cb.dataset.filtreValeur] = true;
+      }
+    });
+    var total = 0;
+    rows.forEach(function(r){
+      var cache = exclusCategorie[r.getAttribute('data-categorie')] || exclusFournisseur[r.getAttribute('data-fournisseur')];
+      r.hidden = !!cache;
+      if (!cache) total += parseFloat(r.getAttribute('data-montant')) || 0;
+    });
+    totalSpan.textContent = total.toFixed(2).replace('.', ',') + ' €';
+  }
+  appliquer();
+})();</script>
 <h3>Apports et retenues</h3><div class="band-flow-detail"><div><b>{{ apports_bande.montant_ht|euro }}</b><span>Apports (montant HT)</span></div><div><b>{{ apports_bande.retenues|euro }}</b><span>Retenues (équarrissage, groupement…)</span></div><div><b>{{ apports_bande.montant_net|euro }}</b><span>Montant net</span></div><div><b>{{ apports_bande.porcs }}</b><span>Porcs sur les apports</span></div></div>
 <details><summary><b>Détail des apports</b> ({{ lignes_apports|length }})</summary><div class="rust-scroll"><table><thead><tr><th>Date</th><th>N° apport</th><th>Porcs</th><th>Poids</th><th>Montant HT</th></tr></thead><tbody>{% for l in lignes_apports %}<tr><td>{{ l.date|date_fr }}</td><td>{{ l.num_apport or '—' }}</td><td>{{ l.nb_porcs or 0 }}</td><td>{{ l.poids_total|decimal1 if l.poids_total else '—' }}</td><td>{{ l.montant_ht|euro }}</td></tr>{% else %}<tr><td colspan="5" class="rust-empty">Aucun apport pour cette bande</td></tr>{% endfor %}</tbody></table></div></details>
 <details><summary><b>Détail des retenues</b> ({{ lignes_retenues|length }})</summary><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead><tbody>{% for l in lignes_retenues %}<tr><td>{{ l.date|date_fr }}</td><td>{{ l.libelle }}</td><td>{{ l.montant|euro }}</td></tr>{% else %}<tr><td colspan="3" class="rust-empty">Aucune retenue pour cette bande</td></tr>{% endfor %}</tbody></table></div></details>

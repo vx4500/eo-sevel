@@ -37,17 +37,48 @@
 {% else %}
 <p class="help">Le livret ne publie pas de colonne pour le type d’élevage actif : les références restent vides, les valeurs de l’élevage sont calculées normalement.</p>
 {% endif %}
+<p class="help no-print">Décochez une ligne ou un bloc entier pour le retirer de cet affichage (ex. ne garder que ce qui vous intéresse à l'impression). Ce choix est mémorisé sur cet appareil.</p>
 {% for bloc in blocs %}
-<h3>{{ bloc.titre }}</h3>
-<div class="rust-scroll"><table><thead><tr><th>Indicateur</th><th>Élevage</th><th>Référence IFIP</th><th>Écart</th></tr></thead><tbody>
-{% for l in bloc.lignes %}<tr>
+<div class="gte-bloc" data-bloc="{{ bloc.titre }}">
+<h3><label class="no-print" style="font-size:14px;font-weight:400"><input type="checkbox" class="gte-bloc-toggle" checked> Afficher ce bloc</label> {{ bloc.titre }}</h3>
+<div class="rust-scroll"><table><thead><tr><th class="no-print">Afficher</th><th>Indicateur</th><th>Élevage</th><th>Référence IFIP</th><th>Écart</th></tr></thead><tbody>
+{% for l in bloc.lignes %}<tr class="gte-ligne" data-ligne="{{ l.libelle }}">
+<td class="no-print"><input type="checkbox" class="gte-ligne-toggle" checked></td>
 <td>{{ l.libelle }}{% if l.raison %}<br><small class="muted">{{ l.raison }}</small>{% endif %}</td>
 <td><b>{{ l.valeur if l.valeur is not none else '—' }}</b></td>
 <td>{{ l.reference if l.reference is not none else '—' }}</td>
 <td>{% if l.valeur is not none and l.reference is not none %}{{ ((l.valeur - l.reference) * 100)|round / 100 }}{% else %}—{% endif %}</td>
 </tr>{% endfor %}
 </tbody></table></div>
+</div>
 {% endfor %}
+<script>(function(){
+  var CLE = 'eo-sevel-gte-lignes-masquees';
+  var masquees = {};
+  try { masquees = JSON.parse(localStorage.getItem(CLE) || '{}'); } catch (e) { masquees = {}; }
+  function sauvegarder() { try { localStorage.setItem(CLE, JSON.stringify(masquees)); } catch (e) {} }
+  document.querySelectorAll('.gte-bloc').forEach(function(bloc){
+    var titreBloc = bloc.dataset.bloc;
+    var toggleBloc = bloc.querySelector('.gte-bloc-toggle');
+    var clefBloc = 'bloc:' + titreBloc;
+    if (masquees[clefBloc]) { toggleBloc.checked = false; bloc.style.display = 'none'; }
+    toggleBloc.addEventListener('change', function(){
+      bloc.style.display = toggleBloc.checked ? '' : 'none';
+      if (toggleBloc.checked) delete masquees[clefBloc]; else masquees[clefBloc] = true;
+      sauvegarder();
+    });
+    bloc.querySelectorAll('.gte-ligne').forEach(function(ligne){
+      var clefLigne = 'ligne:' + titreBloc + ':' + ligne.dataset.ligne;
+      var toggleLigne = ligne.querySelector('.gte-ligne-toggle');
+      if (masquees[clefLigne]) { toggleLigne.checked = false; ligne.hidden = true; }
+      toggleLigne.addEventListener('change', function(){
+        ligne.hidden = !toggleLigne.checked;
+        if (toggleLigne.checked) delete masquees[clefLigne]; else masquees[clefLigne] = true;
+        sauvegarder();
+      });
+    });
+  });
+})();</script>
 {% if aliment_non_ventile_kg %}<p class="help">{{ aliment_non_ventile_kg }} kg d’aliment de la période ne sont rattachés à aucun stade (livraisons « tous stades » ou stade non renseigné). Ils comptent dans l’indice de consommation global, pas dans les indices par phase. Précisez leur stade depuis Économie &gt; Aliment pour affiner.</p>{% endif %}
 <p class="help">Poids vifs déduits des poids carcasse au rendement de {{ rendement }} %. {{ livret.rendement_source }} Modifiable par le réglage <code>rendement_carcasse_pct</code>.</p>
 

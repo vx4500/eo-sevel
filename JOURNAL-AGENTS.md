@@ -21,3 +21,15 @@ Demande d'Emmanuel suite à une alerte réelle en production.
 
 ### 2026-09-19 — codex — EO_Treizh et EO_Kren
 Renommage complet d’EO_Stasion en EO_Treizh, ajout d’EO_Kren et application du visuel sombre de supervision aux équipements.
+
+### 2026-09-20 — claude — v2.15.3
+Trouvé les modèles GTE/GTTT Cooperl demandés par Emmanuel dans Google Drive
+(dossier "genetique"/racine du dossier partagé : "GTE 2023 01 31 35TFZ.pdf",
+"GTTT 35A7X 3 dernières années .pdf"). Décision avec Emmanuel : refonte
+complète du GTTT vers ce format (3 ans + référence nationale) reportée à
+une prochaine session (chantier de grande ampleur, ~30 indicateurs). Pour
+cette version : ajout d'un filtre de lignes/catégories/fournisseurs sur le
+détail des dépenses de bande (masquer ex. un fournisseur de semence type
+Yxia/DanBred, total recalculé en direct) et sur le GTE (masquer bloc ou
+ligne d'indicateur individuellement, mémorisé par appareil via
+localStorage).
