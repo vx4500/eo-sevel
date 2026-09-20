@@ -1,6 +1,31 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.3** — Dernière mise à jour de ce document : 20 septembre 2026.
+Version actuelle : **2.15.4** — Dernière mise à jour de ce document : 20 septembre 2026.
+
+### Version 2.15.4 — GTE refondu sur le modèle Cooperl (3 périodes + coûts)
+
+Version Rust 2.15.4 : refonte du GTE (`/gte`), à partir des vrais rapports
+GTE/GTTT Cooperl fournis par Emmanuel. Changements :
+- **Trois périodes comparées côte à côte** (la plus récente d'abord, comme
+  le livret GT-Porc) au lieu d'une seule période isolée — la longueur de
+  période choisie ci-dessus (3/12/24/36 mois ou dates personnalisées)
+  détermine la durée de chacune des trois colonnes.
+- **Nouveau bloc « Résultats & Coûts (€ / truie présente / an) »** : produit
+  animaux, marge sur coût alimentaire, alimentation, renouvellement (dont
+  semence/IA à part), dépenses de santé — calculé sur les factures/ventes
+  réellement enregistrées sur l'élevage entier pour chaque période. Ce
+  volet économique manquait entièrement à l'ancien GTE, qui n'affichait que
+  le technique.
+- **En-tête avec le nom de l'élevage** (paramètre déjà saisi ailleurs dans
+  l'application), pour ressembler à l'en-tête du rapport Cooperl.
+- Les cases à cocher pour masquer un bloc ou une ligne (ajoutées en 2.15.3)
+  restent disponibles sur cette nouvelle mise en page.
+
+Le rapprochement avec le GTTT (indicateurs de reproduction : ISSF, taux de
+réforme, IDSR…) n'est pas dans cette version — l'essentiel des données
+nécessaires (réformes datées, causes de sortie, historique des saillies par
+truie) est déjà saisi ailleurs dans l'application ; les relier demandera un
+travail spécifique à part.
 
 ### Version 2.15.3 — filtres de lignes sur les rapports GTE et coûts de bande
 

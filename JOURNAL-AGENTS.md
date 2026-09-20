@@ -33,3 +33,15 @@ détail des dépenses de bande (masquer ex. un fournisseur de semence type
 Yxia/DanBred, total recalculé en direct) et sur le GTE (masquer bloc ou
 ligne d'indicateur individuellement, mémorisé par appareil via
 localStorage).
+
+### 2026-09-20 — claude — v2.15.4
+Refonte du GTE ("elle est pas acceptable" / "reprend comme modèle celle
+fournie et remet ta touche") : ajout de periodes_precedentes(),
+CoutsPeriode/charger_couts/bloc_couts (volet économique élevage entier :
+produit animaux, MSA, alimentation, renouvellement/semence, santé) et
+fusionner_periodes() dans gte_periode.rs. Le handler gte() dans mod.rs
+calcule maintenant 3 périodes consécutives et les fusionne ; gte.html
+affiche une colonne par période + référence IFIP, avec en-tête nom
+d'élevage. Les cases à cocher masquer bloc/ligne (2.15.3) conservées.
+Décision prise avec Emmanuel : le rapprochement GTTT (ISSF, réformes,
+IDSR...) est reporté à une session ultérieure, chantier séparé.

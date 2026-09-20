@@ -8421,14 +8421,66 @@ async fn gte(
         depart_j: reglage_i64(&state.pool, "depart", 215).await?,
     };
     let donnees = gte_periode::charger(&state.pool, &synthese_debut, &synthese_fin).await?;
-    let blocs = gte_periode::tableau(
-        &donnees,
-        synthese_jours,
-        rendement,
-        conduite,
-        &orientation,
-        session.a_truies(),
-    );
+
+    // Présentation en colonnes du livret GT-Porc : trois périodes de même
+    // longueur, la plus récente d'abord, plutôt qu'une période isolée — c'est
+    // ce qui permet de voir une tendance, pas juste une photo.
+    let periodes = gte_periode::periodes_precedentes(&synthese_debut, &synthese_fin, 3);
+    let mut jeux_de_blocs = Vec::with_capacity(periodes.len());
+    for (i, (debut_p, fin_p)) in periodes.iter().enumerate() {
+        let donnees_p = if i == 0 {
+            // Déjà chargées ci-dessus pour la période courante : pas la peine
+            // de refaire la même requête.
+            gte_periode::DonneesPeriode {
+                truies_debut: donnees.truies_debut,
+                truies_fin: donnees.truies_fin,
+                porcs_vendus: donnees.porcs_vendus,
+                poids_carcasse_kg: donnees.poids_carcasse_kg,
+                tmp: donnees.tmp,
+                pct_gamme: donnees.pct_gamme,
+                aliment_truies_kg: donnees.aliment_truies_kg,
+                aliment_ps_kg: donnees.aliment_ps_kg,
+                aliment_engr_kg: donnees.aliment_engr_kg,
+                aliment_non_ventile_kg: donnees.aliment_non_ventile_kg,
+                aliment_total_kg: donnees.aliment_total_kg,
+                porcelets_sevres: donnees.porcelets_sevres,
+                poids_sevrage_kg: donnees.poids_sevrage_kg,
+                pertes_ps: donnees.pertes_ps,
+                pertes_engr: donnees.pertes_engr,
+                saisies: donnees.saisies,
+            }
+        } else {
+            gte_periode::charger(&state.pool, debut_p, fin_p).await?
+        };
+        let jours_p = gte_periode::jours_periode(debut_p, fin_p).unwrap_or(synthese_jours);
+        let couts_p = gte_periode::charger_couts(&state.pool, debut_p, fin_p).await?;
+        let mut blocs_p = gte_periode::tableau(
+            &donnees_p,
+            jours_p,
+            rendement,
+            conduite,
+            &orientation,
+            session.a_truies(),
+        );
+        if session.a_truies() {
+            blocs_p.insert(
+                0,
+                gte_periode::bloc_couts(&couts_p, donnees_p.truies_presentes(), jours_p),
+            );
+        }
+        jeux_de_blocs.push(blocs_p);
+    }
+    let blocs = gte_periode::fusionner_periodes(&jeux_de_blocs);
+    let colonnes_periodes: Vec<Value> = periodes
+        .iter()
+        .map(|(d, f)| json!({"debut": d, "fin": f}))
+        .collect();
+
+    let nom_elevage: Option<String> =
+        sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='nom_elevage'")
+            .fetch_optional(&state.pool)
+            .await?
+            .flatten();
 
     let mut ctx = context(&session);
     ctx.insert("bandes".into(), Value::Array(bandes));
@@ -8437,6 +8489,8 @@ async fn gte(
     ctx.insert("date_fin".into(), json!(end));
     ctx.insert("periode".into(), json!(shortcut_months));
     ctx.insert("blocs".into(), Value::Array(blocs));
+    ctx.insert("colonnes_periodes".into(), Value::Array(colonnes_periodes));
+    ctx.insert("nom_elevage".into(), json!(nom_elevage));
     ctx.insert("synthese_debut".into(), json!(synthese_debut));
     ctx.insert("synthese_fin".into(), json!(synthese_fin));
     ctx.insert("synthese_jours".into(), json!(synthese_jours));

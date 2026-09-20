@@ -92,6 +92,30 @@ pub(super) fn periode_par_defaut() -> (String, String) {
     )
 }
 
+/// Les `n` périodes consécutives de même longueur que `(debut, fin)`, la plus
+/// récente d'abord : c'est la présentation du livret GT-Porc, qui compare
+/// plusieurs années côte à côte plutôt qu'une période isolée. Chaque période
+/// précédente se termine la veille du début de la suivante — sans
+/// chevauchement, sans trou.
+pub(super) fn periodes_precedentes(debut: &str, fin: &str, n: i64) -> Vec<(String, String)> {
+    let Some(jours) = jours_periode(debut, fin) else {
+        return Vec::new();
+    };
+    let Ok(fin_date) = chrono::NaiveDate::parse_from_str(fin, "%Y-%m-%d") else {
+        return Vec::new();
+    };
+    (0..n.max(1))
+        .map(|i| {
+            let fin_i = fin_date - chrono::Duration::days(jours * i);
+            let debut_i = fin_i - chrono::Duration::days(jours - 1);
+            (
+                debut_i.format("%Y-%m-%d").to_string(),
+                fin_i.format("%Y-%m-%d").to_string(),
+            )
+        })
+        .collect()
+}
+
 // --- Requêtes --------------------------------------------------------------
 
 /// Truies présentes au début et à la fin de la période. La GTE raisonne en
@@ -304,6 +328,111 @@ fn ligne(
         "decimales": decimales,
         "raison": raison,
     })
+}
+
+/// Achats et ventes de la période, tous animaux confondus (élevage entier,
+/// pas par lot) : de quoi bâtir le volet économique du livret GT-Porc
+/// (« Résultats & Coûts »), qui manquait entièrement à cet écran — seul le
+/// volet technique y figurait.
+const COUTS_SQL: &str = "SELECT \
+    (SELECT CAST(COALESCE(SUM(montant_ht),0) AS REAL) FROM venteapport WHERE date BETWEEN ?1 AND ?2),\
+    (SELECT CAST(COALESCE(SUM(montant_ht),0) AS REAL) FROM livraisonaliment WHERE COALESCE(NULLIF(trim(date_reference),''),date) BETWEEN ?1 AND ?2),\
+    (SELECT CAST(COALESCE(SUM(montant_ht),0) AS REAL) FROM achatveto WHERE date BETWEEN ?1 AND ?2),\
+    (SELECT CAST(COALESCE(SUM(montant_ht),0) AS REAL) FROM achatsemence WHERE date BETWEEN ?1 AND ?2),\
+    (SELECT CAST(COALESCE(SUM(montant_ht),0) AS REAL) FROM achatgenetique WHERE date BETWEEN ?1 AND ?2)";
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct CoutsPeriode {
+    pub produit_animaux: f64,
+    pub aliment: f64,
+    pub veto: f64,
+    pub semence: f64,
+    pub genetique: f64,
+}
+
+pub(super) async fn charger_couts(
+    pool: &SqlitePool,
+    debut: &str,
+    fin: &str,
+) -> AppResult<CoutsPeriode> {
+    let (produit_animaux, aliment, veto, semence, genetique): (f64, f64, f64, f64, f64) =
+        sqlx::query_as(COUTS_SQL)
+            .bind(debut)
+            .bind(fin)
+            .fetch_one(pool)
+            .await?;
+    Ok(CoutsPeriode {
+        produit_animaux,
+        aliment,
+        veto,
+        semence,
+        genetique,
+    })
+}
+
+/// Bloc « Résultats & Coûts », dans l'ordre du livret : produit, marge sur
+/// coût alimentaire, alimentation, renouvellement (dont semence/IA à part,
+/// comme le livret l'affiche en sous-ligne), dépenses de santé.
+pub(super) fn bloc_couts(couts: &CoutsPeriode, truies: f64, jours: i64) -> Value {
+    let an = |montant: f64| par_truie_et_par_an(montant, truies, jours);
+    let produit = an(couts.produit_animaux);
+    let aliment = an(couts.aliment);
+    let msa = produit.zip(aliment).map(|(p, a)| p - a);
+    let renouvellement = an(couts.genetique + couts.semence);
+    json!({
+        "titre": "Résultats & Coûts (€ / truie présente / an)",
+        "lignes": [
+            ligne("Produit animaux", produit, 0, None, None),
+            ligne("Marge sur coût alimentaire", msa, 0, None, None),
+            ligne("Alimentation", aliment, 0, None, None),
+            ligne("Renouvellement (génétique + semence)", renouvellement, 0, None, None),
+            ligne("- dont semence (IA)", an(couts.semence), 0, None, None),
+            ligne("Dépenses de santé (vétérinaire)", an(couts.veto), 0, None, None),
+        ],
+    })
+}
+
+/// Fusionne plusieurs jeux de blocs (un par période, le plus récent en tête)
+/// en un seul jeu où chaque ligne porte une valeur par période au lieu d'une
+/// seule : c'est la présentation en colonnes du livret GT-Porc (3 années
+/// côte à côte). Les blocs et les lignes sont produits par le même code pour
+/// chaque période, donc dans le même ordre : la fusion se fait par position,
+/// pas par libellé.
+pub(super) fn fusionner_periodes(ensembles: &[Vec<Value>]) -> Vec<Value> {
+    let Some(reference) = ensembles.first() else {
+        return Vec::new();
+    };
+    reference
+        .iter()
+        .enumerate()
+        .map(|(i_bloc, bloc)| {
+            let lignes = bloc["lignes"].as_array().cloned().unwrap_or_default();
+            let lignes_fusionnees: Vec<Value> = lignes
+                .iter()
+                .enumerate()
+                .map(|(i_ligne, ligne_ref)| {
+                    let valeurs: Vec<Value> = ensembles
+                        .iter()
+                        .map(|blocs| {
+                            blocs
+                                .get(i_bloc)
+                                .and_then(|b| b["lignes"].get(i_ligne))
+                                .and_then(|l| l.get("valeur"))
+                                .cloned()
+                                .unwrap_or(Value::Null)
+                        })
+                        .collect();
+                    json!({
+                        "libelle": ligne_ref["libelle"],
+                        "valeurs": valeurs,
+                        "reference": ligne_ref["reference"],
+                        "raison": ligne_ref["raison"],
+                    })
+                })
+                .collect();
+            json!({ "titre": bloc["titre"], "lignes": lignes_fusionnees })
+        })
+        .collect()
 }
 
 fn reference_de(orientation: &Value, cle: &str) -> Option<f64> {
@@ -590,6 +719,22 @@ mod tests {
         };
         let blocs = tableau(&donnees, 365, rendement, conduite, &orientation, true);
         assert_eq!(blocs.len(), 4, "quatre blocs comme le livret");
+        let couts = CoutsPeriode {
+            produit_animaux: 900_000.0,
+            aliment: 500_000.0,
+            veto: 30_000.0,
+            semence: 9_000.0,
+            genetique: 20_000.0,
+        };
+        let mut blocs_avec_couts = blocs.clone();
+        blocs_avec_couts.insert(0, bloc_couts(&couts, donnees.truies_presentes(), 365));
+        // Trois "périodes" identiques ici : seule la structure de fusion est
+        // testée, pas des données historiques réelles.
+        let blocs = fusionner_periodes(&[
+            blocs_avec_couts.clone(),
+            blocs_avec_couts.clone(),
+            blocs_avec_couts,
+        ]);
 
         let env = crate::templates::build().expect("modèles valides");
         let html = env
@@ -598,6 +743,12 @@ mod tests {
             .render(minijinja::context! {
                 session => json!({"peut_modifier": true, "csrf": "test", "a_truies": true, "recoit_achats": false}),
                 blocs => &blocs,
+                colonnes_periodes => vec![
+                    json!({"debut": "2024-01-01", "fin": "2024-12-31"}),
+                    json!({"debut": "2023-01-01", "fin": "2023-12-31"}),
+                    json!({"debut": "2022-01-01", "fin": "2022-12-31"}),
+                ],
+                nom_elevage => Value::Null,
                 bandes => Vec::<Value>::new(),
                 synthese_debut => "2024-01-01",
                 synthese_fin => "2024-12-31",
