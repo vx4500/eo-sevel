@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.16.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.17.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.17.0 — Conduite en bandes : calendrier, places et flux, analyse
+
+Version Rust 2.17.0 (`src/routes/conduite.rs`). `/conduite` : calendrier des bandes semaine par semaine (IA, échos, entrée maternité, mises-bas, sevrages, transferts, départs), charge de travail pondérée par le nombre d'animaux avec semaines calmes / chargées / pics, occupation prévue maternité / post-sevrage / engraissement contre les places réglées. `/conduite/semaine` : liste de travail imprimable, truie par truie, plus soins de portée, protocoles, tâches et entretiens. `/flux` : occupation prévue sur 20 semaines, places de post-sevrage au jour de chaque sevrage, sorties d'engraissement (sevrés − morts − vendus), occupation actuelle par salle. `/analyse-bandes` : comparaison des bandes 1/2/3 sur leurs cycles, impact de la bande la plus faible sur l'année, truies qui tirent une bande vers le bas (petite portée, mort-nés, pertes, retours, faiblesse répétée), homogénéité des lots (étalement des mises-bas, poids de sevrage et de carcasse, étalement des départs). Alertes à 10 jours des étapes et des débordements de places dans la cloche d'alertes et le Rapport. Prévisions : taux de mise-bas et sevrés par portée tirés de l'historique de l'élevage. Places : `parametre.places_*` puis `reglage.capacite_*`.
 
 ### Version 2.16.0 — Rapport températures et actions 48 h, régulation
 

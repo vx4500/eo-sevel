@@ -73,3 +73,16 @@ imprimable `/rapport`). Binaire du 21/09 conservé :
 Communication eo-sevel/eo-regul : fausse alerte « ventilation inefficace »
 supprimée hors pilotage réel ; `eo-regul` passe en TZ=Europe/Paris (drop-in
 `claude-2.16.conf`) — les alertes antérieures au 23/09 11h17 sont en UTC.
+
+### 2026-09-23 — claude — v2.17.0 conduite en bandes
+Demande d'Emmanuel (liste A–E : planning des 3 bandes, suivi truies/bandes,
+places et flux, performances par bande, listes de travail) : « mets tout en
+place intelligemment ». Nouveau module `src/routes/conduite.rs` : /conduite,
+/conduite/semaine, /flux, /analyse-bandes, alertes à 10 jours dans la cloche
+et le Rapport. Places lues dans `parametre.places_*` (26/310/920, réglées le
+21/09) avant `reglage.capacite_*` (60/300/800, anciennes, fausses).
+Point d'attention : aucune bande n'a d'inventaire et `poids_moyen` n'est jamais
+saisi au sevrage — les effectifs de porcs sont estimés (sevrés − morts −
+vendus) et l'homogénéité du poids au sevrage n'est pas calculable.
+Piège SQLx rencontré : un agrégat NULL (AVG/MIN sans ligne) lu en `f64` rend
+0.0, pas une erreur — toujours lire en `Option<T>`.

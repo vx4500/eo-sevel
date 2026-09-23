@@ -209,7 +209,9 @@ fn path_has_prefix(path: &str, prefix: &str) -> bool {
 
 fn section_for_path(path: &str) -> Option<&'static str> {
     match path.trim_start_matches('/').split('/').next().unwrap_or("") {
-        "planning" => Some("planning"),
+        "planning" | "conduite" => Some("planning"),
+        "flux" => Some("bandes"),
+        "analyse-bandes" => Some("productivite"),
         "bandes" | "bande" | "maternite" | "soin-portee" => Some("bandes"),
         "truies" | "truie" | "recherche" | "inseminations" => Some("truies"),
         "charcutiers" | "charcutier" | "abattoir" | "traitement-charc" => Some("charcutiers"),

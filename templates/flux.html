@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% block title %}Places et flux · EO_Sevel{% endblock %}{% block content %}
+{% include "conduite_style.html" %}
+<div class="cd">
+<h1>Places et flux</h1>
+<p class="note">Où sont les animaux, combien de places restent, et ce qui arrive dans les prochaines semaines.</p>
+
+{% if alertes %}<section class="cd-section"><h2>Risques de débordement</h2>
+<ul class="cd-alertes">{% for a in alertes %}<li class="{{ a.niveau }}">{{ a.message }}</li>{% endfor %}</ul></section>{% endif %}
+
+<section class="cd-section">
+<h2>Occupation prévue <small>places réglées : maternité {{ capacites.maternite or '?' }} · post-sevrage {{ capacites.post_sevrage or '?' }} · engraissement {{ capacites.engraissement or '?' }} — <a href="/parametres#conduite-bandes">modifier</a></small></h2>
+<div class="cd-scroll"><table>
+<thead><tr><th>Semaine</th><th>Maternité (truies)</th><th>Post-sevrage (porcs)</th><th>Engraissement (porcs)</th></tr></thead>
+<tbody>{% for p in prevision %}
+<tr class="{% if p.mat.etat == 'deborde' or p.ps.etat == 'deborde' or p.engr.etat == 'deborde' %}rouge{% elif p.mat.etat == 'limite' or p.ps.etat == 'limite' or p.engr.etat == 'limite' %}orange{% endif %}">
+  <td><a href="/conduite/semaine?debut={{ p.debut }}"><b>S{{ p.numero }}</b></a> <small class="note">{{ p.debut|date_fr }}</small></td>
+  {% for cle in ['mat','ps','engr'] %}{% set o = p[cle] %}{% set qui = p['b_' ~ cle] %}
+  <td><span class="occ-{{ o.etat }}">{{ o.valeur }}{% if o.capacite %} / {{ o.capacite }}{% endif %}{% if o.taux is not none %} · {{ o.taux }} %{% endif %}</span>
+    {% if o.taux is not none %}<div class="cd-jauge {{ o.etat }}"><i style="width:{% if o.taux > 100 %}100{% else %}{{ o.taux }}{% endif %}%"></i></div>{% endif %}
+    {% if qui %}<small class="note">{{ qui|join(', ') }}</small>{% endif %}</td>{% endfor %}
+</tr>{% endfor %}</tbody></table></div>
+<p class="note">Effectifs réels quand ils sont enregistrés (sevrés − morts − vendus), sinon prévus : truies inséminées × {{ references.taux_mise_bas|round|int }} % de mises-bas × {{ references.sevres_portee|decimal1 }} sevrés par portée, moyennes de vos bandes.</p>
+</section>
+
+<div class="cd-deux">
+<section class="cd-section"><h2>Prochains sevrages <small>places en post-sevrage</small></h2>
+{% if sevrages %}<table><thead><tr><th>Bande</th><th>Sevrage</th><th class="n">Porcelets</th><th>Post-sevrage ce jour-là</th></tr></thead><tbody>
+{% for s in sevrages %}<tr class="{% if s.occupation.etat == 'deborde' %}rouge{% elif s.occupation.etat == 'limite' %}orange{% endif %}"><td><b>{{ s.code }}</b></td><td>{{ s.date|date_fr }}</td><td class="n">{{ s.prevus }}{% if not s.reel %} <small class="note">prévus</small>{% endif %}</td>
+<td><span class="occ-{{ s.occupation.etat }}">{{ s.occupation.valeur }}{% if s.occupation.capacite %} / {{ s.occupation.capacite }}{% endif %}</span> <small class="note">{{ s.bandes|join(', ') }}</small>
+{% if s.occupation.etat == 'deborde' %}<br><span class="cd-badge rouge">Manque {{ s.occupation.valeur - s.occupation.capacite }} places</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="vide">Aucun sevrage à venir.</p>{% endif %}
+</section>
+
+<section class="cd-section"><h2>Sorties d’engraissement</h2>
+{% if sorties %}<table><thead><tr><th>Bande</th><th>Stade</th><th class="n">Porcs</th><th>Départ prévu</th></tr></thead><tbody>
+{% for s in sorties %}<tr class="{% if s.jours_depart < 0 and s.porcs > 0 %}orange{% endif %}"><td><a href="/bande/{{ s.id }}"><b>{{ s.code }}</b></a>{% if s.site %}<br><small class="note">{{ s.site }}</small>{% endif %}</td>
+<td>{{ s.stade }}<br><small class="note">J{{ s.age }}</small></td>
+<td class="n"><b>{{ s.porcs }}</b>{% if s.reel %}<br><small class="note">{{ s.sevres }} sevrés − {{ s.morts }} morts − {{ s.vendus }} vendus</small>{% else %}<br><small class="note">prévus</small>{% endif %}</td>
+<td>{{ s.depart|date_fr }}<br><small class="note">{% if s.jours_depart < 0 %}{% if s.porcs > 0 %}dépassé de {{ -s.jours_depart }} j{% else %}terminé{% endif %}{% elif s.semaines_depart == 0 %}cette semaine{% else %}dans {{ s.semaines_depart }} sem.{% endif %}{% if s.premiere_vente %} · 1re vente {{ s.premiere_vente|date_fr }}{% endif %}</small></td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="vide">Aucune bande en post-sevrage ou engraissement.</p>{% endif %}
+</section>
+</div>
+
+<section class="cd-section"><h2>Occupation actuelle par salle <small>d’après les inventaires et transferts de cases</small></h2>
+<div class="cd-scroll"><table><thead><tr><th>Site</th><th>Salle</th><th>Type</th><th>Occupation</th><th class="n">Truies</th><th class="n">Porcs</th></tr></thead><tbody>
+{% for s in salles %}<tr class="{% if s.occupation.etat == 'deborde' %}rouge{% endif %}"><td>{{ s.site }}</td><td><b>{{ s.nom }}</b></td><td>{{ s.type|replace('_',' ') }}</td>
+<td style="min-width:150px"><span class="occ-{{ s.occupation.etat }}">{{ s.occupation.valeur }}{% if s.occupation.capacite %} / {{ s.occupation.capacite }}{% endif %}</span>{% if s.occupation.taux is not none %}<div class="cd-jauge {{ s.occupation.etat }}"><i style="width:{% if s.occupation.taux > 100 %}100{% else %}{{ s.occupation.taux }}{% endif %}%"></i></div>{% endif %}</td>
+<td class="n">{{ s.truies or '' }}</td><td class="n">{{ s.porcs or '' }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="note">Maternité : truies présentes / nombre de cases. Porcs : comptés par case depuis le dernier inventaire de case et les transferts ; faites un inventaire des cases (Effectifs) pour fiabiliser.</p>
+</section>
+</div>
+{% endblock %}

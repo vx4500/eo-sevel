@@ -247,6 +247,20 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("attente.html", include_str!("../templates/attente.html"))?;
     env.add_template("planning.html", include_str!("../templates/planning.html"))?;
     env.add_template("rapport.html", include_str!("../templates/rapport.html"))?;
+    env.add_template(
+        "conduite_style.html",
+        include_str!("../templates/conduite_style.html"),
+    )?;
+    env.add_template("conduite.html", include_str!("../templates/conduite.html"))?;
+    env.add_template(
+        "conduite_semaine.html",
+        include_str!("../templates/conduite_semaine.html"),
+    )?;
+    env.add_template("flux.html", include_str!("../templates/flux.html"))?;
+    env.add_template(
+        "analyse_bandes.html",
+        include_str!("../templates/analyse_bandes.html"),
+    )?;
     env.add_template("stock.html", include_str!("../templates/stock.html"))?;
     env.add_template("journal.html", include_str!("../templates/journal.html"))?;
     env.add_template("imports.html", include_str!("../templates/imports.html"))?;

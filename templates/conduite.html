@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% block title %}Calendrier de conduite · EO_Sevel{% endblock %}{% block content %}
+{% include "conduite_style.html" %}
+<style>
+.cal{border-collapse:separate!important;border-spacing:0;min-width:900px}
+.cal th,.cal td{border-right:1px solid var(--cd-ligne);text-align:center;padding:4px 3px!important;min-width:64px}
+.cal th.bande,.cal td.bande{position:sticky;left:0;background:#fff;text-align:left;min-width:80px;z-index:1}
+.cal .courante{background:#fffbea!important}
+.cal .passee{opacity:.55}
+.cal thead a{color:inherit;text-decoration:none;display:block}
+.cal thead a:hover{text-decoration:underline}
+.ev{display:block;margin:2px 0;padding:3px 4px;border-radius:6px;font-size:.74rem;font-weight:700;line-height:1.15;color:#fff;text-decoration:none}
+.ev small{display:block;font-weight:400;opacity:.9}
+.ev-ia{background:#6a4c93}.ev-echo{background:#8a7fb8}.ev-maternite{background:#c7832f}.ev-mise_bas{background:#b3401c}.ev-sevrage{background:#2a7f62}.ev-transfert{background:#3b6f96}.ev-depart{background:#555f66}
+.charge-barre{height:46px;display:flex;align-items:flex-end;justify-content:center}
+.charge-barre i{display:block;width:70%;border-radius:4px 4px 0 0;background:#9fb5a8}
+.niv-calme i{background:#b9d4c4}.niv-normale i{background:#7fae93}.niv-chargee i{background:#d19a52}.niv-pic i{background:#b3401c}
+.niv-lib{font-size:.7rem;font-weight:700}
+.niv-lib.pic{color:#b3401c}.niv-lib.chargee{color:#9a5a1c}.niv-lib.calme{color:#5f7268}
+.legende{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.legende .ev{display:inline-block}
+.occ-cell{font-size:.74rem}
+</style>
+<div class="cd">
+<h1>Calendrier de conduite</h1>
+<p class="note">Les 3 bandes semaine par semaine, avec la charge de travail et les places prévues. Cliquez sur une semaine pour sa liste de travail imprimable.</p>
+<div class="cd-barre no-print"><span>Horizon :</span>
+  {% for n in [12,18,26,52] %}<a href="/conduite?semaines={{ n }}"{% if nb_semaines == n %} class="actif"{% endif %}>{{ n }} semaines</a>{% endfor %}
+  <a href="/conduite/semaine">Liste de cette semaine →</a>
+</div>
+
+{% if alertes %}
+<section class="cd-section"><h2>À anticiper</h2>
+<ul class="cd-alertes">{% for a in alertes %}<li class="{{ a.niveau }}"><a href="{{ a.url }}">{{ a.message }}</a></li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="cd-section">
+<div class="cd-scroll"><table class="cal">
+<thead>
+<tr><th class="bande">Semaine</th>{% for s in semaines %}<th class="{% if s.courante %}courante{% elif s.passee %}passee{% endif %}"><a href="/conduite/semaine?debut={{ s.debut }}" title="Liste de travail de la semaine du {{ s.debut|date_fr }}">S{{ s.numero }}<br><small>{{ s.debut[8:10] }}/{{ s.debut[5:7] }}</small></a></th>{% endfor %}</tr>
+</thead>
+<tbody>
+{% for l in lignes %}
+<tr><td class="bande"><a href="/bande/{{ l.id }}"><b>{{ l.code }}</b></a><br><small class="note">Bande {{ l.groupe }}{% if not l.active %} · archivée{% endif %}</small></td>
+{% for cell in l.cellules %}{% set sem = semaines[loop.index0] %}<td class="{% if sem.courante %}courante{% elif sem.passee %}passee{% endif %}">
+  {% for e in cell %}<a class="ev ev-{{ e.code }}" href="/conduite/semaine?debut={{ sem.debut }}" title="{{ e.libelle }} · {{ l.code }} · {{ e.date|date_fr }}">{{ e.court }}<small>{{ e.jour }} {{ e.date[8:10] }}/{{ e.date[5:7] }} · {{ e.animaux }}{% if e.sur_truies %} tr.{% else %} p.{% endif %}</small></a>{% endfor %}
+</td>{% endfor %}</tr>
+{% else %}<tr><td class="bande" colspan="{{ nb_semaines + 1 }}">Aucune bande avec date de mise-bas.</td></tr>{% endfor %}
+<tr><td class="bande"><b>Charge</b><br><small class="note">travail estimé</small></td>
+{% for s in semaines %}<td class="{% if s.courante %}courante{% elif s.passee %}passee{% endif %}"><div class="charge-barre niv-{{ s.niveau }}" title="{{ s.charge }} points{% if s.taches %} · {{ s.taches }} tâche(s){% endif %}"><i style="height:{% if s.hauteur < 4 %}4{% else %}{{ s.hauteur }}{% endif %}%"></i></div><span class="niv-lib {{ s.niveau }}">{% if s.niveau == 'pic' %}PIC{% elif s.niveau == 'chargee' %}chargée{% elif s.niveau == 'calme' %}calme{% else %}·{% endif %}</span></td>{% endfor %}</tr>
+{% for cle, libelle in [('mat','Maternité'),('ps','Post-sevrage'),('engr','Engraissement')] %}
+<tr><td class="bande"><b>{{ libelle }}</b><br><small class="note">prévu / places</small></td>
+{% for s in semaines %}{% set o = s[cle] %}<td class="occ-cell {% if s.courante %}courante{% elif s.passee %}passee{% endif %}"><span class="occ-{{ o.etat }}">{{ o.valeur }}</span>{% if o.capacite %}<br><small class="note">/{{ o.capacite }}</small>{% endif %}</td>{% endfor %}</tr>
+{% endfor %}
+</tbody></table></div>
+<div class="legende"><span class="ev ev-ia">IA</span><span class="ev ev-echo">Écho</span><span class="ev ev-maternite">Entrée maternité</span><span class="ev ev-mise_bas">Mises-bas</span><span class="ev ev-sevrage">Sevrage</span><span class="ev ev-transfert">Transfert engr.</span><span class="ev ev-depart">Départ abattoir</span></div>
+<p class="note">Dates calculées depuis la date de mise-bas de chaque bande et les réglages de conduite. Effectifs : réels quand ils sont enregistrés, sinon prévus d’après l’historique de l’élevage ({{ references.taux_mise_bas|round|int }} % de mises-bas, {{ references.sevres_portee|decimal1 }} sevrés par portée). La charge pondère chaque étape par le nombre d’animaux (mise-bas 2, IA et sevrage 1, entrée maternité 0,5, écho 0,3 par truie) plus les tâches datées ; « chargée » = 30 % au-dessus de la moyenne, « PIC » = 80 %. Places : réglées dans Paramètres, en rouge si dépassées.</p>
+</section>
+</div>
+{% endblock %}

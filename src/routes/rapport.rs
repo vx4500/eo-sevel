@@ -75,11 +75,11 @@ async fn statistiques(
     .fetch_one(pool)
     .await?;
     Ok(Statistiques {
-        moyenne: ligne.try_get("moy").ok(),
-        mini: ligne.try_get("mini").ok(),
-        maxi: ligne.try_get("maxi").ok(),
-        ts_mini: ligne.try_get("ts_mini").ok(),
-        ts_maxi: ligne.try_get("ts_maxi").ok(),
+        moyenne: ligne.try_get::<Option<f64>, _>("moy").ok().flatten(),
+        mini: ligne.try_get::<Option<f64>, _>("mini").ok().flatten(),
+        maxi: ligne.try_get::<Option<f64>, _>("maxi").ok().flatten(),
+        ts_mini: ligne.try_get::<Option<i64>, _>("ts_mini").ok().flatten(),
+        ts_maxi: ligne.try_get::<Option<i64>, _>("ts_maxi").ok().flatten(),
         n: ligne.try_get("n").unwrap_or(0),
     })
 }
@@ -126,9 +126,15 @@ async fn salles(pool: &SqlitePool, maintenant: i64) -> AppResult<Vec<Value>> {
     let mut sortie = Vec::with_capacity(lignes.len());
     for ligne in lignes {
         let salle_id: i64 = ligne.try_get("salle_id")?;
-        let seuil_min: Option<f64> = ligne.try_get("t_alerte_min").ok();
-        let seuil_max: Option<f64> = ligne.try_get("t_alerte_max").ok();
-        let ts: Option<i64> = ligne.try_get("ts").ok();
+        let seuil_min: Option<f64> = ligne
+            .try_get::<Option<f64>, _>("t_alerte_min")
+            .ok()
+            .flatten();
+        let seuil_max: Option<f64> = ligne
+            .try_get::<Option<f64>, _>("t_alerte_max")
+            .ok()
+            .flatten();
+        let ts: Option<i64> = ligne.try_get::<Option<i64>, _>("ts").ok().flatten();
         let t24 = statistiques(pool, salle_id, "t", depuis_24h).await?;
         let t7 = statistiques(pool, salle_id, "t", depuis_7j).await?;
         let c24 = statistiques(pool, salle_id, "consigne", depuis_24h).await?;
@@ -153,15 +159,15 @@ async fn salles(pool: &SqlitePool, maintenant: i64) -> AppResult<Vec<Value>> {
             "seuil_max": seuil_max,
             "maj": ts.map(heure_locale),
             "actuel": actuel,
-            "t": ligne.try_get::<f64, _>("t").ok(),
-            "h": ligne.try_get::<f64, _>("h").ok(),
-            "consigne": ligne.try_get::<f64, _>("consigne").ok(),
-            "ventil": ligne.try_get::<f64, _>("ventil").ok(),
-            "mode": ligne.try_get::<String, _>("mode").ok(),
+            "t": ligne.try_get::<Option<f64>, _>("t").ok().flatten(),
+            "h": ligne.try_get::<Option<f64>, _>("h").ok().flatten(),
+            "consigne": ligne.try_get::<Option<f64>, _>("consigne").ok().flatten(),
+            "ventil": ligne.try_get::<Option<f64>, _>("ventil").ok().flatten(),
+            "mode": ligne.try_get::<Option<String>, _>("mode").ok().flatten(),
             "sonde_ok": ligne.try_get::<i64, _>("sonde_ok").unwrap_or(1) == 1,
-            "message": ligne.try_get::<String, _>("message").ok(),
-            "bande": ligne.try_get::<String, _>("bande").ok(),
-            "jour_bande": ligne.try_get::<i64, _>("jour_bande").ok(),
+            "message": ligne.try_get::<Option<String>, _>("message").ok().flatten(),
+            "bande": ligne.try_get::<Option<String>, _>("bande").ok().flatten(),
+            "jour_bande": ligne.try_get::<Option<i64>, _>("jour_bande").ok().flatten(),
             "t24": t24.json(),
             "t7": t7.json(),
             "h24": h24.json(),
@@ -193,7 +199,7 @@ async fn liaison_regulation(pool: &SqlitePool, maintenant: i64) -> AppResult<Val
         "age_s": maintenant - ts,
         "actif": maintenant - ts <= BATTEMENT_MAX_S,
         "maj": heure_locale(ts),
-        "version": ligne.try_get::<String, _>("version").ok(),
+        "version": ligne.try_get::<Option<String>, _>("version").ok().flatten(),
         "cycles": ligne.try_get::<i64, _>("cycles").unwrap_or(0),
         "erreurs": ligne.try_get::<i64, _>("erreurs").unwrap_or(0),
         "simulation": simulation > 0,
@@ -254,7 +260,7 @@ async fn actions_48h(
         .fetch_all(pool)
         .await?;
         for alerte in ouvertes {
-            let salle: Option<String> = alerte.try_get("nom").ok();
+            let salle: Option<String> = alerte.try_get::<Option<String>, _>("nom").ok().flatten();
             let message: String = alerte.try_get("message").unwrap_or_default();
             let gravite: String = alerte.try_get("gravite").unwrap_or_default();
             actions.push(Action {
@@ -349,7 +355,10 @@ async fn actions_48h(
             let Some(date) = parse_stored_date(&echeance) else {
                 continue;
             };
-            let produit: Option<String> = rappel.try_get("produit").ok();
+            let produit: Option<String> = rappel
+                .try_get::<Option<String>, _>("produit")
+                .ok()
+                .flatten();
             actions.push(Action {
                 priorite: priorite_date(date, aujourd_hui),
                 date: echeance,
@@ -380,7 +389,7 @@ async fn actions_48h(
                 continue;
             };
             let n: i64 = soin.try_get("n").unwrap_or(0);
-            let bande_id: Option<i64> = soin.try_get("bande_id").ok();
+            let bande_id: Option<i64> = soin.try_get::<Option<i64>, _>("bande_id").ok().flatten();
             actions.push(Action {
                 priorite: priorite_date(date, aujourd_hui),
                 date: prevue,
@@ -412,8 +421,11 @@ async fn actions_48h(
                 continue;
             };
             let precision: Vec<String> = [
-                tache.try_get::<String, _>("bande_code").ok(),
-                tache.try_get::<String, _>("salle").ok(),
+                tache
+                    .try_get::<Option<String>, _>("bande_code")
+                    .ok()
+                    .flatten(),
+                tache.try_get::<Option<String>, _>("salle").ok().flatten(),
             ]
             .into_iter()
             .flatten()
@@ -447,7 +459,10 @@ async fn actions_48h(
             let Some(date) = parse_stored_date(&prochaine) else {
                 continue;
             };
-            let site: Option<String> = entretien.try_get("site").ok();
+            let site: Option<String> = entretien
+                .try_get::<Option<String>, _>("site")
+                .ok()
+                .flatten();
             actions.push(Action {
                 priorite: priorite_date(date, aujourd_hui),
                 date: prochaine,
@@ -642,6 +657,12 @@ pub(super) async fn page(
     let actions = actions_48h(pool, &session, &salles, &liaison).await?;
 
     let mut ctx = context(&session);
+    if voit("planning") || voit("bandes") {
+        ctx.insert(
+            "a_anticiper".into(),
+            Value::Array(super::conduite::alertes(pool).await.unwrap_or_default()),
+        );
+    }
 
     // Chiffres clés de la période.
     let mises_bas = une_ligne(pool, "SELECT SUM(CASE WHEN COALESCE(nes_totaux,0)>0 THEN 1 ELSE 0 END) AS n,SUM(CASE WHEN COALESCE(nes_totaux,0)=0 THEN 1 ELSE 0 END) AS a_completer,COALESCE(SUM(nes_totaux),0) AS nt,COALESCE(SUM(nes_vifs),0) AS nv,COALESCE(SUM(mort_nes),0) AS mn,ROUND(AVG(NULLIF(nes_totaux,0)),1) AS nt_portee,ROUND(AVG(CASE WHEN COALESCE(nes_totaux,0)>0 THEN nes_vifs END),1) AS nv_portee FROM evenement WHERE type='mise_bas' AND date BETWEEN ?1 AND ?2", &periode).await?;

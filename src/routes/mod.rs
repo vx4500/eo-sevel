@@ -25,6 +25,7 @@ use std::sync::Arc;
 mod adoptions;
 mod ambiance;
 mod ameliorations;
+mod conduite;
 mod demo_portal;
 pub(crate) mod documents;
 mod factures;
@@ -590,6 +591,10 @@ pub fn router(state: AppState) -> Router {
         .route("/pharmacie/regler", post(pharmacie_regler))
         .route("/planning", get(planning))
         .route("/rapport", get(rapport::page))
+        .route("/conduite", get(conduite::calendrier))
+        .route("/conduite/semaine", get(conduite::semaine))
+        .route("/flux", get(conduite::flux))
+        .route("/analyse-bandes", get(conduite::analyse))
         .route("/rapport-hebdomadaire.pdf", get(rapport::ancien_pdf))
         .route("/calendrier.ics", get(calendrier_ics))
         .route("/imports", get(imports_page))
@@ -1277,6 +1282,19 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         "/structure",
         "urgent",
     );
+    // Étapes des bandes à 10 jours et débordements de places prévus. Une
+    // erreur de calcul ici ne doit jamais masquer les autres alertes.
+    if let Ok(conduite) = conduite::alertes(pool).await {
+        for alerte in conduite {
+            push_farm_alert(
+                &mut alerts,
+                1,
+                alerte["message"].as_str().unwrap_or_default(),
+                alerte["url"].as_str().unwrap_or("/conduite"),
+                alerte["niveau"].as_str().unwrap_or("information"),
+            );
+        }
+    }
     let total = alerts
         .iter()
         .filter_map(|alert| alert.get("nombre").and_then(Value::as_i64))

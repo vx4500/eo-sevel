@@ -1,0 +1,84 @@
+{% extends "base.html" %}{% block title %}Analyse des bandes · EO_Sevel{% endblock %}{% block content %}
+{% include "conduite_style.html" %}
+{% macro v1(x, suffixe='') %}{% if x is not none %}{{ x|decimal1 }}{{ suffixe }}{% else %}—{% endif %}{% endmacro %}
+{% macro ecart(x, ref, sens=1) %}{% if x is not none and ref is not none %}{% set d = (x - ref) * sens %}{% if d >= 0.5 %} <span class="cd-badge">▲</span>{% elif d <= -0.5 %} <span class="cd-badge rouge">▼</span>{% endif %}{% endif %}{% endmacro %}
+<div class="cd">
+<h1>Analyse des bandes</h1>
+<p class="note">Comparer les bandes entre elles, trouver ce qui les tire vers le bas et mesurer ce que ça coûte sur l’année.</p>
+
+<section class="cd-section">
+<h2>Les 3 bandes comparées <small>moyenne de leurs cycles récents</small></h2>
+<div class="cd-scroll"><table>
+<thead><tr><th>Bande</th><th class="n">Cycles</th><th class="n">Mises-bas / IA</th><th class="n">Nés vifs / portée</th><th class="n">Sevrés / portée</th><th class="n">Pertes sous mère</th><th class="n">Sevrés / bande</th><th>Derniers cycles (nés vifs → sevrés / portée)</th></tr></thead>
+<tbody>
+{% for g in groupes %}<tr>
+  <td><b>Bande {{ g.groupe }}</b></td><td class="n">{{ g.cycles }}</td>
+  <td class="n">{{ v1(g.taux_mb, ' %') }}{{ ecart(g.taux_mb, elevage.taux_mb) }}</td>
+  <td class="n">{{ v1(g.nv_portee) }}{{ ecart(g.nv_portee, elevage.nv_portee) }}</td>
+  <td class="n">{{ v1(g.sevres_portee) }}{{ ecart(g.sevres_portee, elevage.sevres_portee) }}</td>
+  <td class="n">{{ v1(g.pertes, ' %') }}{{ ecart(g.pertes, elevage.pertes, -1) }}</td>
+  <td class="n">{{ g.sevres_bande|round|int if g.sevres_bande is not none else '—' }}</td>
+  <td>{% for d in g.derniers %}<a href="/analyse-bandes?bande={{ d.code }}">{{ d.code }}</a> <small class="note">{{ v1(d.nv_portee) }} → {{ v1(d.sevres_portee) }}</small>{% if not loop.last %} · {% endif %}{% endfor %}</td>
+</tr>{% endfor %}
+<tr style="font-weight:700"><td>Élevage</td><td class="n">{{ elevage.cycles }}</td><td class="n">{{ v1(elevage.taux_mb, ' %') }}</td><td class="n">{{ v1(elevage.nv_portee) }}</td><td class="n">{{ v1(elevage.sevres_portee) }}</td><td class="n">{{ v1(elevage.pertes, ' %') }}</td><td class="n">{{ elevage.sevres_bande|round|int if elevage.sevres_bande is not none else '—' }}</td><td></td></tr>
+</tbody></table></div>
+<p class="note">▲ / ▼ : au-dessus / en dessous de la moyenne de l’élevage d’au moins 0,5. Pertes sous mère = (nés vifs − sevrés) / nés vifs.</p>
+</section>
+
+{% if impact %}
+<section class="cd-section">
+<h2>Impact sur l’année <small>{{ impact.bandes }} bandes sevrées en 12 mois</small></h2>
+<div class="cd-kpis">
+  <div class="cd-kpi"><b>{{ impact.total }}</b><span>Porcelets sevrés</span><small>{{ impact.moyenne|round|int }} par bande en moyenne</small></div>
+  <div class="cd-kpi"><b>{{ impact.faible }}</b><span>Bande la plus faible</span><small>{{ impact.faible_sevres }} sevrés</small></div>
+  <div class="cd-kpi"><b>{{ impact.forte }}</b><span>Bande la plus forte</span><small>{{ impact.forte_sevres }} sevrés · écart {{ impact.ecart_extremes }}</small></div>
+  <div class="cd-kpi{% if impact.gain > 0 %} {% endif %}"><b>+{{ impact.gain }}</b><span>Porcelets perdus par {{ impact.faible }}</span><small>si elle avait fait la moyenne : +{{ impact.gain_pct|decimal1 }} % sur l’année</small></div>
+</div>
+</section>
+{% endif %}
+
+<section class="cd-section">
+<h2>Toutes les bandes <small>du plus récent au plus ancien</small></h2>
+<div class="cd-scroll"><table>
+<thead><tr><th>Bande</th><th>Mise-bas</th><th class="n">IA</th><th class="n">Portées</th><th class="n">MB / IA</th><th class="n">Nés totaux</th><th class="n">Nés vifs</th><th class="n">Mort-nés</th><th class="n">Sevrés</th><th class="n">Sevrés / portée</th><th class="n">Pertes</th><th class="n">Poids sevrage</th><th class="n">Morts après</th><th class="n">Vendus</th></tr></thead>
+<tbody>{% for b in lignes %}<tr{% if detail and b.code == detail.code %} class="orange"{% endif %}>
+<td><a href="/analyse-bandes?bande={{ b.code }}"><b>{{ b.code }}</b></a></td><td>{{ b.date_mb|date_fr }}</td>
+<td class="n">{{ b.ia }}</td><td class="n">{{ b.portees }}</td><td class="n">{{ v1(b.taux_mb, ' %') }}</td>
+<td class="n">{{ v1(b.nt_portee) }}</td><td class="n"><b>{{ v1(b.nv_portee) }}</b>{{ ecart(b.nv_portee, elevage.nv_portee) }}</td><td class="n">{{ v1(b.mn_portee) }}</td>
+<td class="n">{% if b.sevre %}{{ b.sevres }}{% else %}<small class="note">en cours</small>{% endif %}</td><td class="n"><b>{{ v1(b.sevres_portee) }}</b>{{ ecart(b.sevres_portee, elevage.sevres_portee) }}</td>
+<td class="n">{{ v1(b.pertes, ' %') }}</td><td class="n">{{ v1(b.poids_sevrage, ' kg') }}</td><td class="n">{{ b.morts_post or '' }}</td><td class="n">{{ b.vendus or '' }}</td>
+</tr>{% endfor %}</tbody></table></div>
+</section>
+
+{% if detail %}
+<section class="cd-section">
+<h2>Truies qui tirent la bande {{ detail.code }} vers le bas
+  <small><form class="no-print" style="display:inline" method="get" action="/analyse-bandes"><select name="bande" onchange="this.form.submit()">{% for c in choix %}<option{% if c == detail.code %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></form></small></h2>
+<p class="note">Moyenne de la bande : {{ v1(detail.nv_portee) }} nés vifs, {{ v1(detail.sevres_portee) }} sevrés par portée.
+{% if faibles %} Ces {{ faibles|length }} truies représentent environ <b>{{ manque }} nés vifs de moins</b> que la moyenne.{% endif %}</p>
+{% if faibles %}<div class="cd-scroll"><table><thead><tr><th>Truie</th><th class="n">Rang</th><th class="n">Nés vifs</th><th class="n">Mort-nés</th><th class="n">Perdus</th><th class="n">Sevrés</th><th class="n">Nés vifs avant</th><th>Pourquoi</th></tr></thead><tbody>
+{% for t in faibles %}<tr class="{% if t.a_reformer %}rouge{% endif %}"><td><a href="/truie/{{ t.id }}"><b>{{ t.numero }}</b></a></td><td class="n">{{ t.rang or '—' }}</td><td class="n">{{ t.nv }}</td><td class="n">{{ t.mn }}</td><td class="n">{{ t.pertes }}</td><td class="n">{{ t.sevres if t.sevres is not none else '—' }}</td>
+<td class="n">{% if t.nv_avant is not none %}{{ t.nv_avant|decimal1 }} <small class="note">({{ t.portees_avant }} p.)</small>{% else %}—{% endif %}</td>
+<td>{{ t.raisons|join(' · ') }}{% if t.a_reformer %} <span class="cd-badge rouge">à examiner pour la réforme</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="note">En rouge : truies déjà en dessous aux portées précédentes — faible de façon répétée, pas un accident. Voir aussi <a href="/reformes">Aide à la réforme</a>.</p>
+{% else %}<p class="vide">Aucune truie nettement en dessous de la bande.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="cd-section">
+<h2>Homogénéité des lots</h2>
+<div class="cd-scroll"><table><thead><tr><th>Bande</th><th class="n">Étalement des mises-bas</th><th class="n">Mises-bas groupées (±2 j)</th><th class="n">Poids sevrage</th><th class="n">Apports abattoir</th><th class="n">Étalement des départs</th><th class="n">Poids carcasse</th><th class="n">TMP</th></tr></thead><tbody>
+{% for h in homogeneites %}<tr class="{% if h.etalement_mb is not none and h.etalement_mb > 7 %}orange{% endif %}"><td><a href="/analyse-bandes?bande={{ h.code }}"><b>{{ h.code }}</b></a></td>
+<td class="n">{% if h.etalement_mb is not none %}{{ h.etalement_mb }} j{% else %}—{% endif %}</td>
+<td class="n">{% if h.mb_groupees is not none %}{{ h.mb_groupees }} %{% else %}—{% endif %}</td>
+<td class="n">{% if h.poids_sevrage_min is not none %}{{ h.poids_sevrage_min|decimal1 }}–{{ h.poids_sevrage_max|decimal1 }} kg{% if h.poids_sevrage_cv is not none %} <small class="note">CV {{ h.poids_sevrage_cv|round|int }} %</small>{% endif %}{% else %}—{% endif %}</td>
+<td class="n">{{ h.apports or '—' }}</td>
+<td class="n">{% if h.etalement_ventes is not none %}{{ h.etalement_ventes }} j{% else %}—{% endif %}</td>
+<td class="n">{% if h.poids_abattage_min is not none %}{{ h.poids_abattage_min|decimal1 }}–{{ h.poids_abattage_max|decimal1 }} kg{% else %}—{% endif %}</td>
+<td class="n">{% if h.tmp_min is not none %}{{ h.tmp_min|decimal1 }}–{{ h.tmp_max|decimal1 }}{% else %}—{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="note">Un lot homogène a ses mises-bas groupées sur quelques jours (en orange au-delà de 7 jours d’étalement), des poids de sevrage et de carcasse resserrés et des départs peu étalés. Le poids de sevrage n’est calculable que s’il est saisi au sevrage.</p>
+</section>
+</div>
+{% endblock %}
