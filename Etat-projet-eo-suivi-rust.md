@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.18.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.18.1** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.18.1 — Plans d'alimentation lisibles
+
+Version Rust 2.18.1 : Paramètres → Plans d'alimentation (`src/routes/plans_aliment.rs`) : une carte par catégorie (libellé clair, jour 0 de référence), triée par jour de début, frise des jours (transitions superposées, fin de période attendue d'après la conduite), alerte sur chaque période sans aliment prévu, modification repliée ligne par ligne, ajout avec catégories proposées. Mêmes formulaires et routes qu'avant.
 
 ### Version 2.18.0 — Page de sevrage par bande
 

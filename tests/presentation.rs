@@ -270,7 +270,7 @@ fn version_220_gere_bandes_causes_assistant_et_images() {
 
     assert!(bands.contains("Mise-bas {{ l.date_mb|date_fr }}"));
     assert!(settings.contains("/parametres/conduite-bandes"));
-    assert!(settings.contains("/parametres/aliment/{{ p.id }}/modifier"));
+    assert!(settings.contains("/parametres/aliment/{{ l.id }}/modifier"));
     assert!(quick.contains("/api/causes-perte"));
     assert!(assistant.contains("Question '+(index+1)+' sur '"));
     assert!(routes.contains("image_data,image_mime"));

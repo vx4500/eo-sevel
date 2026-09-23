@@ -13,7 +13,81 @@
 <p class="muted">Les étapes affichées sur le tableau de bord dépendent de votre type d'élevage : un engraisseur seul ne voit ni verraterie ni maternité.</p></section>
 
 <section class="card" id="conduite-bandes"><h2>Conduite des bandes</h2><p>Le cycle configuré représente {{ conduite_bandes.cycle_j }} jours (gestation + allaitement + retour en chaleur). Choisissez votre système réel et ajustez son rythme.</p><form class="rust-actions" method="post" action="/parametres/conduite-bandes"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Nombre de bandes<select name="nombre_bandes" required>{% if conduite_bandes.nombre is none %}<option value="" selected>— non configurée —</option>{% endif %}{% for n in [3,4,5,7,10,20,21] %}<option value="{{ n }}" {% if conduite_bandes.nombre == n %}selected{% endif %}>{{ n }} bandes</option>{% endfor %}</select></label><label>Jours entre deux bandes<input type="number" name="intervalle_bandes_j" min="7" max="70" value="{{ conduite_bandes.intervalle_j if conduite_bandes.intervalle_j is not none else '' }}" placeholder="21" required></label><button>Enregistrer la conduite</button></form><p class="muted">L’intervalle est volontairement modifiable pour gérer aussi les conduites irrégulières.</p></section>
-<section class="card" id="alimentation"><h2>Plans d’alimentation</h2><p>Les jours de début et de fin déterminent les transitions. Chaque ligne est modifiable.</p>{% for p in plans_aliment %}<form id="pa{{ p.id }}" method="post" action="/parametres/aliment/{{ p.id }}/modifier" hidden><input type="hidden" name="csrf_token" value="{{ session.csrf }}"></form>{% endfor %}<div class="rust-scroll"><table><tr><th>Catégorie</th><th>Début</th><th>Fin</th><th>Aliment</th><th>Quantité</th><th>Unité</th><th>Ordre</th><th></th></tr>{% for p in plans_aliment %}<tr><td><input form="pa{{ p.id }}" name="categorie" value="{{ p.categorie }}" required></td><td><input form="pa{{ p.id }}" type="number" name="jour_debut" min="0" value="{{ p.jour_debut }}"></td><td><input form="pa{{ p.id }}" type="number" name="jour_fin" min="0" value="{{ p.jour_fin }}"></td><td><input form="pa{{ p.id }}" name="aliment" value="{{ p.aliment or '' }}"></td><td><input form="pa{{ p.id }}" name="quantite" inputmode="decimal" value="{{ p.quantite or '' }}"></td><td><input form="pa{{ p.id }}" name="unite" value="{{ p.unite or 'kg/j' }}"></td><td><input form="pa{{ p.id }}" type="number" name="ordre" value="{{ p.ordre }}" style="max-width:70px"><input form="pa{{ p.id }}" type="hidden" name="note" value="{{ p.note or '' }}"></td><td><button form="pa{{ p.id }}">Enregistrer</button><form method="post" action="/parametres/aliment/{{ p.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></td></tr>{% endfor %}</table></div><form class="rust-actions" method="post" action="/parametres/aliment/ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Catégorie<input name="categorie" required></label><label>Début<input type="number" name="jour_debut" min="0"></label><label>Fin<input type="number" name="jour_fin" min="0"></label><label>Aliment<input name="aliment"></label><label>Quantité<input name="quantite" inputmode="decimal"></label><button>Ajouter</button></form></section>
+<section class="card" id="alimentation">
+<style>
+#alimentation .pa-groupe{border:1px solid #e1e8e3;border-radius:12px;padding:14px 16px;margin:12px 0;background:#fff}
+#alimentation .pa-groupe h3{margin:0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+#alimentation .pa-groupe h3 small{font-weight:400;color:#5f7268;font-size:.85rem}
+#alimentation .pa-frise{position:relative;margin:14px 0 6px;padding-top:4px}
+#alimentation .pa-piste{position:relative;height:26px;margin:3px 0;background:#f3f6f4;border-radius:6px}
+#alimentation .pa-barre{position:absolute;top:0;bottom:0;border-radius:6px;color:#fff;font-size:.74rem;font-weight:700;padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:6px}
+#alimentation .pa-c0{background:#2a7f62}#alimentation .pa-c1{background:#3b6f96}#alimentation .pa-c2{background:#b06a2c}#alimentation .pa-c3{background:#6a4c93}
+#alimentation .pa-c4{background:#8a9a2a}#alimentation .pa-c5{background:#b3401c}#alimentation .pa-c6{background:#2f8b9a}#alimentation .pa-c7{background:#555f66}
+#alimentation .pa-attendu{position:absolute;top:-2px;bottom:-2px;border-right:2px dashed #b3401c}
+#alimentation .pa-reperes{position:relative;height:16px;font-size:.7rem;color:#5f7268;margin-top:2px}
+#alimentation .pa-reperes span{position:absolute;transform:translateX(-50%)}
+#alimentation .pa-alerte{background:#fff3e3;border-left:4px solid #c7832f;padding:6px 10px;border-radius:6px;margin:4px 0;font-size:.9rem}
+#alimentation .pa-ok{color:#2a7f62;font-size:.9rem;margin:4px 0}
+#alimentation .pa-liste{width:100%;border-collapse:collapse;font-size:.92rem;min-width:0!important;table-layout:auto!important}
+#alimentation .pa-liste td,#alimentation .pa-liste th{padding:7px 8px;border-bottom:1px solid #e1e8e3;text-align:left;width:auto!important}
+#alimentation .pa-pastille{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+#alimentation details.pa-modif summary{cursor:pointer;color:#1f654b;font-weight:600;list-style:none}
+#alimentation details.pa-modif summary::-webkit-details-marker{display:none}
+#alimentation .pa-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 12px;align-items:end;padding:10px 0}
+#alimentation .pa-form label{display:flex;flex-direction:column;gap:3px;font-size:.85rem;font-weight:600}
+#alimentation .pa-form input{width:100%;min-width:0}
+#alimentation .pa-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+<h2>Plans d’alimentation</h2>
+<p class="muted">Un plan par catégorie d’animaux. La frise montre ce qui est distribué jour après jour : deux barres superposées = aliments donnés en même temps (transition) ; une zone vide = rien de prévu. Le trait rouge pointillé marque la fin de période attendue d’après la conduite.</p>
+<datalist id="pa-categories">{% for c in categories_aliment %}<option value="{{ c.code }}">{{ c.libelle }}</option>{% endfor %}</datalist>
+{% for g in plans_groupes %}
+<div class="pa-groupe">
+  <h3>{{ g.libelle }} <small>{{ g.reference }}{% if g.fin_attendue is not none %} · jusqu’à J{{ g.fin_attendue }}{% endif %} · {{ g.lignes|length }} aliment(s)</small></h3>
+  <div class="pa-frise">
+    {% for l in g.lignes %}<div class="pa-piste"><div class="pa-barre pa-c{{ l.couleur }}" style="left:{{ l.gauche }}%;width:{{ l.largeur }}%" title="{{ l.aliment or 'Sans nom' }} · {{ l.jours }}">{{ l.aliment or '—' }}</div></div>{% endfor %}
+    {% if g.attendu_gauche is not none %}<div class="pa-attendu" style="left:0;width:{{ g.attendu_gauche }}%" title="Fin attendue : J{{ g.fin_attendue }}"></div>{% endif %}
+    <div class="pa-reperes">{% for r in g.reperes %}<span style="left:{{ r.gauche }}%">J{{ r.jour }}</span>{% endfor %}</div>
+  </div>
+  {% for a in g.alertes %}<div class="pa-alerte">⚠ {{ a }}</div>{% else %}<p class="pa-ok">✓ Toute la période est couverte.</p>{% endfor %}
+  <table class="pa-liste"><thead><tr><th>Jours</th><th>Aliment</th><th>Quantité</th><th></th></tr></thead><tbody>
+  {% for l in g.lignes %}
+  <tr><td style="white-space:nowrap"><span class="pa-pastille pa-c{{ l.couleur }}"></span><b>{{ l.jours }}</b></td>
+    <td>{{ l.aliment or '—' }}{% if l.note %}<br><small class="muted">{{ l.note }}</small>{% endif %}</td>
+    <td>{% if l.quantite %}{{ l.quantite|decimal1 }} {{ l.unite or '' }}{% elif l.unite and 'volont' in l.unite %}à volonté{% else %}<small class="muted">à préciser</small>{% endif %}</td>
+    <td>
+      <details class="pa-modif"><summary>Modifier</summary>
+        <form method="post" action="/parametres/aliment/{{ l.id }}/modifier" class="pa-form">
+          <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+          <input type="hidden" name="ordre" value="{{ l.ordre }}">
+          <label>Catégorie<input name="categorie" value="{{ l.categorie }}" list="pa-categories" required></label>
+          <label>Du jour<input type="number" name="jour_debut" min="0" value="{{ l.jour_debut }}"></label>
+          <label>Au jour<input type="number" name="jour_fin" min="0" value="{{ l.jour_fin }}"></label>
+          <label>Aliment<input name="aliment" value="{{ l.aliment or '' }}"></label>
+          <label>Quantité<input name="quantite" inputmode="decimal" value="{{ l.quantite or '' }}" placeholder="vide = à volonté"></label>
+          <label>Unité<input name="unite" value="{{ l.unite or 'kg/j' }}" list="pa-unites"></label>
+          <label>Note<input name="note" value="{{ l.note or '' }}"></label>
+          <div class="pa-actions"><button>Enregistrer</button></div>
+        </form>
+        <form method="post" action="/parametres/aliment/{{ l.id }}/supprimer" onsubmit="return confirm('Supprimer {{ l.aliment or 'cette ligne' }} ({{ l.jours }}) ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer cette ligne</button></form>
+      </details>
+    </td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% else %}<p class="muted">Aucun plan d’alimentation enregistré.</p>{% endfor %}
+<datalist id="pa-unites"><option value="kg/j"><option value="à volonté"><option value="g/j"><option value="L/j"></datalist>
+<details class="pa-groupe"><summary><b>+ Ajouter un aliment à un plan</b></summary>
+<form class="pa-form" method="post" action="/parametres/aliment/ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Catégorie<input name="categorie" list="pa-categories" placeholder="ex. porcelet" required></label>
+  <label>Du jour<input type="number" name="jour_debut" min="0" required></label>
+  <label>Au jour<input type="number" name="jour_fin" min="0" required></label>
+  <label>Aliment<input name="aliment" required></label>
+  <label>Quantité<input name="quantite" inputmode="decimal" placeholder="vide = à volonté"></label>
+  <label>Unité<input name="unite" value="kg/j" list="pa-unites"></label>
+  <div class="pa-actions"><button>Ajouter</button></div>
+</form></details>
+</section>
 <section class="card" id="causes"><h2>Causes de perte</h2>{% for c in causes %}<form class="rust-actions" method="post" action="/cause/{{ c.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><span>{{ c.libelle }}</span><button class="ghost danger">Supprimer</button></form>{% endfor %}<form class="rust-actions" method="post" action="/cause/ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="libelle" required placeholder="Nouvelle cause"><button>Ajouter</button></form></section>
 <section class="card" id="demo"><h2>Données de démonstration</h2><p>{% if demo_actif %}Le jeu de démonstration est actif (plus de 850 truies, engraissement réparti sur place et chez un prestataire extérieur, 5 ans d'historique de bandes). Seules les lignes inscrites dans son manifeste seront supprimées.{% else %}Le jeu de démonstration est inactif. Le créer génère plus de 850 truies actives et 5 ans d'historique de bandes — peut prendre une dizaine de secondes.{% endif %}</p><form method="post" action="/parametres/demo"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button>{% if demo_actif %}Retirer la démonstration{% else %}Créer la démonstration{% endif %}</button></form></section>
 {% endblock %}

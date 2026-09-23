@@ -37,6 +37,7 @@ mod historique_truie;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
+mod plans_aliment;
 mod rapport;
 #[cfg(test)]
 mod regression_tests;
@@ -13233,6 +13234,15 @@ async fn parametres(
     ctx.insert("parametres".into(), Value::Array(params));
     ctx.insert("infos".into(), Value::Object(infos));
     ctx.insert("reglages".into(), Value::Array(settings));
+    let calendrier = load_band_schedule(&state.pool).await?;
+    ctx.insert(
+        "plans_groupes".into(),
+        Value::Array(plans_aliment::grouper(&feed, calendrier)),
+    );
+    ctx.insert(
+        "categories_aliment".into(),
+        json!(plans_aliment::categories_connues()),
+    );
     ctx.insert("plans_aliment".into(), Value::Array(feed));
     ctx.insert("causes".into(), Value::Array(causes));
     // Aucun repli : tant que la conduite n'a pas été choisie, le formulaire le
