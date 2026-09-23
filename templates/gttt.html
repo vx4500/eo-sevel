@@ -1,26 +1,50 @@
 {% extends "base.html" %}
 {% block title %}GTTT · EO_Sevel{% endblock %}
 {% block content %}
-<h1>GTTT</h1>
-<p>Une seule méthode est utilisée ici, dans Productivité et sur les fiches de bandes. Le taux de mort-nés utilise les mort-nés réels sur les nés totaux ; la mortalité sous la mère tient compte des adoptés et retirés.</p>
+<style>
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff}
+  .no-print,#page-alert{display:none!important}
+  .gttt-print-entete{display:block!important}
+  .rust-scroll{overflow:visible!important}
+  table{width:100%;font-size:9.5pt;border-collapse:collapse}
+  thead{display:table-header-group}
+  tr,section,.card{break-inside:avoid;page-break-inside:avoid}
+  h1{font-size:16pt;margin:0 0 6px}
+  h2{font-size:13pt;margin:14px 0 4px;break-after:avoid}
+  p,.help{font-size:9pt;margin:3px 0}
+  a{color:#000;text-decoration:none}
+  th,td{padding:3px 5px;border:1px solid #bbb}
+  th{background:#eee;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}
+.gttt-print-entete{display:none}
+.gttt-titre{color:#a15a17;border-bottom:1px solid #eadfce;padding-bottom:2px}
+</style>
+<div class="no-print rust-actions" style="justify-content:flex-end"><button type="button" onclick="window.print()">Imprimer le GTTT</button></div>
+<p class="gttt-print-entete">GTTT — {{ nom_elevage or '' }}</p>
+<h1>GTTT — Gestion Technique des Troupeaux de Truies</h1>
+<section class="card"><h2 style="margin:0">{{ nom_elevage or 'GTTT' }}</h2>
+<p class="help">{% if bande_selectionnee %}Bande {{ bande_selectionnee }}{% else %}Tout le cheptel{% endif %} · trois périodes consécutives de {{ mois }} mois, la plus récente d'abord. Les portées sans date de bande ne sont jamais rattachées à une période{% if portees_sans_date %} ({{ portees_sans_date }} exclue(s)){% endif %}.</p></section>
 
-<nav class="rust-actions"><span>Période :</span>{% for p in [6,12,24,36,60,120] %}<a class="{% if p == mois %}rust-badge{% endif %}" href="/gttt?mois={{ p }}{% if bande_selectionnee %}&bande={{ bande_selectionnee }}{% endif %}">{{ p }} mois</a>{% endfor %}</nav>
-<form class="card rust-actions" method="get" action="/gttt"><input type="hidden" name="mois" value="{{ mois }}"><label>Bande<select name="bande"><option value="">Tout le cheptel</option>{% for code in codes_bandes %}<option value="{{ code }}" {% if code == bande_selectionnee %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label><button>Appliquer</button>{% if bande_selectionnee %}<a href="/gttt?mois={{ mois }}">Retirer le filtre</a>{% endif %}</form>
-<p class="muted">Période depuis le {{ periode_debut|date_fr }}. Les portées sans date de bande ne sont jamais rattachées artificiellement à une période.{% if portees_sans_date %} {{ portees_sans_date }} portée(s) sans date sont exclues.{% endif %}</p>
+<nav class="rust-actions no-print"><span>Longueur de chaque période :</span>{% for p in [6,12,24,36,60,120] %}<a class="{% if p == mois %}rust-badge{% endif %}" href="/gttt?mois={{ p }}{% if bande_selectionnee %}&bande={{ bande_selectionnee }}{% endif %}">{{ p }} mois</a>{% endfor %}</nav>
+<form class="card rust-actions no-print" method="get" action="/gttt"><input type="hidden" name="mois" value="{{ mois }}"><label>Bande<select name="bande"><option value="">Tout le cheptel</option>{% for code in codes_bandes %}<option value="{{ code }}" {% if code == bande_selectionnee %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label><button>Appliquer</button>{% if bande_selectionnee %}<a href="/gttt?mois={{ mois }}">Retirer le filtre</a>{% endif %}</form>
 
-<div class="rust-grid">
-  <div class="card"><h3>Portées</h3><strong>{{ synthese.portees }}</strong></div>
-  <div class="card"><h3>Truies productives</h3><strong>{{ synthese.truies_productives }}</strong></div>
-  <div class="card"><h3>Nés totaux / portée</h3><strong>{{ synthese.nes_totaux_moy or '—' }}</strong></div>
-  <div class="card"><h3>Nés vifs / portée</h3><strong>{{ synthese.nes_vifs_moy or '—' }}</strong></div>
-  <div class="card"><h3>Sevrés / portée</h3><strong>{{ synthese.sevres_moy or '—' }}</strong></div>
-  <div class="card"><h3>Total sevrés</h3><strong>{{ synthese.total_sevres }}</strong></div>
-  <div class="card"><h3>Taux de mort-nés</h3><strong>{{ synthese.taux_mortnes or '—' }} %</strong></div>
-  <div class="card"><h3>Mortalité sous la mère</h3><strong>{{ synthese.mortalite_allaitement or '—' }} %</strong></div>
-  <div class="card"><h3>Portées / truie / an</h3><strong>{{ synthese.portees_truie_an or '—' }}</strong></div>
-  <div class="card"><h3>Sevrés / truie productive / an</h3><strong>{{ synthese.sevres_truie_an or '—' }}</strong>{% if synthese.periode_jours %}<p>{{ synthese.periode_jours }} jours réellement couverts</p>{% endif %}</div>
-</div>
+{% set lignes = [
+ ['Portées', 'portees', ''], ['Truies productives', 'truies_productives', ''],
+ ['Nés totaux / portée', 'nes_totaux_moy', ''], ['Nés vifs / portée', 'nes_vifs_moy', ''],
+ ['Taux de mort-nés', 'taux_mortnes', ' %'], ['Sevrés / portée', 'sevres_moy', ''],
+ ['Mortalité sous la mère', 'mortalite_allaitement', ' %'], ['Durée de gestation', 'gestation_moy', ' j'],
+ ['Total nés vifs', 'total_nes_vifs', ''], ['Total sevrés', 'total_sevres', ''],
+ ['Portées / truie / an', 'portees_truie_an', ''], ['Sevrés / truie productive / an', 'sevres_truie_an', '']] %}
+<h2 class="gttt-titre">Résultats de reproduction</h2>
+<div class="rust-scroll"><table><thead><tr><th>Indicateur</th>{% for c in colonnes %}<th>{{ c.debut|date_fr }}<br>{{ c.fin|date_fr }}</th>{% endfor %}</tr></thead><tbody>
+{% for l in lignes %}<tr><td>{{ l[0] }}</td>{% for s in syntheses %}{% set v = s[l[1]] %}<td>{% if v is not none %}<b>{{ v }}</b>{{ l[2] }}{% else %}—{% endif %}</td>{% endfor %}</tr>{% endfor %}
+</tbody></table></div>
 
-<section class="card"><h2>Résultats par bande</h2><div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Total sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th></tr></thead><tbody>{% for row in bandes %}<tr><td><a href="/gttt?mois={{ mois }}&bande={{ row.bande }}"><b>{{ row.bande }}</b></a></td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.total_sevres }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée datée sur cette période</td></tr>{% endfor %}</tbody></table></div></section>
-<section class="card"><h2>Résultats par rang de portée</h2><div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th><th>Gestation</th></tr></thead><tbody>{% for row in rangs %}<tr><td>{{ row.rang }}</td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td><td>{{ row.gestation_moy or '—' }} j</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée importée</td></tr>{% endfor %}</tbody></table></div></section>
+<h2 class="gttt-titre">Résultats par bande (période la plus récente)</h2>
+<div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Total sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th></tr></thead><tbody>{% for row in bandes %}<tr><td><a href="/gttt?mois={{ mois }}&bande={{ row.bande }}"><b>{{ row.bande }}</b></a></td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.total_sevres }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée datée sur cette période</td></tr>{% endfor %}</tbody></table></div>
+
+<h2 class="gttt-titre">Résultats par rang de portée (période la plus récente)</h2>
+<div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th><th>Gestation</th></tr></thead><tbody>{% for row in rangs %}<tr><td>{{ row.rang }}</td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td><td>{{ row.gestation_moy or '—' }} j</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

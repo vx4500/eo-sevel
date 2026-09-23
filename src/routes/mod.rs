@@ -5441,48 +5441,70 @@ async fn gttt(
         .iter()
         .filter(|litter| litter.farrowing_date.is_none())
         .count();
-    let period_start =
-        Local::now().date_naive() - Duration::days((months as f64 * 30.44).round() as i64);
-    let period_litters = all_litters
-        .into_iter()
-        .filter(|litter| {
-            litter
-                .farrowing_date
-                .is_some_and(|date| date >= period_start)
-        })
-        .collect::<Vec<_>>();
-    let mut band_codes = period_litters
+    let today = Local::now().date_naive();
+    let span = (months as f64 * 30.44).round() as i64;
+    let period_start = today - Duration::days(span);
+    let mut band_codes = all_litters
         .iter()
+        .filter(|litter| litter.farrowing_date.is_some_and(|date| date >= period_start))
         .filter_map(|litter| litter.band.clone())
         .collect::<Vec<_>>();
     band_codes.sort();
     band_codes.dedup();
-    let litters = period_litters
-        .iter()
-        .filter(|litter| {
-            selected_band
+    let in_range = |litter: &GtttLitter, from: NaiveDate, to: NaiveDate| {
+        litter
+            .farrowing_date
+            .is_some_and(|date| date >= from && date <= to)
+            && selected_band
                 .as_deref()
                 .is_none_or(|band| litter.band.as_deref() == Some(band))
-        })
+    };
+    let mut columns = Vec::new();
+    let mut summaries = Vec::new();
+    for index in 0..3i64 {
+        let to = today - Duration::days(span * index);
+        let from = today - Duration::days(span * (index + 1)) + Duration::days(1);
+        let rows = all_litters
+            .iter()
+            .filter(|litter| in_range(litter, from, to))
+            .cloned()
+            .collect::<Vec<_>>();
+        summaries.push(gttt_summary(&rows));
+        columns.push(json!({
+            "debut": from.format("%Y-%m-%d").to_string(),
+            "fin": to.format("%Y-%m-%d").to_string(),
+        }));
+    }
+    let litters = all_litters
+        .iter()
+        .filter(|litter| in_range(litter, period_start, today))
         .cloned()
         .collect::<Vec<_>>();
-    let summary = gttt_summary(&litters);
     let rank_rows = gttt_rank_rows(&litters)?;
     let mut band_rows = Vec::with_capacity(band_codes.len());
     for code in &band_codes {
-        let rows = period_litters
+        let rows = all_litters
             .iter()
-            .filter(|litter| litter.band.as_deref() == Some(code.as_str()))
+            .filter(|litter| {
+                litter.band.as_deref() == Some(code.as_str())
+                    && litter.farrowing_date.is_some_and(|date| date >= period_start)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let mut value = serde_json::to_value(gttt_summary(&rows)).unwrap_or_default();
         json_object_mut(&mut value, "la synthèse GTTT")?.insert("bande".into(), json!(code));
         band_rows.push(value)
     }
+    let nom_elevage: Option<String> =
+        sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='nom_elevage'")
+            .fetch_optional(&state.pool)
+            .await?;
     let mut ctx = context(&session);
+    ctx.insert("nom_elevage".into(), json!(nom_elevage));
+    ctx.insert("colonnes".into(), Value::Array(columns));
     ctx.insert(
-        "synthese".into(),
-        serde_json::to_value(summary).unwrap_or_default(),
+        "syntheses".into(),
+        serde_json::to_value(summaries).unwrap_or_default(),
     );
     ctx.insert("rangs".into(), Value::Array(rank_rows));
     ctx.insert("bandes".into(), Value::Array(band_rows));
@@ -11867,6 +11889,7 @@ async fn entretien_supprimer(
 /// la comparaison se fait sur la forme normalisée (`normalize_death_stage`),
 /// pas sur le texte brut.
 async fn mortalites_suspectes_recurrentes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    #[allow(clippy::type_complexity)]
     let rows: Vec<(Option<String>, Option<String>, Option<String>, Option<String>, i64)> = sqlx::query_as(
         "SELECT d.stade,d.cause,d.bande_code,b.date_mb,d.nombre FROM declarationmort d LEFT JOIN bande b ON b.code=d.bande_code WHERE d.bande_code IS NOT NULL AND trim(d.bande_code)<>'' AND d.stade IS NOT NULL AND trim(d.stade)<>''",
     )

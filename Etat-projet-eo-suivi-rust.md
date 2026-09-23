@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.4** — Dernière mise à jour de ce document : 20 septembre 2026.
+Version actuelle : **2.15.5** — Dernière mise à jour de ce document : 20 septembre 2026.
+
+### Version 2.15.5 — GTTT imprimable sur trois périodes
+
+Version Rust 2.15.5 : `/gttt` reprend la présentation du GTE (bouton Imprimer, A4 paysage, en-tête avec le nom de l'élevage, trois périodes consécutives côte à côte). Les indicateurs ISSF, IDSR et taux de réforme du modèle Cooperl restent à faire.
 
 ### Version 2.15.4 — GTE refondu sur le modèle Cooperl (3 périodes + coûts)
 
