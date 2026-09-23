@@ -1430,11 +1430,30 @@ pub(super) async fn saisie_rapide(
                     "Sélectionnez une cause configurée".into(),
                 ));
             }
-            let stade = form_text(&form, "stade").map(|s| super::normalize_death_stage(&s));
-            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,NULL,?,?,?,?,?)")
+            // Case facultative : elle situe la perte et la retire de
+            // l'effectif de la case ; le stade se déduit alors de la salle.
+            let case_id = form_i64(&form, "case_id");
+            if let Some(case_id) = case_id {
+                let existe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM casesalle WHERE id=?")
+                    .bind(case_id)
+                    .fetch_one(&state.pool)
+                    .await?;
+                if existe == 0 {
+                    return Err(AppError::Invalid("Case introuvable".into()));
+                }
+            }
+            let stade_case = match case_id {
+                Some(case_id) => stade_from_case(&state.pool, case_id).await?,
+                None => None,
+            };
+            let stade = form_text(&form, "stade")
+                .or(stade_case)
+                .map(|s| super::normalize_death_stage(&s));
+            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?)")
                 .bind(&band)
                 .bind(&date)
                 .bind(stade)
+                .bind(case_id)
                 .bind(&cause)
                 .bind(form_f64(&form, "poids"))
                 .bind(number)

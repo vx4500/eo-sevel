@@ -422,7 +422,7 @@
     <button type="button" class="fab-t" data-type="chaleur">Chaleur</button>
     <button type="button" class="fab-t" data-type="mise_bas">Mise-bas</button>
     <button type="button" class="fab-t" data-type="perte">Perte porc et porcelet</button>
-    <button type="button" class="fab-t" data-type="perte_bande">Perte porc après maternité</button>
+    <button type="button" class="fab-t" data-type="perte_bande">Perte porc</button>
     <button type="button" class="fab-t" data-type="sortie">Sortie truie</button>
     <button type="button" class="fab-t" data-type="mouvement">Mouvement</button>
     <button type="button" class="fab-t" data-type="sevrage">Sevrage</button>
@@ -512,9 +512,12 @@
       </details>
     </div>
     <div class="fab-f" data-for="perte_bande" hidden>
-      <p class="help">Pour les porcs sortis de maternité : choisissez uniquement la bande. La perte est rattachée à la bande, sans case obligatoire.</p>
+      <p class="help">Porcs sortis de maternité : choisissez la bande, puis la case si vous la connaissez (les cases de la bande sont proposées en premier).</p>
       <label>Numéro de bande
         <select name="bande_id" id="fab-bande-perte-porc" disabled required><option value="">Chargement…</option></select>
+      </label>
+      <label>Case <small>(facultatif)</small>
+        <select name="case_id" id="fab-case-perte-porc" disabled><option value="">— case non précisée —</option></select>
       </label>
       <label>Nombre de porcs<input name="nombre" inputmode="numeric" value="1" min="1" disabled required></label>
       <label>Cause
@@ -621,6 +624,29 @@
   var sowLabel=document.getElementById('fab-truie-label');
   var band=document.getElementById('fab-bande');
   var bandPigLoss=document.getElementById('fab-bande-perte-porc');
+  // Perte porc : cases de la bande choisie en premier, puis les autres.
+  var casePigLoss=document.getElementById('fab-case-perte-porc');
+  function remplirCasesPertePorc(){
+    if(!casePigLoss) return;
+    var toutes=(typeof movementCases!=='undefined' && movementCases)?movementCases:[];
+    var choix=casePigLoss.value;
+    function libelle(r){ return [r.site,r.salle,r.nom].filter(Boolean).join(' · '); }
+    function remplir(ids){
+      casePigLoss.replaceChildren(new Option('— case non précisée —',''));
+      var bande=document.createElement('optgroup'); bande.label='Cases de la bande';
+      var autres=document.createElement('optgroup'); autres.label=ids.length?'Autres cases':'Toutes les cases';
+      toutes.forEach(function(r){ (ids.indexOf(String(r.id))>=0?bande:autres).appendChild(new Option(libelle(r),String(r.id))); });
+      if(bande.children.length) casePigLoss.appendChild(bande);
+      if(autres.children.length) casePigLoss.appendChild(autres);
+      casePigLoss.value=choix;
+    }
+    if(!bandPigLoss.value){ remplir([]); return; }
+    fetch('/api/bande/'+encodeURIComponent(bandPigLoss.value)+'/cases',{credentials:'same-origin'})
+      .then(function(r){ return r.ok?r.json():[]; })
+      .then(function(rows){ remplir((rows||[]).map(function(r){ return String(r.id); })); })
+      .catch(function(){ remplir([]); });
+  }
+  if(bandPigLoss) bandPigLoss.addEventListener('change', remplirCasesPertePorc);
   var noteWrap=document.getElementById('fab-note-wrap');
   var note=document.getElementById('fab-note');
   var source=document.getElementById('fab-source');
@@ -807,7 +833,7 @@
     caps.forEach(function(c){ capMap[String(c.id)] = c; });
     var select=document.getElementById('fab-case'); select.replaceChildren(new Option('— aucune / sous la mère —',''));
     destination.replaceChildren(new Option('— sélectionner —',''));
-    movementCases=rows; refreshMovementSources();
+    movementCases=rows; refreshMovementSources(); remplirCasesPertePorc();
     rows.forEach(function(row){
       var label=[row.site,row.salle,row.nom].filter(Boolean).join(' · ');
       var opt1 = new Option(label,text(row.id));

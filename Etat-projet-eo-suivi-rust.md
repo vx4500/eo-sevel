@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.19.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.19.1** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.19.1 — Saisie rapide « Perte porc » avec case
+
+Version Rust 2.19.1 : le bouton de saisie rapide « Perte porc après maternité » devient « Perte porc » et propose une case facultative (cases de la bande d'abord, via `/api/bande/{id}/cases`, puis les autres). La case est enregistrée dans `declarationmort.case_id` (effectif de la case décompté) et le stade est déduit de la salle.
 
 ### Version 2.19.0 — Truie vide, bandes avec truies / sevrées
 
