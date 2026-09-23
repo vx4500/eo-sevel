@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.19.1** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.19.2** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.19.2 — IA toujours rattachées à la bande
+
+Version Rust 2.19.2 : une IA (ou chaleur) saisie sur une truie sans bande — cas normal juste après le sevrage — est rattachée à la bande active dont l'IA prévue tombe à 10 jours près (`bande_pour_ia`). Quand une truie est affectée à une bande (fiche truie, affectation groupée, déplacement depuis la fiche bande), ses IA, chaleurs et échos du cycle en cours restés sans bande y sont rattachés (`rattacher_cycle_a_la_bande`). Données corrigées le 23/09 : 64 IA/chaleurs de B2.33 (30 truies) rattachées ; la bande affichait « 1/1 IA, 100 % » au lieu de 30 IA, 19 pleines (63 %).
 
 ### Version 2.19.1 — Saisie rapide « Perte porc » avec case
 

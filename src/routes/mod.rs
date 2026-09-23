@@ -1116,6 +1116,56 @@ fn economic_amount(form: &HashMap<String, String>, key: &str) -> Option<f64> {
     })
 }
 
+/// Bande d'une insémination (ou chaleur) : celle de la truie, sinon la bande
+/// active dont l'IA prévue (mise-bas − gestation) tombe à 10 jours près.
+/// Une truie juste sevrée n'a plus de bande au moment de l'IA : sans ce
+/// repli, l'IA restait sans bande et faussait « réussite à l'écho »
+/// (B2.33, août 2026 : 1/1 IA affiché pour 30 truies inséminées).
+pub(crate) async fn bande_pour_ia(
+    conn: &mut sqlx::SqliteConnection,
+    truie_id: i64,
+    date: &str,
+    gestation: i64,
+) -> AppResult<Option<i64>> {
+    let propre: Option<i64> = sqlx::query_scalar(
+        "SELECT b.id FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=? ORDER BY b.active DESC,b.id DESC LIMIT 1",
+    )
+    .bind(truie_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if propre.is_some() {
+        return Ok(propre);
+    }
+    Ok(sqlx::query_scalar(
+        "SELECT id FROM bande WHERE active=1 AND date_mb IS NOT NULL AND trim(date_mb)<>'' \
+         AND abs(julianday(date(date_mb,printf('-%d day',?1))) - julianday(?2)) <= 10 \
+         ORDER BY abs(julianday(date(date_mb,printf('-%d day',?1))) - julianday(?2)) LIMIT 1",
+    )
+    .bind(gestation)
+    .bind(date)
+    .fetch_optional(&mut *conn)
+    .await?)
+}
+
+/// Quand une truie est affectée à une bande, ses IA, chaleurs et échos du
+/// cycle en cours restés sans bande y sont rattachés.
+pub(crate) async fn rattacher_cycle_a_la_bande(
+    conn: &mut sqlx::SqliteConnection,
+    truie_id: i64,
+) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE evenement SET bande_id=(SELECT b.id FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=?1 ORDER BY b.active DESC,b.id DESC LIMIT 1) \
+         WHERE truie_id=?1 AND bande_id IS NULL AND type IN ('ia','chaleur','echo','echographie') \
+         AND date>=date('now','-60 day') \
+         AND date>=COALESCE((SELECT MAX(date) FROM evenement WHERE truie_id=?1 AND type IN ('sevrage','mise_bas') AND date<=date('now')),'0000-00-00') \
+         AND EXISTS(SELECT 1 FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=?1)",
+    )
+    .bind(truie_id)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
 fn form_selected_ids(form: &HashMap<String, String>, prefix: &str) -> Vec<i64> {
     let mut ids: Vec<i64> = form
         .keys()
@@ -3217,6 +3267,9 @@ async fn bande_truies_saisie(
                 .bind(truie_id)
                 .execute(&mut *tx)
                 .await?;
+            if bande_code.is_some() {
+                rattacher_cycle_a_la_bande(&mut tx, *truie_id).await?;
+            }
         }
         tx.commit().await?;
         return Ok(Redirect::to(&retour).into_response());
@@ -3499,6 +3552,7 @@ async fn truies_affecter_bande(
         .bind(id)
         .execute(&mut *tx)
         .await?;
+        rattacher_cycle_a_la_bande(&mut tx, id).await?;
     }
     tx.commit().await?;
     let retour = if form.get("retour").is_some_and(|value| value == "/attente") {
@@ -3710,6 +3764,7 @@ async fn truie_bande(
         .bind(id)
         .execute(&state.pool)
         .await?;
+    rattacher_cycle_a_la_bande(&mut *state.pool.acquire().await?, id).await?;
     Ok(Redirect::to(&format!("/truie/{id}")).into_response())
 }
 
@@ -4585,12 +4640,7 @@ async fn inseminations_enregistrer(
     let mut tx = state.pool.begin().await?;
     let mut bandes_touchees = HashSet::new();
     for id in ids {
-        let band_id: Option<i64> = sqlx::query_scalar(
-            "SELECT b.id FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=? ORDER BY b.active DESC,b.id DESC LIMIT 1",
-        )
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let band_id = bande_pour_ia(&mut tx, id, &date, schedule.gestation).await?;
         sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,produit,nb_doses,creneaux_ia,note,suivi_actif) VALUES('ia',?,?,?,?,?,?,?,0)")
             .bind(&date)
             .bind(id)

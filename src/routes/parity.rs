@@ -1639,7 +1639,12 @@ pub(super) async fn saisie_rapide(
         "ia" | "echo" | "chaleur" => {
             let sow_id = form_i64(&form, "truie_id")
                 .ok_or_else(|| AppError::Invalid("Truie obligatoire".into()))?;
-            let band_id = sow_band(&state.pool, sow_id).await?;
+            let band_id = if kind == "ia" || kind == "chaleur" {
+                let gestation = load_band_schedule(&state.pool).await?.gestation;
+                bande_pour_ia(&mut *state.pool.acquire().await?, sow_id, &date, gestation).await?
+            } else {
+                sow_band(&state.pool, sow_id).await?
+            };
             let slots = ia_slots(&form);
             if kind == "ia" && slots.is_empty() {
                 return Err(AppError::Invalid(

@@ -761,6 +761,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ia_sans_bande_rattachee_par_la_date_puis_par_affectation() -> anyhow::Result<()> {
+        let state = elevage().await;
+        // Bande dont l'IA prévue tombe aujourd'hui (gestation par défaut 115 j).
+        sqlx::raw_sql(
+            "INSERT INTO bande(id,code,date_mb,active) VALUES(2,'B2.33',date('now','+115 day'),1); \
+             INSERT INTO truie(id,num_travail,rang) VALUES(5,'T5',2);",
+        )
+        .execute(&state.pool)
+        .await?;
+        let mut conn = state.pool.acquire().await?;
+        let aujourd_hui = today_iso();
+        assert_eq!(
+            bande_pour_ia(&mut conn, 5, &aujourd_hui, 115).await?,
+            Some(2)
+        );
+        // Loin de toute date d'IA prévue : pas de bande inventée.
+        assert_eq!(bande_pour_ia(&mut conn, 5, "2020-01-01", 115).await?, None);
+        // IA saisie sans bande, puis truie affectée à la bande : rattachée.
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES('ia',date('now','-3 day'),5,0)")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("UPDATE truie SET bande_code='B2.33' WHERE id=5")
+            .execute(&mut *conn)
+            .await?;
+        rattacher_cycle_a_la_bande(&mut conn, 5).await?;
+        let bande: Option<i64> =
+            sqlx::query_scalar("SELECT bande_id FROM evenement WHERE truie_id=5 AND type='ia'")
+                .fetch_one(&mut *conn)
+                .await?;
+        assert_eq!(bande, Some(2));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn ecart_en_perte_sevrage_et_sortie_de_bande() -> anyhow::Result<()> {
         let state = elevage().await;
         // T1 : 13 nés vifs − 1 perte = 12 présents, 10 comptés → écart de 2.
