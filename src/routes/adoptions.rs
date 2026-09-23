@@ -181,7 +181,7 @@ pub(super) async fn sortie_nourrice(
                 "Capacité dépassée dans la case de post-sevrage".into(),
             ));
         }
-        event_id = Some(sqlx::query("INSERT INTO evenement(type,date,bande_id,nb_sevres,case_id,note) VALUES('sevrage',?,?,?,?, 'Sevrage de nourrice artificielle')")
+        event_id = Some(sqlx::query("INSERT INTO evenement(type,date,bande_id,nb_sevres,case_id,note,suivi_actif) VALUES('sevrage',?,?,?,?, 'Sevrage de nourrice artificielle',0)")
             .bind(&date).bind(band_id).bind(nombre).bind(source).execute(&mut *tx).await?.last_insert_rowid());
         movement_id = Some(sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,salle_dest_id,case_source_id,case_dest_id,nombre,note) VALUES(?,'porc',?,(SELECT salle_id FROM casesalle WHERE id=?),?,?,?,?, 'Sevrage de nourrice artificielle')")
             .bind(&date).bind(band_id).bind(source).bind(room).bind(source).bind(destination).bind(nombre).execute(&mut *tx).await?.last_insert_rowid());

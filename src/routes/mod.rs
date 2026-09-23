@@ -41,6 +41,7 @@ mod rapport;
 #[cfg(test)]
 mod regression_tests;
 mod scan;
+mod sevrage;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
@@ -175,6 +176,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/bandes/{id}/modifier-rapide", post(bande_modifier_rapide))
         .route("/bande/{id}", get(bande_detail))
+        .route(
+            "/bande/{id}/sevrage",
+            get(sevrage::page).post(sevrage::enregistrer),
+        )
         .route("/bande/{id}/marquage", post(bande_marquage))
         .route("/bande/{id}/imprimer", get(bande_imprimer))
         .route("/bande/{id}/truies/saisie", post(bande_truies_saisie))
@@ -4091,7 +4096,7 @@ async fn maternite_sevrage(
                 "L’effectif a changé : rechargez la maternité avant de sevrer".into(),
             ));
         }
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,note) VALUES('sevrage',?,?,?,?,?)")
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,0)")
             .bind(&date).bind(sow_id).bind(band_id).bind(number).bind("Sevrage depuis le tableau maternité").execute(&mut *tx).await?;
         let source_room: Option<i64> = if let Some(source_id) = source {
             sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
@@ -6624,7 +6629,7 @@ mod reforme_indicateurs_tests {
             ("2026-01-24", "ia"),
             ("2026-02-14", "chaleur"), // retour n°2 (après l'IA du 24/01)
         ] {
-            sqlx::query("INSERT INTO evenement(type,date,truie_id) VALUES(?,?,?)")
+            sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES(?,?,?,0)")
                 .bind(kind)
                 .bind(date)
                 .bind(sow)
@@ -6647,7 +6652,7 @@ mod reforme_indicateurs_tests {
             ("2026-05-18", "mise_bas"), // clôture le cycle
             ("2026-06-01", "chaleur"),  // nouvelle chaleur, nouveau cycle : pas un retour
         ] {
-            sqlx::query("INSERT INTO evenement(type,date,truie_id) VALUES(?,?,?)")
+            sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES(?,?,?,0)")
                 .bind(kind)
                 .bind(date)
                 .bind(sow)
@@ -6670,7 +6675,7 @@ mod reforme_indicateurs_tests {
             ("2026-01-06", "ia"), // IA fécondante : 5 jours après le sevrage
             ("2026-05-01", "mise_bas"), // ~115 jours après l'IA du 06/01
         ] {
-            sqlx::query("INSERT INTO evenement(type,date,truie_id) VALUES(?,?,?)")
+            sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES(?,?,?,0)")
                 .bind(kind)
                 .bind(date)
                 .bind(sow)

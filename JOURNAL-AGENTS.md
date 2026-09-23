@@ -86,3 +86,17 @@ saisi au sevrage — les effectifs de porcs sont estimés (sevrés − morts −
 vendus) et l'homogénéité du poids au sevrage n'est pas calculable.
 Piège SQLx rencontré : un agrégat NULL (AVG/MIN sans ligne) lu en `f64` rend
 0.0, pas une erreur — toujours lire en `Option<T>`.
+
+### 2026-09-23 — claude — v2.18.0 sevrage par bande
+Demande d'Emmanuel : une page dans les bandes pour saisir le nombre de
+porcelets sevrés, et « une fois le sevrage confirmé, sortir les truies de la
+bande ». /bande/{id}/sevrage (src/routes/sevrage.rs) : écart compté → perte,
+porcelets répartis dans les cases de post-sevrage, truies hors bande et
+déplacées (verraterie proposée).
+**Bug de production trouvé et corrigé** : la base réelle (héritée de Python)
+a `evenement.suivi_actif` NOT NULL sans valeur par défaut. 17 INSERT de
+production l'omettaient (sevrages maternité / saisie rapide / fiche truie,
+IA, échos, chaleurs, imports, nourrice) et échouaient en production alors que
+les tests passaient. Un test (`chaque_saisie_d_evenement_renseigne_suivi_actif`)
+l'impose désormais. Toujours tester une écriture sur une copie de la base
+réelle, pas seulement sur la base de test.

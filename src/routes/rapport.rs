@@ -332,7 +332,11 @@ async fn actions_48h(
                         bande.code,
                         etape["nom"].as_str().unwrap_or("étape")
                     ),
-                    lien: format!("/bande/{}", bande.id),
+                    lien: if etape["nom"].as_str() == Some("Sevrage") {
+                        format!("/bande/{}/sevrage", bande.id)
+                    } else {
+                        format!("/bande/{}", bande.id)
+                    },
                 });
             }
         }

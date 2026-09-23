@@ -206,7 +206,7 @@ pub(super) async fn truie_sevrage(
         sqlx::query("UPDATE evenement SET date=?,nb_sevres=?,poids_moyen=?,adoptes=?,retires=?,eld_entree=?,eld_sortie=?,note=? WHERE id=?")
             .bind(&date).bind(weaned).bind(form_f64(&form,"poids_moyen")).bind(adopted).bind(removed).bind(form_f64(&form,"eld_entree")).bind(form_f64(&form,"eld_sortie")).bind(form_text(&form,"note")).bind(event_id).execute(&mut *tx).await?;
     } else {
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,adoptes,retires,eld_entree,eld_sortie,note) VALUES('sevrage',?,?,?,?,?,?,?,?,?,?)")
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,adoptes,retires,eld_entree,eld_sortie,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,?,?,?,?,?,0)")
             .bind(&date).bind(id).bind(band_id).bind(weaned).bind(form_f64(&form,"poids_moyen")).bind(adopted).bind(removed).bind(form_f64(&form,"eld_entree")).bind(form_f64(&form,"eld_sortie")).bind(form_text(&form,"note")).execute(&mut *tx).await?;
     }
     sqlx::query("UPDATE truie SET perf_sevres=?,perf_adoptes=?,perf_retires=?,bande_code=CASE WHEN date(?)<=date('now') AND bande_code=(SELECT code FROM bande WHERE id=?) THEN NULL ELSE bande_code END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
@@ -1629,7 +1629,7 @@ pub(super) async fn saisie_rapide(
             }
             let dose_count = (kind == "ia").then_some(slots.len() as i64);
             let slot_text = (!slots.is_empty()).then(|| slots.join(","));
-            sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,resultat,produit,nb_doses,creneaux_ia,note) VALUES(?,?,?,?,?,?,?,?,?)").bind(&kind).bind(date).bind(sow_id).bind(band_id).bind(form_text(&form,"resultat")).bind(form_text(&form,"produit")).bind(dose_count).bind(slot_text).bind(form_text(&form,"note")).execute(&state.pool).await?;
+            sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,resultat,produit,nb_doses,creneaux_ia,note,suivi_actif) VALUES(?,?,?,?,?,?,?,?,?,0)").bind(&kind).bind(date).bind(sow_id).bind(band_id).bind(form_text(&form,"resultat")).bind(form_text(&form,"produit")).bind(dose_count).bind(slot_text).bind(form_text(&form,"note")).execute(&state.pool).await?;
         }
         "sevrage" => {
             // traitement batch de sevrage depuis la saisie rapide
@@ -1738,7 +1738,7 @@ pub(super) async fn saisie_rapide(
                         "Ce sevrage existe déjà ; corrigez-le depuis la fiche de la truie".into(),
                     ));
                 } else {
-                    sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,note) VALUES('sevrage',?,?,?,?,?)").bind(&date).bind(sow_id).bind(band_id).bind(*nb).bind(form_text(&form,"note")).execute(&mut *tx).await?;
+                    sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,0)").bind(&date).bind(sow_id).bind(band_id).bind(*nb).bind(form_text(&form,"note")).execute(&mut *tx).await?;
                 }
                 // mettre à jour la truie (perf_sevres + potentiellement nettoyage bande_code)
                 sqlx::query(

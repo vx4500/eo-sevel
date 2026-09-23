@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.17.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.18.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.18.0 — Page de sevrage par bande
+
+Version Rust 2.18.0 (`src/routes/sevrage.rs`). `/bande/{id}/sevrage` : une ligne par portée non sevrée (nés vifs, adoptions, pertes déclarées, présents), nombre compté au sevrage prérempli, poids moyen facultatif. Un nombre inférieur aux présents enregistre l'écart en perte (cause choisie) avant le sevrage, dans la même transaction ; supérieur, il est refusé (adoption à saisir). Porcelets vers une case de post-sevrage (facultatif, capacité contrôlée) ; une fois le sevrage confirmé, les truies sortent de la bande (file « Prochaine IA ») et peuvent être déplacées vers une salle (verraterie proposée). Liens depuis la fiche bande, la liste de travail de la semaine et le Rapport.
 
 ### Version 2.17.0 — Conduite en bandes : calendrier, places et flux, analyse
 

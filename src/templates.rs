@@ -258,6 +258,10 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     )?;
     env.add_template("flux.html", include_str!("../templates/flux.html"))?;
     env.add_template(
+        "sevrage_bande.html",
+        include_str!("../templates/sevrage_bande.html"),
+    )?;
+    env.add_template(
         "analyse_bandes.html",
         include_str!("../templates/analyse_bandes.html"),
     )?;

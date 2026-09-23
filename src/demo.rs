@@ -257,7 +257,7 @@ pub async fn activer(tx: &mut Transaction<'_, Sqlite>) -> anyhow::Result<()> {
             let momifies = rng.gen_range(0..=1_i64);
             let nes_vifs = (nes_totaux - mort_nes - momifies).max(1);
             let mb_id = sqlx::query(
-                "INSERT INTO evenement(type,date,truie_id,bande_id,nes_totaux,nes_vifs,mort_nes,momifies,note) VALUES('mise_bas',?,?,?,?,?,?,?,?)",
+                "INSERT INTO evenement(type,date,truie_id,bande_id,nes_totaux,nes_vifs,mort_nes,momifies,note,suivi_actif) VALUES('mise_bas',?,?,?,?,?,?,?,?,0)",
             )
             .bind(date_mb.format("%Y-%m-%d").to_string())
             .bind(sow_id)
@@ -276,7 +276,7 @@ pub async fn activer(tx: &mut Transaction<'_, Sqlite>) -> anyhow::Result<()> {
             let date_sevrage = *date_mb + Duration::days(28);
             if date_sevrage <= today {
                 let sevrage_id = sqlx::query(
-                    "INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,note) VALUES('sevrage',?,?,?,?,?,?)",
+                    "INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,?,0)",
                 )
                 .bind(date_sevrage.format("%Y-%m-%d").to_string())
                 .bind(sow_id)

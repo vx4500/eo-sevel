@@ -718,7 +718,7 @@ async fn apply_row(
     insert_event!(
             "ia",
             str_field("date_ia").map(str::to_string),
-            "INSERT INTO evenement(type,date,truie_id,bande_id,produit,nb_doses,note) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO evenement(type,date,truie_id,bande_id,produit,nb_doses,note,suivi_actif) VALUES(?,?,?,?,?,?,?,0)",
             str_field("verrats"),
             int_field("nb_doses"),
             str_field("commentaire_ia"),
@@ -731,20 +731,20 @@ async fn apply_row(
     insert_event!(
         "echo",
         str_field("date_echo").map(str::to_string),
-        "INSERT INTO evenement(type,date,truie_id,bande_id,resultat) VALUES(?,?,?,?,?)",
+        "INSERT INTO evenement(type,date,truie_id,bande_id,resultat,suivi_actif) VALUES(?,?,?,?,?,0)",
         echo_resultat,
     );
     insert_event!(
         "retour",
         str_field("date_retour").map(str::to_string),
-        "INSERT INTO evenement(type,date,truie_id,bande_id,resultat,note) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO evenement(type,date,truie_id,bande_id,resultat,note,suivi_actif) VALUES(?,?,?,?,?,?,0)",
         str_field("type_retour"),
         str_field("commentaire_retour"),
     );
     insert_event!(
         "avortement",
         str_field("date_avortement").map(str::to_string),
-        "INSERT INTO evenement(type,date,truie_id,bande_id,note) VALUES(?,?,?,?,?)",
+        "INSERT INTO evenement(type,date,truie_id,bande_id,note,suivi_actif) VALUES(?,?,?,?,?,0)",
         str_field("commentaire_avortement"),
     );
     let mise_bas_note = [
@@ -760,7 +760,7 @@ async fn apply_row(
     insert_event!(
             "mise_bas",
             str_field("date_mise_bas").map(str::to_string),
-            "INSERT INTO evenement(type,date,truie_id,bande_id,nes_totaux,nes_vifs,mort_nes,momifies,adoptes,retires,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO evenement(type,date,truie_id,bande_id,nes_totaux,nes_vifs,mort_nes,momifies,adoptes,retires,note,suivi_actif) VALUES(?,?,?,?,?,?,?,?,?,?,?,0)",
             int_field("nt"),
             int_field("nv"),
             int_field("mn"),
@@ -782,7 +782,7 @@ async fn apply_row(
     insert_event!(
             "sevrage",
             str_field("date_dernier_sevrage").map(str::to_string),
-            "INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,note) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,note,suivi_actif) VALUES(?,?,?,?,?,?,?,0)",
             int_field("nb_sevres"),
             poids_moyen,
             sevrage_note.as_deref(),

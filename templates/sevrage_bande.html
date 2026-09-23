@@ -1,0 +1,132 @@
+{% extends "base.html" %}{% block title %}Sevrage {{ code }} · EO_Sevel{% endblock %}{% block content %}
+{% include "conduite_style.html" %}
+<style>
+.sv-table input[type=number]{width:74px;padding:6px;font-size:1rem;text-align:right}
+.sv-table input.poids{width:66px}
+.sv-table tr.ecart td{background:var(--cd-orange-fond)}
+.sv-table tr.trop td{background:var(--cd-rouge-fond)}
+.sv-table tr.off td{opacity:.45}
+.sv-total{position:sticky;bottom:0;background:#fff;border-top:2px solid var(--cd-vert);padding:12px 0;display:flex;gap:18px;align-items:center;flex-wrap:wrap;z-index:5}
+.sv-total b{font-size:1.3rem}
+.sv-total .ecart{color:var(--cd-orange);font-weight:700}
+.sv-total .trop{color:var(--cd-rouge);font-weight:800}
+.sv-reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 18px}
+.sv-reglages label{display:flex;flex-direction:column;gap:4px;font-weight:600}
+.sv-ok{background:#e6f4ec;border-left:5px solid #2a7f62;padding:10px 14px;border-radius:8px;margin:10px 0}
+</style>
+<div class="cd">
+<div class="cd-barre no-print"><a href="/bande/{{ bande_id }}">← Bande {{ code }}</a><a href="/maternite?bande_id={{ bande_id }}">Maternité</a><a href="/conduite">Calendrier</a></div>
+<h1>Sevrage de la bande {{ code }}</h1>
+<p class="note">Mise-bas le {{ date_mb|date_fr }}{% if prevu %} · sevrage prévu le {{ prevu|date_fr }}{% endif %}. Saisissez le nombre de porcelets <b>comptés</b> au sevrage pour chaque truie.</p>
+{% if ok %}<div class="sv-ok">✓ Sevrage enregistré pour {{ ok }} truie(s). Elles sont sorties de la bande {{ code }}.</div>{% endif %}
+
+{% if portees %}
+<form method="post" action="/bande/{{ bande_id }}/sevrage" id="sv-form">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<section class="cd-section">
+<div class="sv-reglages">
+  <label>Date du sevrage<input type="date" name="date" value="{{ date_proposee }}" max="{{ aujourd_hui }}" required></label>
+  <label>Porcelets vers le post-sevrage
+    <span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="cd-bouton" id="sv-repartir">Répartir automatiquement</button><button type="button" class="cd-bouton" id="sv-aucune">Aucune case</button></span>
+    <small class="note">{% for c in cases %}{{ c.libelle }} : {% if c.libres is not none %}{{ c.libres }} libres{% else %}capacité non réglée{% endif %}{% if not loop.last %} · {% endif %}{% else %}aucune case de post-sevrage déclarée{% endfor %}</small></label>
+  <label>Truies sevrées vers
+    <select name="salle_truies"><option value="">— ne pas déplacer —</option>
+    {% for s in salles_truies %}<option value="{{ s.id }}"{% if loop.first and s.verraterie %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
+  <label>Cause si des porcelets manquent
+    <select name="cause_ecart" id="sv-cause"><option value="">— à choisir s’il y a un écart —</option>
+    {% for c in causes %}<option{% if c == 'Autre' %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+</div>
+</section>
+
+<section class="cd-section">
+<div class="cd-scroll"><table class="sv-table">
+<thead><tr><th><input type="checkbox" id="sv-tout" checked title="Tout cocher"></th><th>Truie</th><th>Case</th><th class="n">Âge</th><th class="n">Nés vifs</th><th class="n">Adoptions</th><th class="n">Pertes déclarées</th><th class="n">Présents</th><th class="n">Sevrés</th><th class="n">Poids moyen (kg)</th><th>Case post-sevrage</th></tr></thead>
+<tbody>
+{% for p in portees %}
+{% set a_completer = not p.nv and not p.presents %}
+<tr data-presents="{{ p.presents }}"{% if a_completer %} class="off"{% endif %}>
+  <td><input type="checkbox" class="sv-sel" name="sel_{{ p.truie_id }}" value="1"{% if not a_completer %} checked{% endif %}></td>
+  <td><a href="/truie/{{ p.truie_id }}"><b>{{ p.num_travail }}</b></a> <small class="note">rg {{ p.rang or '?' }}</small>{% if a_completer %}<br><span class="cd-badge orange">mise-bas à compléter</span>{% endif %}</td>
+  <td>{{ p.salle or '—' }} {{ p.case_nom or '' }}</td>
+  <td class="n">J{{ p.age }}</td>
+  <td class="n">{{ p.nv or 0 }}</td>
+  <td class="n">{% set net = (p.adoptes or 0) - (p.retires or 0) %}{% if net > 0 %}+{{ net }}{% elif net < 0 %}{{ net }}{% else %}—{% endif %}</td>
+  <td class="n">{{ p.pertes or 0 }}</td>
+  <td class="n"><b>{{ p.presents }}</b></td>
+  <td class="n"><input type="number" class="sv-nb" name="nb_{{ p.truie_id }}" value="{{ p.presents }}" min="0" inputmode="numeric" required></td>
+  <td class="n"><input type="number" class="poids" name="poids_{{ p.truie_id }}" step="0.1" min="0" max="30" inputmode="decimal" placeholder="—"></td>
+  <td><select class="sv-case" name="case_{{ p.truie_id }}"><option value="">—</option>{% for c in cases %}<option value="{{ c.id }}" data-libres="{{ c.libres if c.libres is not none else 100000 }}">{{ c.libelle }}</option>{% endfor %}</select></td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+
+<div class="sv-total">
+  <span><b id="sv-truies">0</b> truie(s)</span>
+  <span><b id="sv-sevres">0</b> porcelets sevrés</span>
+  <span id="sv-moyenne" class="note"></span>
+  <span id="sv-ecart"></span>
+  <button type="submit" id="sv-valider">Confirmer le sevrage</button>
+</div>
+<p class="note">À la confirmation : le sevrage est enregistré pour chaque truie cochée ; s’il manque des porcelets par rapport aux présents, l’écart est enregistré en perte avec la cause choisie ; les porcelets passent dans la case indiquée ; <b>les truies sortent de la bande</b> (elles rejoignent la file « Prochaine IA ») et vont dans la salle choisie. Plus de porcelets que de présents = une adoption à enregistrer d’abord dans la Maternité.</p>
+</form>
+<script>
+(function(){
+  var form=document.getElementById('sv-form'); if(!form) return;
+  var rows=[].slice.call(form.querySelectorAll('tbody tr'));
+  function maj(){
+    var n=0,s=0,e=0,trop=0;
+    rows.forEach(function(r){
+      var on=r.querySelector('.sv-sel').checked, inp=r.querySelector('.sv-nb');
+      var p=+r.dataset.presents, v=inp.value===''?0:+inp.value;
+      inp.disabled=!on; r.querySelector('.poids').disabled=!on; r.querySelector('.sv-case').disabled=!on;
+      r.classList.toggle('off',!on); r.classList.toggle('ecart',on&&v<p); r.classList.toggle('trop',on&&v>p);
+      if(on){n++; s+=v; if(v<p) e+=p-v; if(v>p) trop++;}
+    });
+    document.getElementById('sv-truies').textContent=n;
+    document.getElementById('sv-sevres').textContent=s;
+    document.getElementById('sv-moyenne').textContent=n?('soit '+(s/n).toFixed(1).replace('.',',')+' par portée'):'';
+    var el=document.getElementById('sv-ecart');
+    if(trop){el.className='trop';el.textContent=trop+' truie(s) avec plus de sevrés que de présents : enregistrez l’adoption';}
+    else if(e){el.className='ecart';el.textContent=e+' porcelet(s) manquant(s) → enregistrés en perte';}
+    else {el.className='';el.textContent='';}
+    document.getElementById('sv-valider').disabled=!n||trop>0;
+  }
+  // Remplit les cases dans l'ordre, sans jamais couper une portée.
+  function repartir(){
+    var opts=[].slice.call((rows[0]||document).querySelectorAll('.sv-case option[value]:not([value=""])'));
+    var libres=opts.map(function(o){return {v:o.value,n:+o.dataset.libres};});
+    var i=0, manque=[];
+    rows.forEach(function(r){
+      if(!r.querySelector('.sv-sel').checked) return;
+      var n=+(r.querySelector('.sv-nb').value||0), sel=r.querySelector('.sv-case');
+      while(i<libres.length && libres[i].n<n) i++;
+      if(i<libres.length){sel.value=libres[i].v; libres[i].n-=n;} else {sel.value=''; manque.push(r.cells[1].textContent.trim().split(' ')[0]);}
+    });
+    if(manque.length) alert('Plus assez de places pour : '+manque.join(', ')+'. Libérez une case ou réglez les capacités.');
+  }
+  var btnR=document.getElementById('sv-repartir'); if(btnR) btnR.addEventListener('click',repartir);
+  var btnA=document.getElementById('sv-aucune'); if(btnA) btnA.addEventListener('click',function(){rows.forEach(function(r){r.querySelector('.sv-case').value='';});});
+  form.addEventListener('input',maj); form.addEventListener('change',maj);
+  document.getElementById('sv-tout').addEventListener('change',function(){var c=this.checked;rows.forEach(function(r){r.querySelector('.sv-sel').checked=c;});maj();});
+  form.addEventListener('submit',function(ev){
+    var n=document.getElementById('sv-truies').textContent, s=document.getElementById('sv-sevres').textContent;
+    var msg='Confirmer le sevrage de '+n+' truie(s), '+s+' porcelets ?\nLes truies sortiront de la bande {{ code }}.';
+    var e=document.getElementById('sv-ecart').textContent; if(e) msg+='\n'+e+' (cause : '+document.getElementById('sv-cause').value+')';
+    if(!confirm(msg)) ev.preventDefault();
+  });
+  maj();
+})();
+</script>
+{% else %}
+<section class="cd-section"><p class="vide">Aucune portée à sevrer dans cette bande{% if deja %} : toutes les truies sont sevrées{% endif %}.</p></section>
+{% endif %}
+
+{% if deja %}
+<section class="cd-section"><h2>Déjà sevrées <small>{{ deja|length }} truie(s) · {{ total_deja }} porcelets</small></h2>
+<div class="cd-scroll"><table><thead><tr><th>Date</th><th>Truie</th><th class="n">Sevrés</th><th class="n">Poids moyen</th></tr></thead><tbody>
+{% for d in deja %}<tr><td>{{ d.date|date_fr }}</td><td><a href="/truie/{{ d.truie_id }}">{{ d.num_travail }}</a></td><td class="n">{{ d.nb_sevres }}</td><td class="n">{{ (d.poids_moyen|decimal1 ~ ' kg') if d.poids_moyen else '—' }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endif %}
+</div>
+{% endblock %}

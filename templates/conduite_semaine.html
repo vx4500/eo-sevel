@@ -25,7 +25,7 @@
 <div class="tr-etape {{ t.code }}">
   <h3>{{ t.jour|capitalize }} {{ t.date|date_fr }} — {{ t.libelle }} · <a href="/bande/{{ t.bande_id }}">bande {{ t.bande }}</a></h3>
   {% if t.sur_truies %}
-    <p class="note">{{ t.truies|length }} truie(s) à faire{% if t.truies|length != t.prevus %} · {{ t.prevus }} prévue(s) d’après l’historique{% endif %}</p>
+    <p class="note">{{ t.truies|length }} truie(s) à faire{% if t.truies|length != t.prevus %} · {{ t.prevus }} prévue(s) d’après l’historique{% endif %}{% if t.code == 'sevrage' and t.truies and session.peut_modifier %} · <a class="no-print" href="/bande/{{ t.bande_id }}/sevrage"><b>Saisir le sevrage →</b></a>{% endif %}</p>
     {% if t.truies %}<div class="tr-grille">{% for tr in t.truies %}
       <div class="tr-truie"><span class="case"></span><span><a href="/truie/{{ tr.id }}"><b>{{ tr.num_travail }}</b></a> <small>rg {{ tr.rang or '?' }}{% if tr.salle %} · {{ tr.salle }}{% if tr.case_nom %} {{ tr.case_nom }}{% endif %}{% endif %}{% if tr.dernier %} · {{ tr.dernier|replace('_',' ') }}{% endif %}</small></span></div>
     {% endfor %}</div>{% else %}<p class="vide">Aucune truie restante à faire pour cette étape.</p>{% endif %}
