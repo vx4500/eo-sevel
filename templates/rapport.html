@@ -1,0 +1,273 @@
+{% extends "base.html" %}{% block title %}Rapport d’élevage · EO_Sevel{% endblock %}{% block content %}
+<style>
+.rp{--rp-vert:#1e4d3a;--rp-fond:#f6f8f6;--rp-ligne:#e1e8e3;--rp-texte:#1d2620;--rp-doux:#5f7268;--rp-rouge:#a3361a;--rp-rouge-fond:#fbeae4;--rp-orange:#9a5a1c;--rp-orange-fond:#fff3e3;color:var(--rp-texte)}
+.rp h1{margin:.1rem 0 .3rem;font-size:clamp(1.5rem,2.4vw,2rem)}
+.rp h2{font-size:1.25rem;margin:0 0 12px;display:flex;align-items:baseline;gap:10px}
+.rp h2 small{font-size:.85rem;font-weight:400;color:var(--rp-doux)}
+.rp h3{font-size:1rem;margin:16px 0 8px}
+.rp-tete{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;border-top:6px solid var(--rp-vert);padding-top:14px}
+.rp-surtitre{margin:0;color:var(--rp-vert);font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.78rem}
+.rp-periode{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rp-periode a{padding:7px 12px;border-radius:8px;background:#eef4f0;color:var(--rp-vert);text-decoration:none;font-weight:600}
+.rp-periode a.actif{background:var(--rp-vert);color:#fff}
+.rp-sommaire{display:flex;flex-wrap:wrap;gap:6px 14px;margin:14px 0 4px;font-size:.9rem}
+.rp-sommaire a{color:var(--rp-vert)}
+.rp-section{background:#fff;border:1px solid var(--rp-ligne);border-radius:14px;padding:18px 20px;margin:16px 0;break-inside:avoid-page}
+.rp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.rp-kpi{background:var(--rp-fond);border-radius:12px;padding:12px 14px}
+.rp-kpi b{display:block;font-size:1.9rem;line-height:1.1;color:#153b2d}
+.rp-kpi span{display:block;font-weight:600;margin-top:2px}
+.rp-kpi small{display:block;color:var(--rp-doux);margin-top:2px}
+.rp-kpi.alerte{background:var(--rp-rouge-fond)}.rp-kpi.alerte b{color:var(--rp-rouge)}
+.rp table{width:100%;border-collapse:collapse;font-size:.92rem}
+.rp th{text-align:left;font-weight:600;color:#445b50;background:var(--rp-fond);padding:8px 10px;border-bottom:1px solid var(--rp-ligne)}
+.rp td{padding:8px 10px;border-bottom:1px solid var(--rp-ligne);vertical-align:top}
+.rp td.n,.rp th.n{text-align:right;font-variant-numeric:tabular-nums}
+.rp tr.rouge td{background:var(--rp-rouge-fond)}
+.rp .vide{color:var(--rp-doux);font-style:italic;margin:4px 0}
+.rp .note{color:var(--rp-doux);font-size:.85rem;margin:10px 0 0}
+.rp-badge{display:inline-block;font-size:.78rem;font-weight:700;padding:2px 9px;border-radius:999px;background:#eef4f0;color:var(--rp-vert);white-space:nowrap}
+.rp-badge.rouge{background:var(--rp-rouge-fond);color:var(--rp-rouge)}
+.rp-badge.orange{background:var(--rp-orange-fond);color:var(--rp-orange)}
+.rp-actions{list-style:none;margin:0;padding:0}
+.rp-actions li{display:grid;grid-template-columns:130px 140px 1fr;gap:10px;align-items:baseline;padding:9px 12px;border-bottom:1px solid var(--rp-ligne)}
+.rp-actions li.p0{background:var(--rp-rouge-fond);border-left:5px solid var(--rp-rouge)}
+.rp-actions li.p1{border-left:5px solid #c7832f}
+.rp-actions li.p2{border-left:5px solid #a9bdb1}
+.rp-actions .cat{color:var(--rp-doux);font-size:.85rem}
+.rp-deux{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.rp-liaison{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.rp-scroll{overflow-x:auto}
+@media(max-width:640px){.rp-actions li{grid-template-columns:1fr}.rp-section{padding:14px}}
+@media print{
+  nav,footer,.no-print,.fab,#fab,.rust-fab,.rust-nav{display:none!important}
+  body{background:#fff!important}
+  .rp-section{border:none;padding:6px 0;margin:10px 0}
+  .rp a{color:inherit;text-decoration:none}
+  @page{size:A4;margin:12mm}
+}
+</style>
+
+<div class="rp">
+<div class="rp-tete">
+  <div>
+    <p class="rp-surtitre">Rapport d’élevage{% if nom_elevage %} · {{ nom_elevage }}{% endif %}</p>
+    <h1>Bilan du {{ debut|date_fr }} au {{ fin|date_fr }}</h1>
+    <p class="note" style="margin:0">Établi le {{ genere_le }}</p>
+  </div>
+  <div class="rp-periode no-print">
+    <span>Période :</span>
+    <a href="/rapport?jours=7"{% if jours == 7 %} class="actif"{% endif %}>7 jours</a>
+    <a href="/rapport?jours=14"{% if jours == 14 %} class="actif"{% endif %}>14 jours</a>
+    <a href="/rapport?jours=30"{% if jours == 30 %} class="actif"{% endif %}>30 jours</a>
+    <button type="button" onclick="window.print()">Imprimer / PDF</button>
+  </div>
+</div>
+
+<nav class="rp-sommaire no-print" aria-label="Sommaire du rapport">
+  <a href="#synthese">Synthèse</a><a href="#actions">À faire sous 48 h</a>
+  {% if bandes %}<a href="#bandes">Bandes</a>{% endif %}
+  {% if liste_mises_bas is defined %}<a href="#reproduction">Reproduction</a><a href="#maternite">Maternité</a><a href="#mortalite">Mortalité</a>{% endif %}
+  {% if traitements is defined %}<a href="#sanitaire">Sanitaire</a>{% endif %}
+  {% if pharmacie_basse is defined %}<a href="#stocks">Stocks</a>{% endif %}
+  {% if ventes is defined %}<a href="#ventes">Ventes</a>{% endif %}
+  {% if voit_ambiance %}<a href="#ambiance">Températures</a>{% endif %}
+  {% if energie is defined %}<a href="#energie">Eau et électricité</a>{% endif %}
+</nav>
+
+{# ───────── Synthèse ───────── #}
+<section class="rp-section" id="synthese">
+  <h2>Synthèse <small>{{ jours }} derniers jours</small></h2>
+  <div class="rp-kpis">
+    <div class="rp-kpi{% if synthese.actions_urgentes %} alerte{% endif %}"><b>{{ synthese.actions_urgentes }}</b><span>Actions urgentes</span><small>en retard ou critiques</small></div>
+    <div class="rp-kpi"><b>{{ synthese.truies }}</b><span>Truies présentes</span><small>{{ synthese.bandes }} bandes actives</small></div>
+    {% if bandes %}<div class="rp-kpi"><b>{{ synthese.porcs if synthese.porcs else '—' }}</b><span>Porcs présents</span><small>{% if synthese.porcs %}estimés depuis le dernier inventaire{% else %}inventaire des bandes à saisir{% endif %}</small></div>{% endif %}
+    <div class="rp-kpi"><b>{{ synthese.mises_bas.n or 0 }}</b><span>Mises-bas</span><small>{% if synthese.mises_bas.nv_portee is not none %}{{ synthese.mises_bas.nv_portee|decimal1 }} nés vifs / portée{% else %}—{% endif %}{% if synthese.mises_bas.a_completer %} · {{ synthese.mises_bas.a_completer }} à compléter{% endif %}</small></div>
+    <div class="rp-kpi"><b>{{ synthese.mises_bas.nv }}</b><span>Nés vifs</span><small>{{ synthese.mises_bas.mn }} mort-nés</small></div>
+    <div class="rp-kpi{% if synthese.taux_pertes is not none and synthese.taux_pertes > 15 %} alerte{% endif %}"><b>{{ synthese.pertes_porcelets }}</b><span>Porcelets perdus</span><small>{% if synthese.taux_pertes is not none %}{{ synthese.taux_pertes|decimal1 }} % des nés vifs de la période{% else %}en maternité{% endif %}</small></div>
+    <div class="rp-kpi"><b>{{ synthese.sevrages.sevres }}</b><span>Porcelets sevrés</span><small>{{ synthese.sevrages.n }} portées{% if synthese.sevrages.poids %} · {{ synthese.sevrages.poids|decimal1 }} kg{% endif %}</small></div>
+    <div class="rp-kpi"><b>{{ synthese.repro.ia or 0 }}</b><span>Truies inséminées</span><small>échos : {{ synthese.repro.pleines or 0 }} pleines · {{ synthese.repro.vides or 0 }} vides</small></div>
+    <div class="rp-kpi{% if synthese.morts_porcs %} alerte{% endif %}"><b>{{ synthese.morts_porcs }}</b><span>Porcs morts</span><small>post-sevrage et engraissement</small></div>
+  </div>
+</section>
+
+{# ───────── Actions ───────── #}
+<section class="rp-section" id="actions">
+  <h2>À faire dans les 48 h <small>jusqu’au {{ limite|date_fr }}</small></h2>
+  {% if actions %}
+  <ul class="rp-actions">
+  {% for a in actions %}
+    <li class="p{{ a.priorite }}">
+      <b>{% if a.priorite == 0 %}{% if a.date and a.date[:10] < aujourd_hui %}En retard ({{ a.date|date_fr }}){% else %}Urgent{% endif %}{% elif a.priorite == 1 %}Aujourd’hui{% else %}{{ a.date|date_fr }}{% endif %}</b>
+      <span class="cat">{{ a.categorie }}</span>
+      <span><a href="{{ a.lien }}">{{ a.texte }}</a></span>
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}<p class="vide">Rien d’enregistré à faire d’ici le {{ limite|date_fr }}.</p>{% endif %}
+</section>
+
+{# ───────── Bandes ───────── #}
+{% if bandes %}
+<section class="rp-section" id="bandes">
+  <h2>Bandes actives <small>où en est chacune</small></h2>
+  <div class="rp-scroll"><table>
+    <thead><tr><th>Bande</th><th>Site</th><th>Mise-bas</th><th>Étape en cours</th><th>Prochaine étape</th><th class="n">Truies</th><th class="n">Porcs</th></tr></thead>
+    <tbody>{% for b in bandes %}
+    <tr><td><a href="/bande/{{ b.id }}"><b>{{ b.code }}</b></a>{% if b.marquage %}<br><small class="note">{{ b.marquage }}</small>{% endif %}</td>
+      <td>{{ b.site or '—' }}</td>
+      <td>{{ b.date_mb|date_fr if b.date_mb else '—' }}</td>
+      <td>{{ b.etape or '—' }}</td>
+      <td>{% if b.prochaine %}{{ b.prochaine }} · {{ b.prochaine_date|date_fr }}
+        {% if b.delai is not none %}{% if b.delai <= 2 %} <span class="rp-badge orange">J-{{ b.delai }}</span>{% else %} <small class="note">dans {{ b.delai }} j</small>{% endif %}{% endif %}
+        {% else %}—{% endif %}</td>
+      <td class="n">{{ b.truies }}</td><td class="n">{{ b.porcs or '—' }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if liste_mises_bas is defined %}
+{# ───────── Reproduction ───────── #}
+<section class="rp-section" id="reproduction">
+  <h2>Reproduction</h2>
+  <div class="rp-deux">
+    <div><h3>Inséminations par bande</h3>
+      {% if ia_bandes %}<table><thead><tr><th>Bande</th><th class="n">Truies</th><th>Dates</th></tr></thead><tbody>
+      {% for i in ia_bandes %}<tr><td>{{ i.bande }}</td><td class="n">{{ i.truies }}</td><td>{{ i.du|date_fr }}{% if i.au != i.du %} → {{ i.au|date_fr }}{% endif %}</td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucune insémination sur la période.</p>{% endif %}</div>
+    <div><h3>Échographies vides <small class="note">à remettre à la reproduction</small></h3>
+      {% if vides %}<table><thead><tr><th>Truie</th><th>Bande</th><th>Écho</th></tr></thead><tbody>
+      {% for v in vides %}<tr><td><b>{{ v.truie }}</b></td><td>{{ v.bande or '—' }}</td><td>{{ v.date|date_fr }}</td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucune truie vide détectée.</p>{% endif %}</div>
+  </div>
+  <h3>Réformes et sorties</h3>
+  {% if reformes %}<table><thead><tr><th>Truie</th><th>Date</th><th class="n">Rang</th><th>Motif</th></tr></thead><tbody>
+  {% for r in reformes %}<tr><td><b>{{ r.truie }}</b></td><td>{{ r.date|date_fr }}</td><td class="n">{{ r.rang or '—' }}</td><td>{{ r.motif }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="vide">Aucune réforme sur la période.</p>{% endif %}
+</section>
+
+{# ───────── Maternité ───────── #}
+<section class="rp-section" id="maternite">
+  <h2>Maternité</h2>
+  <div class="rp-deux">
+    <div><h3>Pertes de porcelets par cause</h3>
+      {% if pertes_causes %}<table><thead><tr><th>Cause</th><th class="n">Porcelets</th></tr></thead><tbody>
+      {% for p in pertes_causes %}<tr><td>{{ p.cause }}</td><td class="n"><b>{{ p.n }}</b></td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucune perte déclarée.</p>{% endif %}</div>
+    <div><h3>Sevrages</h3>
+      {% if liste_sevrages %}<table><thead><tr><th>Bande</th><th class="n">Portées</th><th class="n">Sevrés</th><th class="n">Poids</th></tr></thead><tbody>
+      {% for s in liste_sevrages %}<tr><td>{{ s.bande or '—' }}</td><td class="n">{{ s.portees }}</td><td class="n"><b>{{ s.sevres }}</b></td><td class="n">{{ (s.poids|decimal1 ~ ' kg') if s.poids else '—' }}</td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucun sevrage sur la période.</p>{% endif %}</div>
+  </div>
+  <h3>Mises-bas</h3>
+  {% if liste_mises_bas %}<div class="rp-scroll"><table><thead><tr><th>Date</th><th>Truie</th><th>Bande</th><th class="n">Nés totaux</th><th class="n">Nés vifs</th><th class="n">Mort-nés</th><th class="n">Momifiés</th></tr></thead><tbody>
+  {% for m in liste_mises_bas %}<tr{% if not m.nt %} class="rouge"{% endif %}><td>{{ m.date|date_fr }}</td><td><b>{{ m.truie or '—' }}</b></td><td>{{ m.bande or '—' }}</td>
+    {% if m.nt %}<td class="n">{{ m.nt }}</td><td class="n"><b>{{ m.nv }}</b></td><td class="n">{{ m.mn or 0 }}</td><td class="n">{{ m.mo or 0 }}</td>
+    {% else %}<td colspan="4"><span class="rp-badge rouge">Comptage à compléter</span></td>{% endif %}</tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="vide">Aucune mise-bas sur la période.</p>{% endif %}
+</section>
+
+{# ───────── Mortalité ───────── #}
+<section class="rp-section" id="mortalite">
+  <h2>Mortalité des porcs <small>après la maternité</small></h2>
+  {% if mortalite %}<table><thead><tr><th>Bande</th><th>Cause</th><th class="n">Porcs</th></tr></thead><tbody>
+  {% for m in mortalite %}<tr><td>{{ m.bande }}</td><td>{{ m.cause }}</td><td class="n"><b>{{ m.n }}</b></td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="vide">Aucune mortalité déclarée sur la période.</p>{% endif %}
+</section>
+{% endif %}
+
+{# ───────── Sanitaire ───────── #}
+{% if traitements is defined %}
+<section class="rp-section" id="sanitaire">
+  <h2>Sanitaire</h2>
+  <div class="rp-deux">
+    <div><h3>Traitements de la période</h3>
+      {% if traitements %}<table><thead><tr><th>Date</th><th>Truie</th><th>Produit</th><th>Motif</th></tr></thead><tbody>
+      {% for t in traitements %}<tr><td>{{ t.date|date_fr }}{% if t.date_fin and t.date_fin != t.date %} → {{ t.date_fin|date_fr }}{% endif %}</td><td><b>{{ t.truie or '—' }}</b></td><td>{{ t.produit or '—' }}</td><td>{{ t.motif or '—' }}</td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucun traitement enregistré.</p>{% endif %}</div>
+    <div><h3>Truies sous délai d’attente</h3>
+      {% if delais_attente %}<table><thead><tr><th>Truie</th><th>Produit</th><th>Fin du délai</th></tr></thead><tbody>
+      {% for d in delais_attente %}<tr class="rouge"><td><b>{{ d.truie }}</b></td><td>{{ d.produit or '—' }}</td><td>{{ d.fin|date_fr }}</td></tr>{% endfor %}
+      </tbody></table><p class="note">Ne pas envoyer à l’abattoir avant la fin du délai.</p>{% else %}<p class="vide">Aucune truie sous délai d’attente.</p>{% endif %}</div>
+  </div>
+</section>
+{% endif %}
+
+{# ───────── Stocks ───────── #}
+{% if pharmacie_basse is defined %}
+<section class="rp-section" id="stocks">
+  <h2>Stocks</h2>
+  <div class="rp-deux">
+    <div><h3>Pharmacie sous le seuil</h3>
+      {% if pharmacie_basse %}<table><thead><tr><th>Produit</th><th class="n">Stock</th><th class="n">Seuil</th></tr></thead><tbody>
+      {% for p in pharmacie_basse %}<tr class="rouge"><td><b>{{ p.produit }}</b></td><td class="n">{{ p.stock_actuel }} {{ p.unite or '' }}</td><td class="n">{{ p.seuil_alerte }}</td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="vide">Aucun produit sous son seuil d’alerte.</p>{% endif %}</div>
+    {% if silos %}<div><h3>Silos d’aliment</h3>
+      <table><thead><tr><th>Silo</th><th class="n">Niveau</th><th>Relevé</th></tr></thead><tbody>
+      {% for s in silos %}<tr><td>{{ s.nom }}</td><td class="n">{% if s.niveau is not none %}{{ s.niveau|decimal1 }} t{% if s.capacite %} / {{ s.capacite|decimal1 }}{% endif %}{% else %}—{% endif %}</td><td>{{ s.date|date_fr if s.date else '—' }}</td></tr>{% endfor %}
+      </tbody></table></div>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+{# ───────── Ventes ───────── #}
+{% if ventes is defined %}
+<section class="rp-section" id="ventes">
+  <h2>Ventes de porcs</h2>
+  {% if ventes.apports %}
+  <div class="rp-kpis">
+    <div class="rp-kpi"><b>{{ ventes.porcs }}</b><span>Porcs vendus</span><small>{{ ventes.apports }} apport(s)</small></div>
+    <div class="rp-kpi"><b>{{ ventes.poids|decimal1 if ventes.poids else '—' }}</b><span>Poids moyen (kg)</span></div>
+    <div class="rp-kpi"><b>{{ ventes.prix|decimal3 if ventes.prix else '—' }}</b><span>Prix moyen (€/kg)</span></div>
+    <div class="rp-kpi"><b>{{ ventes.montant|euro if ventes.montant else '—' }}</b><span>Montant net</span></div>
+  </div>
+  {% else %}<p class="vide">Aucun apport à l’abattoir sur la période.</p>{% endif %}
+</section>
+{% endif %}
+
+{# ───────── Températures ───────── #}
+{% if voit_ambiance %}
+<section class="rp-section" id="ambiance">
+  <h2>Températures par salle</h2>
+  {% if liaison.connu %}<div class="rp-liaison">
+    {% if liaison.actif %}<span class="rp-badge">Régulation active · {{ liaison.maj }}</span>{% else %}<span class="rp-badge rouge">Régulation arrêtée depuis {{ liaison.maj }}</span>{% endif %}
+    {% if liaison.simulation %}<span class="rp-badge orange">Mode simulation : l’automate n’est pas piloté</span>{% endif %}
+    {% if liaison.version and liaison.version != liaison.version_web %}<span class="rp-badge orange">Régulation {{ liaison.version }} / application {{ liaison.version_web }}</span>{% endif %}
+  </div>{% endif %}
+  {% if salles %}
+  <div class="rp-scroll"><table>
+    <thead><tr><th>Salle</th><th class="n">Maintenant</th><th class="n">Consigne</th><th class="n">Moy. 24 h</th><th class="n">Min – max 24 h</th><th class="n">Moy. 7 j</th><th class="n">Min – max 7 j</th><th class="n">Hors seuils 24 h</th><th class="n">Alertes 7 j</th><th>État</th></tr></thead>
+    <tbody>{% for s in salles %}
+    <tr{% if not s.actuel or not s.sonde_ok %} class="rouge"{% endif %}>
+      <td><a href="/ambiance/salle/{{ s.id }}/historique"><b>{{ s.nom }}</b></a>{% if s.bande %}<br><small class="note">{{ s.bande }}{% if s.jour_bande is not none %} · J{{ s.jour_bande }}{% endif %}</small>{% endif %}</td>
+      <td class="n"><b>{{ (s.t|decimal1 ~ ' °C') if s.t is not none else '—' }}</b>{% if s.h is not none %}<br><small class="note">{{ s.h|round|int }} % HR</small>{% endif %}</td>
+      <td class="n">{{ (s.consigne|decimal1 ~ ' °C') if s.consigne is not none else '—' }}</td>
+      <td class="n">{{ (s.t24.moyenne|decimal1 ~ ' °C') if s.t24.moyenne is not none else '—' }}{% if s.ecart24 is not none %}<br><small class="note">{{ '+' if s.ecart24 > 0 else '' }}{{ s.ecart24|decimal1 }} / consigne</small>{% endif %}</td>
+      <td class="n">{% if s.t24.mini is not none %}{{ s.t24.mini|decimal1 }} – {{ s.t24.maxi|decimal1 }}{% else %}—{% endif %}</td>
+      <td class="n">{{ (s.t7.moyenne|decimal1 ~ ' °C') if s.t7.moyenne is not none else '—' }}</td>
+      <td class="n">{% if s.t7.mini is not none %}{{ s.t7.mini|decimal1 }} – {{ s.t7.maxi|decimal1 }}{% else %}—{% endif %}</td>
+      <td class="n">{% if s.hors_seuils_24 is not none %}{% if s.hors_seuils_24 >= 10 %}<span class="rp-badge rouge">{{ s.hors_seuils_24|round|int }} %</span>{% else %}{{ s.hors_seuils_24|round|int }} %{% endif %}{% else %}—{% endif %}</td>
+      <td class="n">{{ s.alertes_7j }}</td>
+      <td>{% if not s.actuel %}<span class="rp-badge rouge">Pas de mesure</span>{% elif not s.sonde_ok %}<span class="rp-badge rouge">Sonde en défaut</span>{% else %}<span class="rp-badge">OK</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="note">Relevés enregistrés par la régulation à chaque variation (au moins toutes les 10 min). « Hors seuils » : part des relevés sous le seuil bas ou au-dessus du seuil haut d’alerte de la salle.</p>
+  {% else %}<p class="vide">Aucune salle suivie. Activez « Mesurer » dans <a href="/ambiance">Ambiance et ventilation</a>.</p>{% endif %}
+</section>
+{% endif %}
+
+{# ───────── Énergie ───────── #}
+{% if energie is defined %}
+<section class="rp-section" id="energie">
+  <h2>Eau et électricité</h2>
+  {% if energie %}<table><thead><tr><th>Compteur</th><th class="n">Par jour</th><th class="n">Consommation</th><th>Entre les relevés</th></tr></thead><tbody>
+  {% for c in energie %}<tr><td><b>{{ c.nom }}</b><br><small class="note">{{ 'Électricité' if c.type == 'electricite' else 'Eau' }}</small></td>
+    <td class="n">{% if c.par_jour is not none %}<b>{{ c.par_jour|decimal2 }}</b> {{ c.unite or '' }}/j{% else %}—{% endif %}</td>
+    <td class="n">{% if c.consommation is not none %}{{ c.consommation|decimal1 }} {{ c.unite or '' }}{% elif c.remplacement %}<span class="rp-badge orange">Compteur remplacé</span>{% else %}—{% endif %}</td>
+    <td>{% if c.consommation is not none %}{{ c.du|date_fr }} → {{ c.au|date_fr }}{% if c.jours %} ({{ c.jours }} j){% endif %}{% else %}<small class="note">relevés insuffisants</small>{% endif %}</td></tr>{% endfor %}
+  </tbody></table><p class="note">Écart entre le dernier relevé avant la période et le dernier relevé de la période. Relevez les compteurs chaque semaine pour un suivi précis.</p>{% else %}<p class="vide">Aucun compteur enregistré.</p>{% endif %}
+</section>
+{% endif %}
+</div>
+{% endblock %}

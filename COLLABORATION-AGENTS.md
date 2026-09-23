@@ -150,8 +150,14 @@ Règles, pour tout agent :
 
 ```bash
 systemd-run --scope -p MemoryMax=2G -p MemorySwapMax=512M \
-  nice -n 19 ionice -c3 cargo build --release -j 1
+  sh -c 'echo 1000 > /proc/self/oom_score_adj; exec nice -n 19 ionice -c3 cargo build --release -j 1'
 ```
+
+  (Le conteneur Proxmox est non privilégié : on ne peut pas *baisser* le
+  score OOM des services, seulement *monter* celui de la compilation. Le
+  plafond `MemoryMax` reste la vraie protection. Idem pour `cargo test`.)
+- Compiler dans un dossier **sur disque** (`/var/tmp/…` ou
+  `/opt/eo-sevel-src`), jamais sous `/tmp`.
 
 - **Pas de compilation en arrière-plan laissée sans surveillance**, ni
   plusieurs compilations/tests en parallèle.

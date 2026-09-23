@@ -56,3 +56,20 @@ fichiers lourds dans `/tmp`, moins d'allers-retours).
 Constaté aussi : la version en service (« 2.11.5 », déployée le 21/09 depuis
 le portable, hors Git) diverge de la 2.15.5 du dépôt. Ne pas redéployer
 depuis Git sans décision d'Emmanuel.
+
+### 2026-09-23 — claude — v2.16.0 (base : dépôt 2.15.5)
+Demande d'Emmanuel : « fais avec ce que tu as sur le serveur », rapport
+complet de l'élevage au clic sur « Rapport », remettre en ordre la
+communication entre services. Les sources de la version déployée le 21/09
+(« 2.11.5 », compilée sur le portable, hors Git) sont introuvables : la
+2.16.0 repart de la 2.15.5 du dépôt. Repris du 21/09 : bouton Rapport,
+saisie rapide « Perte porc après maternité », feuille de style (nav
+compacte recentrée, thèmes). **Perdus avec le binaire du 21/09** (à refaire
+si Emmanuel le demande) : suivi multi-bandes et séparation bandes truies /
+bandes porcs, choix d'apparence (thèmes) dans Paramètres, vue sur plan en
+Ambiance, machine à soupe, PDF hebdomadaire serveur (remplacé par la page
+imprimable `/rapport`). Binaire du 21/09 conservé :
+`/var/backups/eo-sevel/eo-sevel_avant_2.16.0_*`.
+Communication eo-sevel/eo-regul : fausse alerte « ventilation inefficace »
+supprimée hors pilotage réel ; `eo-regul` passe en TZ=Europe/Paris (drop-in
+`claude-2.16.conf`) — les alertes antérieures au 23/09 11h17 sont en UTC.

@@ -36,7 +36,6 @@ main{max-width:1100px;margin:22px auto;padding:0 18px;padding-bottom:90px}
 h1{font-size:22px;margin:0 0 16px}
 h2{font-size:17px;margin:26px 0 12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
-.equipment-console{--eq-panel:#0b2636;--eq-line:#20546d;--eq-text:#e0f3fb;--eq-muted:#9cc2d3;--eq-cyan:#5ed6ff;padding:24px;border:1px solid #194b62;border-radius:16px;background:radial-gradient(circle at 90% 0,#16465a 0,#071d2b 40%,#04131d 100%);color:var(--eq-text);box-shadow:0 20px 54px #00131e38}.equipment-console h1,.equipment-console h2{color:var(--eq-text)}.equipment-console a{color:var(--eq-cyan)}.equipment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:4px 0 20px}.equipment-head h1{margin:3px 0}.equipment-head p{margin:0;color:var(--eq-muted)}.equipment-eyebrow{margin:0 0 4px!important;color:var(--eq-cyan)!important;font-size:.72rem;font-weight:800;letter-spacing:.14em}.equipment-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}.equipment-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-height:206px;padding:18px;border:1px solid var(--eq-line);border-radius:13px;background:linear-gradient(145deg,#0d2d3e,#071d2a);box-shadow:inset 0 1px #ffffff0d,0 8px 21px #00121d38}.equipment-card h2{margin:0;color:var(--eq-text)}.equipment-card p{margin:0;color:var(--eq-muted);line-height:1.45}.equipment-card .button{margin-top:auto}.equipment-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%}.equipment-console .button{border:1px solid #2a809e;background:linear-gradient(135deg,#10617d,#0d3d56);color:#eaf9ff!important}.equipment-state{display:inline-block;flex:none;padding:5px 9px;border-radius:999px;font-size:.72rem;font-weight:800}.equipment-state.actif{background:#123e36;color:#73f1bd}.equipment-state.attente{background:#49381c;color:#ffd27d}.equipment-note,.equipment-overview,.equipment-console>.card{background:#0a2332!important;border-color:var(--eq-line)!important;color:var(--eq-text)}.equipment-note h2,.equipment-overview h2{margin-top:0}.equipment-specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 0}.equipment-specs div{padding:12px;border:1px solid #1a4b62;border-radius:8px;background:#081b28}.equipment-specs dt{color:var(--eq-muted);font-size:.78rem}.equipment-specs dd{margin:4px 0 0;font-weight:700}.equipment-points{margin:0;padding-left:22px}.equipment-points li{margin:10px 0;color:var(--eq-text)}@media(max-width:1000px){.equipment-grid{grid-template-columns:1fr 1fr}}@media(max-width:800px){.equipment-console{padding:16px}.equipment-head{flex-direction:column}.equipment-grid,.equipment-specs{grid-template-columns:1fr}}
 .grid{display:grid;gap:14px}
 .grid.cols-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 .grid.cols-3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
@@ -303,9 +302,25 @@ body{
     #f3f6f2;
 }
 body .rust-nav{
-  padding:10px max(14px,calc((100vw - 1420px)/2));
+  /* La navigation contient désormais aussi Équipements. Les marges centrées
+     faisaient tomber le compte sur une seconde ligne sur les grands écrans. */
+  padding:6px 20px;
   background:linear-gradient(112deg,#13382b 0%,#1d513d 64%,#2a674e 100%);
   box-shadow:0 8px 24px rgba(19,56,43,.18);
+}
+body .rust-nav .site-brand{padding:6px 8px 6px 0}
+body .rust-nav .rust-menu>button{padding:10px 11px}
+body .rust-nav .rust-search input{padding-top:6px;padding-bottom:6px;width:180px}
+body .rust-nav .weekly-report-button{min-height:30px;padding:4px 8px}
+@media (min-width:1501px){
+  /* Évite un grand vide après le dernier menu sur les écrans larges. */
+  body .rust-nav .grow{flex:0 0 28px}
+}
+@media (min-width:981px) and (max-width:1500px){
+  .rust-nav .site-brand{padding-right:4px;font-size:.82rem}
+  .rust-menu>button{padding-left:9px;padding-right:9px}
+  .rust-search input{width:145px}
+  .weekly-report-button span{display:none}
 }
 body .rust-nav>a,body .rust-nav .rust-menu>span{border:1px solid transparent;transition:background .16s,border-color .16s,transform .16s}
 body .rust-nav>a:hover,body .rust-nav .rust-menu>span:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.13);transform:translateY(-1px)}
@@ -317,8 +332,23 @@ body .rust-nav>a:hover,body .rust-nav .rust-menu>span:hover{background:rgba(255,
   border-color:#dbe4dc;
   box-shadow:0 8px 28px rgba(31,66,52,.065),0 1px 2px rgba(31,66,52,.05);
 }
-.rust-scroll{border-radius:11px;border:1px solid #e1e8e2;background:#fff}
+.rust-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;border-radius:11px;border:1px solid #e1e8e2;background:#fff}
 .rust-scroll table{margin:0}
+/* Une ancre sous la barre de navigation fixe ne doit jamais cacher le titre
+   de sa section. */
+.rust-main #conduite-bandes{scroll-margin-top:105px}
+/* Les plans d'alimentation gardent toutes leurs actions visibles : les champs
+   se répartissent dans la largeur disponible et, sur petit écran, le tableau
+   se défile horizontalement au lieu d'être coupé. */
+#alimentation .rust-scroll table{width:100%;min-width:1080px;table-layout:fixed}
+#alimentation .rust-scroll th:nth-child(1),#alimentation .rust-scroll td:nth-child(1){width:15%}
+#alimentation .rust-scroll th:nth-child(2),#alimentation .rust-scroll td:nth-child(2),#alimentation .rust-scroll th:nth-child(3),#alimentation .rust-scroll td:nth-child(3){width:12%}
+#alimentation .rust-scroll th:nth-child(4),#alimentation .rust-scroll td:nth-child(4){width:15%}
+#alimentation .rust-scroll th:nth-child(5),#alimentation .rust-scroll td:nth-child(5),#alimentation .rust-scroll th:nth-child(6),#alimentation .rust-scroll td:nth-child(6){width:14%}
+#alimentation .rust-scroll th:nth-child(7),#alimentation .rust-scroll td:nth-child(7){width:7%}
+#alimentation .rust-scroll th:nth-child(8),#alimentation .rust-scroll td:nth-child(8){width:11%}
+#alimentation .rust-scroll input{width:100%;min-width:0}
+#alimentation .rust-scroll td:last-child{white-space:nowrap}
 table th{background:#f3f7f4;color:#52655d;padding:10px}
 table td{padding:10px}
 tbody tr{transition:background .15s}
@@ -508,3 +538,70 @@ body .rust-nav{background:#183b2e;border-bottom:3px solid #b4743c;box-shadow:0 3
 @media(max-width:390px){.dashboard-kpis{grid-template-columns:1fr}.band-steps{grid-template-columns:1fr}.capacity-grid{grid-template-columns:1fr}}
 .gte-period{display:grid;grid-template-columns:minmax(240px,1fr) repeat(2,minmax(145px,190px)) auto;align-items:end;gap:12px}.gte-period h2,.gte-period p{margin:0}.gte-period p{margin-top:4px}.gte-shortcuts{display:flex;grid-column:1/-1;gap:7px;align-items:center;flex-wrap:wrap}.gte-shortcuts .button{background:#eef4f0;color:#285a43!important}.gte-shortcuts .button.active{background:#285a43;color:#fff!important}.user-access-card>summary{display:flex;align-items:center;gap:10px}.user-avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#dfece4;color:#245b43;font-weight:900}.user-summary{display:grid;margin-right:auto}.user-summary small{color:var(--muted)}.role-badge,.status-badge{padding:5px 8px;border-radius:999px;background:#e9eff4;color:#34566b;font-size:.68rem;font-weight:850;text-transform:capitalize}.role-badge.role-admin{background:#f4e5d7;color:#8a4b1d}.role-badge.role-eleveur{background:#dfede4;color:#245b43}.status-badge{background:#e2f1e6;color:#276240}.status-badge.inactive{background:#f3e3e0;color:#91483c}.user-tools,.access-heading,.access-save{display:flex;align-items:end;justify-content:space-between;gap:14px;margin:14px 0;padding:12px;border-radius:9px;background:#f6f8f6}.access-heading h3,.access-heading p{margin:0}.access-page-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.access-page{display:flex!important;align-items:center;gap:9px;margin:0;padding:11px;border:1px solid #d9e2db;border-radius:8px;background:#fafcfa;cursor:pointer}.access-page:has(input:checked){border-color:#6d9a7c;background:#eaf3ed;box-shadow:inset 0 0 0 1px #6d9a7c}.access-page input{width:auto}.access-page span{display:grid}.access-page small{color:#748179}.access-save small{max-width:650px;color:var(--muted)}@media(max-width:800px){.gte-period{grid-template-columns:1fr 1fr}.gte-period>div:first-child,.gte-shortcuts{grid-column:1/-1}.user-tools,.access-heading,.access-save{align-items:stretch;flex-direction:column}.user-access-card>summary{flex-wrap:wrap}.user-summary{min-width:50%}}
 .band-assignment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:5px;max-height:240px;overflow:auto;margin:10px 0;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fafcfb}.band-assignment-grid label{display:flex;align-items:center;gap:5px;margin:0;font-size:.78rem}.band-assignment-grid input{width:auto}
+
+/* Paramètres > Apparence : sélecteur d'habillage visuel */
+.theme-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,160px));justify-content:start;gap:10px;margin:12px 0 16px}
+.theme-option{display:grid!important;grid-template-rows:1fr auto;gap:8px;margin:0;padding:7px;border:2px solid var(--line);border-radius:0;background:#fafcfa;cursor:pointer}
+.theme-option input{position:absolute;opacity:0;pointer-events:none}
+.theme-option:has(input:checked){border-color:var(--accent2);background:#eef6f1;box-shadow:inset 0 0 0 1px var(--accent2)}
+.theme-preview{display:block;aspect-ratio:1/1;width:100%;border:1px solid rgba(0,0,0,.14);border-radius:0}
+.theme-label{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:.8rem;font-weight:850;color:var(--text)}
+.theme-option:has(input:checked) .theme-label::after{content:'✓';display:grid;place-items:center;width:20px;height:20px;background:var(--accent2);color:#fff;font-size:.75rem;font-weight:900}
+.theme-swatch-classique .theme-preview{background:linear-gradient(135deg,#1e4d3a 50%,#b06a2c 50%)}
+.theme-swatch-ocean .theme-preview{background:linear-gradient(135deg,#155e75 50%,#2563eb 50%)}
+.theme-swatch-ardoise .theme-preview{background:linear-gradient(135deg,#334155 50%,#7f1d3a 50%)}
+.theme-swatch-console .theme-preview{background:linear-gradient(135deg,#071b28 50%,#39e6b0 50%)}
+
+.weekly-report-button{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:5px 9px;border:1px solid #ffffff55;border-radius:7px;background:#ffffff16;color:#fff!important;font-size:.75rem;font-weight:850;text-decoration:none}.weekly-report-button .ic{width:17px;height:17px}.weekly-report-button:hover{background:#ffffff28;color:#fff!important}
+
+/* Habillage « Océan » — recolore les accents verts/cuivre en bleu/sarcelle */
+body.theme-ocean{
+  --vert:#155e75; --vert2:#2563eb; --cuivre:#0e7490; --cuivre2:#2563eb;
+  --accent:#0e7490; --accent2:#2563eb;
+  --pilot-navy:#0f2e3d; --pilot-green:#0e7490; --pilot-green-2:#2563eb;
+  --pilot-copper:#0e7490; --pilot-blue:#2563eb;
+}
+body.theme-ocean .rust-nav,body.theme-ocean header{background:linear-gradient(120deg,#0c2f3f 0%,#155e75 60%,#2563eb 100%)!important}
+body.theme-ocean .home-hero{background:linear-gradient(120deg,#0c2f3f 0%,#155e75 68%,#2563eb 140%)!important}
+body.theme-ocean #fab{background:linear-gradient(145deg,#2563eb,#0e7490)!important}
+body.theme-ocean .band-process-code,body.theme-ocean .rust-main a:not(.home-action):not(.band-process-code){color:#0e6690}
+body.theme-ocean .band-progress>span,body.theme-ocean .sale-chart-bar{background:linear-gradient(90deg,#155e75,#2563eb)!important}
+
+/* Habillage « Ardoise » — gris neutre avec accent bordeaux */
+body.theme-ardoise{
+  --vert:#334155; --vert2:#475569; --cuivre:#7f1d3a; --cuivre2:#9f2b4a;
+  --accent:#7f1d3a; --accent2:#334155;
+  --pilot-navy:#1e293b; --pilot-green:#334155; --pilot-green-2:#475569;
+  --pilot-copper:#7f1d3a; --pilot-blue:#475569;
+}
+body.theme-ardoise .rust-nav,body.theme-ardoise header{background:linear-gradient(120deg,#1e293b 0%,#334155 60%,#475569 100%)!important}
+body.theme-ardoise .home-hero{background:linear-gradient(120deg,#1e293b 0%,#334155 68%,#7f1d3a 140%)!important}
+body.theme-ardoise #fab{background:linear-gradient(145deg,#9f2b4a,#7f1d3a)!important}
+body.theme-ardoise .band-process-code,body.theme-ardoise .rust-main a:not(.home-action):not(.band-process-code){color:#7f1d3a}
+body.theme-ardoise .band-progress>span,body.theme-ardoise .sale-chart-bar{background:linear-gradient(90deg,#334155,#7f1d3a)!important}
+
+/* Habillage « Console de pilotage » — sombre et néon, dans l'esprit d'un
+   poste de supervision (mêmes teintes que le plan de ventilation). */
+body.theme-console{
+  --vert:#0f6a52; --vert2:#39e6b0; --cuivre:#0f6a52; --cuivre2:#58cfff;
+  --accent:#39e6b0; --accent2:#58cfff;
+  --pilot-navy:#071b28; --pilot-green:#0f6a52; --pilot-green-2:#39e6b0;
+  --pilot-copper:#0f6a52; --pilot-blue:#58cfff;
+  background:#050f17; color:#d9ecfb;
+}
+body.theme-console .rust-nav,body.theme-console header{background:linear-gradient(115deg,#050f17 0%,#0c2636 60%,#123e42 100%)!important;border-color:#194660}
+body.theme-console .home-hero{background:linear-gradient(115deg,#050f17 0%,#0c2636 68%,#123e42 140%)!important}
+body.theme-console #fab{background:linear-gradient(145deg,#39e6b0,#0f6a52)!important}
+body.theme-console .band-process-code,body.theme-console .rust-main a:not(.home-action):not(.band-process-code){color:#1fae8a}
+body.theme-console .band-progress>span,body.theme-console .sale-chart-bar{background:linear-gradient(90deg,#0f6a52,#39e6b0)!important}
+body.theme-console .card,body.theme-console .rust-main{background:#0a1a26;border-color:#194660;color:#d9ecfb}
+body.theme-console .ambiance-tile{background:#0c2434;border-color:#194660;color:#d9ecfb}
+
+/* Grand écran : la barre de navigation compacte reste centrée sur la page,
+   alignée sur le contenu, au lieu de se tasser à gauche. */
+@media (min-width:1501px){
+  body .rust-nav{justify-content:center}
+}
+
+/* 2.15 — console des équipements (EO_Awel, EO_Laezh, EO_Treizh, EO_Kren). */
+.equipment-console{--eq-panel:#0b2636;--eq-line:#20546d;--eq-text:#e0f3fb;--eq-muted:#9cc2d3;--eq-cyan:#5ed6ff;padding:24px;border:1px solid #194b62;border-radius:16px;background:radial-gradient(circle at 90% 0,#16465a 0,#071d2b 40%,#04131d 100%);color:var(--eq-text);box-shadow:0 20px 54px #00131e38}.equipment-console h1,.equipment-console h2{color:var(--eq-text)}.equipment-console a{color:var(--eq-cyan)}.equipment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:4px 0 20px}.equipment-head h1{margin:3px 0}.equipment-head p{margin:0;color:var(--eq-muted)}.equipment-eyebrow{margin:0 0 4px!important;color:var(--eq-cyan)!important;font-size:.72rem;font-weight:800;letter-spacing:.14em}.equipment-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}.equipment-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-height:206px;padding:18px;border:1px solid var(--eq-line);border-radius:13px;background:linear-gradient(145deg,#0d2d3e,#071d2a);box-shadow:inset 0 1px #ffffff0d,0 8px 21px #00121d38}.equipment-card h2{margin:0;color:var(--eq-text)}.equipment-card p{margin:0;color:var(--eq-muted);line-height:1.45}.equipment-card .button{margin-top:auto}.equipment-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%}.equipment-console .button{border:1px solid #2a809e;background:linear-gradient(135deg,#10617d,#0d3d56);color:#eaf9ff!important}.equipment-state{display:inline-block;flex:none;padding:5px 9px;border-radius:999px;font-size:.72rem;font-weight:800}.equipment-state.actif{background:#123e36;color:#73f1bd}.equipment-state.attente{background:#49381c;color:#ffd27d}.equipment-note,.equipment-overview,.equipment-console>.card{background:#0a2332!important;border-color:var(--eq-line)!important;color:var(--eq-text)}.equipment-note h2,.equipment-overview h2{margin-top:0}.equipment-specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 0}.equipment-specs div{padding:12px;border:1px solid #1a4b62;border-radius:8px;background:#081b28}.equipment-specs dt{color:var(--eq-muted);font-size:.78rem}.equipment-specs dd{margin:4px 0 0;font-weight:700}.equipment-points{margin:0;padding-left:22px}.equipment-points li{margin:10px 0;color:var(--eq-text)}@media(max-width:1000px){.equipment-grid{grid-template-columns:1fr 1fr}}@media(max-width:800px){.equipment-console{padding:16px}.equipment-head{flex-direction:column}.equipment-grid,.equipment-specs{grid-template-columns:1fr}}

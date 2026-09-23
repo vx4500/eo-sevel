@@ -1404,6 +1404,46 @@ pub(super) async fn saisie_rapide(
                 .filter(|value| *value >= 0);
             sqlx::query("INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date) VALUES(?,?,?,?,?,?)").bind(sow_id).bind(band_id).bind(age).bind(number).bind(cause).bind(&date).execute(&state.pool).await?;
         }
+        // Porcs sortis de maternité : la perte se rattache à la bande seule,
+        // sans truie ni case obligatoire (repris de la version du 21/09).
+        "perte_bande" => {
+            let band_id = form_i64(&form, "bande_id")
+                .ok_or_else(|| AppError::Invalid("Sélectionnez la bande".into()))?;
+            let band: String = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
+                .bind(band_id)
+                .fetch_optional(&state.pool)
+                .await?
+                .ok_or(AppError::NotFound)?;
+            let number = form_i64(&form, "nombre").unwrap_or(1).max(1);
+            // Pas de blocage sur l'effectif estimé : sans inventaire récent il
+            // vaut 0 (vérifié sur B2.12 le 23/09) et empêcherait de déclarer
+            // une perte réelle. La déclaration fait foi et corrige l'estimation.
+            let cause = form_text(&form, "cause")
+                .ok_or_else(|| AppError::Invalid("Cause obligatoire".into()))?;
+            let cause_exists: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM causeperte WHERE lower(libelle)=lower(?)")
+                    .bind(&cause)
+                    .fetch_one(&state.pool)
+                    .await?;
+            if cause_exists == 0 {
+                return Err(AppError::Invalid(
+                    "Sélectionnez une cause configurée".into(),
+                ));
+            }
+            let stade = form_text(&form, "stade").map(|s| super::normalize_death_stage(&s));
+            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,NULL,?,?,?,?,?)")
+                .bind(&band)
+                .bind(&date)
+                .bind(stade)
+                .bind(&cause)
+                .bind(form_f64(&form, "poids"))
+                .bind(number)
+                .bind(&session.nom)
+                .bind(form_text(&form, "note"))
+                .execute(&state.pool)
+                .await?;
+            updated_band_id = Some(band_id);
+        }
         "sortie" => {
             let sow_id = form_i64(&form, "truie_id")
                 .ok_or_else(|| AppError::Invalid("Truie obligatoire".into()))?;

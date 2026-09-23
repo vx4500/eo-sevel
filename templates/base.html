@@ -329,6 +329,7 @@
 
   <span class="grow"></span>
   <form class="rust-search" action="/recherche" method="get" role="search"><span aria-hidden="true">🔍</span><input name="q" placeholder="Truie, bande, facture…" aria-label="Rechercher dans l’élevage"><button type="submit">OK</button></form>
+  <a class="weekly-report-button" href="/rapport" title="Rapport : températures par salle et actions à mener sous 48 h" aria-label="Rapport : températures par salle et actions à mener sous 48 h"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 2.8h7l4 4v14.4H6.5z"/><path d="M13.5 2.8v4.4h4"/><path d="M8.8 14h6.4M8.8 17h4.5"/></svg><span>Rapport</span></a>
   <button type="button" id="farm-alert-button" class="farm-alert-button" aria-label="Alertes de l’élevage" aria-controls="farm-alert-panel" aria-expanded="false"><span aria-hidden="true">!</span><b id="farm-alert-count">…</b></button>
 
   {% if session.peut_modifier %}<button type="button" id="vocal-bouton" aria-label="Dicter une saisie" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.6" width="6" height="11.2" rx="3"/><path d="M5.2 11.4a6.8 6.8 0 0 0 13.6 0M12 18.2v3.2"/></svg></button>{% endif %}
@@ -418,6 +419,7 @@
     <button type="button" class="fab-t" data-type="chaleur">Chaleur</button>
     <button type="button" class="fab-t" data-type="mise_bas">Mise-bas</button>
     <button type="button" class="fab-t" data-type="perte">Perte porc et porcelet</button>
+    <button type="button" class="fab-t" data-type="perte_bande">Perte porc après maternité</button>
     <button type="button" class="fab-t" data-type="sortie">Sortie truie</button>
     <button type="button" class="fab-t" data-type="mouvement">Mouvement</button>
     <button type="button" class="fab-t" data-type="sevrage">Sevrage</button>
@@ -505,6 +507,16 @@
         </label>
         <label>Poids (kg)<input name="poids" inputmode="decimal" disabled></label>
       </details>
+    </div>
+    <div class="fab-f" data-for="perte_bande" hidden>
+      <p class="help">Pour les porcs sortis de maternité : choisissez uniquement la bande. La perte est rattachée à la bande, sans case obligatoire.</p>
+      <label>Numéro de bande
+        <select name="bande_id" id="fab-bande-perte-porc" disabled required><option value="">Chargement…</option></select>
+      </label>
+      <label>Nombre de porcs<input name="nombre" inputmode="numeric" value="1" min="1" disabled required></label>
+      <label>Cause
+        <select name="cause" id="fab-cause-perte-porc" disabled required><option>Chargement des causes configurées…</option></select>
+      </label>
     </div>
     <div class="fab-f" data-for="sortie" hidden>
       <label>Motif de sortie
@@ -605,6 +617,7 @@
   var sowSearch=document.getElementById('fab-truie-recherche');
   var sowLabel=document.getElementById('fab-truie-label');
   var band=document.getElementById('fab-bande');
+  var bandPigLoss=document.getElementById('fab-bande-perte-porc');
   var noteWrap=document.getElementById('fab-note-wrap');
   var note=document.getElementById('fab-note');
   var source=document.getElementById('fab-source');
@@ -780,6 +793,8 @@
     rows.forEach(function(r){bandSelectSev.add(new Option((r.code||(r.id))+ (r.site?' · '+r.site:''),text(r.id)));});
     var bandSelectComportement=document.getElementById('fab-bande-comportement'); bandSelectComportement.replaceChildren(new Option('— sélectionner —',''));
     rows.forEach(function(r){bandSelectComportement.add(new Option((r.code||(r.id))+ (r.site?' · '+r.site:''),text(r.id)));});
+    bandPigLoss.replaceChildren(new Option('— sélectionner la bande —',''));
+    rows.forEach(function(r){bandPigLoss.add(new Option((r.code||(r.id))+ (r.site?' · '+r.site:''),text(r.id)));});
   }).catch(function(){band.replaceChildren(new Option('Liste indisponible',''));});
   // fetch cases and capacities to display remaining places
   Promise.all([fetch('/api/cases').then(function(r){return r.json();}), fetch('/api/cases-capacity').then(function(r){return r.json();}).catch(function(){return [];} )]).then(function(results){
@@ -825,7 +840,13 @@
     var cause=document.getElementById('fab-cause'), rows=data.causes||[]; cause.replaceChildren();
     rows.forEach(function(row){cause.add(new Option(row.libelle,row.libelle));});
     if(!rows.length){cause.add(new Option('Autre','Autre'));}
-  }).catch(function(){var cause=document.getElementById('fab-cause');cause.replaceChildren(new Option('Autre','Autre'));});
+    var causePig=document.getElementById('fab-cause-perte-porc'); causePig.replaceChildren();
+    rows.forEach(function(row){causePig.add(new Option(row.libelle,row.libelle));});
+    if(!rows.length){causePig.add(new Option('Autre','Autre'));}
+  }).catch(function(){
+    document.getElementById('fab-cause').replaceChildren(new Option('Autre','Autre'));
+    document.getElementById('fab-cause-perte-porc').replaceChildren(new Option('Autre','Autre'));
+  });
   // Les cases proposées pour une perte sont celles où la bande se trouve
   // vraiment : chercher dans tout l'élevage pour en trouver deux ou trois
   // fait perdre plus de temps que la saisie elle-même.
@@ -909,13 +930,13 @@
       var active=section.dataset.for===type; section.hidden=!active;
       section.querySelectorAll('input,select,textarea,button').forEach(function(field){field.disabled=!active;});
     });
-    var loss=type==='perte', movement=type==='mouvement', sevrage=type==='sevrage', cochette=type==='cochette', comportement=type==='comportement';
+    var loss=type==='perte', bandLoss=type==='perte_bande', movement=type==='mouvement', sevrage=type==='sevrage', cochette=type==='cochette', comportement=type==='comportement';
     if(cochette) chargerCochette();
     if(comportement) initComportement();
     form.action=movement?'/transferts/porcs':'/saisie-rapide';
     // Une cochette n'existe pas encore, un comportement n'est pas rattaché à
     // une truie précise : il n'y a pas de truie à choisir dans ces deux cas.
-    var sansTruie=movement||sevrage||cochette||comportement;
+    var sansTruie=bandLoss||movement||sevrage||cochette||comportement;
     sow.disabled=sansTruie; sow.required=!sansTruie;
     document.getElementById('fab-truie-wrap').hidden=sansTruie;
     sowLabel.textContent=loss?'Numéro de la truie':'Truie';

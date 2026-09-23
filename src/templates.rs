@@ -58,7 +58,10 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("truie.html", include_str!("../templates/truie.html"))?;
     env.add_template("energie.html", include_str!("../templates/energie.html"))?;
     env.add_template("ambiance.html", include_str!("../templates/ambiance.html"))?;
-    env.add_template("equipements.html", include_str!("../templates/equipements.html"))?;
+    env.add_template(
+        "equipements.html",
+        include_str!("../templates/equipements.html"),
+    )?;
     env.add_template(
         "equipement_detail.html",
         include_str!("../templates/equipement_detail.html"),
@@ -243,6 +246,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     )?;
     env.add_template("attente.html", include_str!("../templates/attente.html"))?;
     env.add_template("planning.html", include_str!("../templates/planning.html"))?;
+    env.add_template("rapport.html", include_str!("../templates/rapport.html"))?;
     env.add_template("stock.html", include_str!("../templates/stock.html"))?;
     env.add_template("journal.html", include_str!("../templates/journal.html"))?;
     env.add_template("imports.html", include_str!("../templates/imports.html"))?;

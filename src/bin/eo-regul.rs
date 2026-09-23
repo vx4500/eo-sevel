@@ -659,7 +659,19 @@ async fn traiter_salle(
     )
     .await?;
 
-    surveiller(pool, salle, temperature.valeur, humidite.valeur, &decision).await;
+    // La consigne n'atteint réellement l'automate que sur une salle pilotée,
+    // hors simulation. Sinon la ventilation réelle suit la régulation en place
+    // et juger « l'effet » de notre commande n'a aucun sens.
+    let commande_effective = salle.pilote && !acces.simulation;
+    surveiller(
+        pool,
+        salle,
+        temperature.valeur,
+        humidite.valeur,
+        &decision,
+        commande_effective,
+    )
+    .await;
 
     if let Some(erreur) = echec_ecriture {
         // Signalé après l'archivage, et remonté comme une erreur de cycle : la
@@ -790,6 +802,7 @@ async fn surveiller(
     temperature: Option<f64>,
     humidite: Option<f64>,
     decision: &Decision,
+    commande_effective: bool,
 ) {
     if decision.mode == Mode::Securite {
         let _ = ouvrir_alerte(
@@ -857,7 +870,8 @@ async fn surveiller(
     // Ventilation à fond depuis un moment sans que la température redescende :
     // c'est la signature d'un ventilateur arrêté, d'un gradateur mort ou d'une
     // trappe bloquée. Aucun capteur ne le dirait — seul l'effet le trahit.
-    let _ = detecter_ventilation_inefficace(pool, salle, temperature, decision).await;
+    let _ = detecter_ventilation_inefficace(pool, salle, temperature, decision, commande_effective)
+        .await;
 }
 
 async fn detecter_ventilation_inefficace(
@@ -865,11 +879,15 @@ async fn detecter_ventilation_inefficace(
     salle: &SalleRegulee,
     temperature: Option<f64>,
     decision: &Decision,
+    commande_effective: bool,
 ) -> Result<()> {
     let Some(actuelle) = temperature else {
         return Ok(());
     };
-    if decision.mode != Mode::Auto || decision.ventil < 95.0 {
+    // En simulation ou en simple observation, la commande calculée n'est pas
+    // envoyée : l'absence d'effet ne prouve aucune panne. C'était la source
+    // des fausses alertes critiques des 17-23/09 (Mater 2 notamment).
+    if !commande_effective || decision.mode != Mode::Auto || decision.ventil < 95.0 {
         let _ = fermer_alerte(pool, salle.salle_id, "ventilation_inefficace").await;
         return Ok(());
     }

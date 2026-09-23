@@ -36,6 +36,7 @@ mod historique_truie;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
+mod rapport;
 #[cfg(test)]
 mod regression_tests;
 mod scan;
@@ -588,6 +589,8 @@ pub fn router(state: AppState) -> Router {
         .route("/pharmacie/mouvement", post(pharmacie_mouvement))
         .route("/pharmacie/regler", post(pharmacie_regler))
         .route("/planning", get(planning))
+        .route("/rapport", get(rapport::page))
+        .route("/rapport-hebdomadaire.pdf", get(rapport::ancien_pdf))
         .route("/calendrier.ics", get(calendrier_ics))
         .route("/imports", get(imports_page))
         .route(
@@ -848,8 +851,18 @@ async fn equipement_laezh(
     contexte.insert("etat".into(), json!("En préparation"));
     contexte.insert("description".into(), json!("Le pilotage prévoit la préparation du lait par pesée, la circulation vers les 26 cases et le nettoyage quotidien de la boucle."));
     contexte.insert("automate".into(), json!("Schneider TM221CE24R"));
-    contexte.insert("liaison".into(), json!("Automate non encore raccordé à EO_Sevel"));
-    contexte.insert("points".into(), json!(["Cuve : poids, niveau et température", "Distribution : circulation et consommation par case", "Nettoyage : cycle CIP et confirmation de fin"]));
+    contexte.insert(
+        "liaison".into(),
+        json!("Automate non encore raccordé à EO_Sevel"),
+    );
+    contexte.insert(
+        "points".into(),
+        json!([
+            "Cuve : poids, niveau et température",
+            "Distribution : circulation et consommation par case",
+            "Nettoyage : cycle CIP et confirmation de fin"
+        ]),
+    );
     render(&state, "equipement_detail.html", Value::Object(contexte))
 }
 
@@ -863,8 +876,18 @@ async fn equipement_treizh(
     contexte.insert("etat".into(), json!("En préparation"));
     contexte.insert("description".into(), json!("La station pèse chaque porc puis l’oriente vers la porte de sortie attribuée. EO_Sevel recevra les lectures de l’automate sans prendre la main sur les sécurités locales."));
     contexte.insert("automate".into(), json!("Schneider TM221CE24T"));
-    contexte.insert("liaison".into(), json!("Lecture Modbus TCP à configurer depuis l’automate"));
-    contexte.insert("points".into(), json!(["Pesée stable et présence dans la cage", "Porte de sortie choisie et compteurs de tri", "Historique des pesées et identification RFID"]));
+    contexte.insert(
+        "liaison".into(),
+        json!("Lecture Modbus TCP à configurer depuis l’automate"),
+    );
+    contexte.insert(
+        "points".into(),
+        json!([
+            "Pesée stable et présence dans la cage",
+            "Porte de sortie choisie et compteurs de tri",
+            "Historique des pesées et identification RFID"
+        ]),
+    );
     render(&state, "equipement_detail.html", Value::Object(contexte))
 }
 
@@ -877,8 +900,14 @@ async fn equipement_kren(
     contexte.insert("titre".into(), json!("Distribution automatisée d’aliment"));
     contexte.insert("etat".into(), json!("Architecture définie"));
     contexte.insert("description".into(), json!("EO_Kren prépare une distribution d’aliment filaire, fiable et économique. Une passerelle centrale communique en Ethernet avec EO_Sevel et pilote les cartes satellites placées près des auges."));
-    contexte.insert("automate".into(), json!("Kren-Link · ESP32-WROOM-32E ou ESP32-S3"));
-    contexte.insert("liaison".into(), json!("Ethernet RJ45 / PoE vers le serveur, bus CAN filaire vers les Kren-Node"));
+    contexte.insert(
+        "automate".into(),
+        json!("Kren-Link · ESP32-WROOM-32E ou ESP32-S3"),
+    );
+    contexte.insert(
+        "liaison".into(),
+        json!("Ethernet RJ45 / PoE vers le serveur, bus CAN filaire vers les Kren-Node"),
+    );
     contexte.insert("points".into(), json!(["Kren-Link : LAN8720A RMII, alimentation 3,3 V et CAN SN65HVD230", "Kren-Node : pilotage local des moteurs et doseurs d’auge", "Bus CAN : terminaison 120 Ω débrayable par cavalier", "À raccorder ensuite : niveau d’aliment, doses servies, défaut moteur et historique par case"]));
     render(&state, "equipement_detail.html", Value::Object(contexte))
 }
@@ -2638,7 +2667,11 @@ fn auto_marking_number(code: &str, site: &str) -> Option<String> {
 /// Ignore les espaces et le préfixe B des codes numériques, sans confondre
 /// les séparateurs ni les lettres des autres codes.
 fn normalize_band_code(code: &str) -> String {
-    let normalized: String = code.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).collect();
+    let normalized: String = code
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect();
     match normalized.strip_prefix('b') {
         Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => rest.to_string(),
         _ => normalized,
@@ -3569,10 +3602,11 @@ async fn truie_bande(
     // réapparaît comme "active" dans une bande archivée sans que personne ne
     // le remarque.
     if let Some(code) = bande_code.as_deref() {
-        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM bande WHERE code=? AND active=1")
-            .bind(code)
-            .fetch_one(&state.pool)
-            .await?;
+        let exists: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM bande WHERE code=? AND active=1")
+                .bind(code)
+                .fetch_one(&state.pool)
+                .await?;
         if exists == 0 {
             return Err(AppError::Invalid("Bande active introuvable".into()));
         }
@@ -4742,13 +4776,10 @@ async fn truies_analyser_bytes(
         .map(|value| value.trim().trim_start_matches('\u{feff}').to_lowercase())
         .collect();
     if !normalized.iter().any(|value| value == "num_travail") {
-        let is_historique = String::from_utf8_lossy(bytes)
-            .lines()
-            .take(10)
-            .any(|line| {
-                let normalized_line = line.trim().trim_start_matches('\u{feff}').to_lowercase();
-                normalized_line.contains("n° travail") && normalized_line.contains("date 1ère ia")
-            });
+        let is_historique = String::from_utf8_lossy(bytes).lines().take(10).any(|line| {
+            let normalized_line = line.trim().trim_start_matches('\u{feff}').to_lowercase();
+            normalized_line.contains("n° travail") && normalized_line.contains("date 1ère ia")
+        });
         if is_historique {
             return Err(AppError::Invalid(
                 "Ce fichier est un historique complet de truies. Utilisez l’import « Historique truie (export riche) » sur cette page.".into(),
@@ -5222,7 +5253,10 @@ async fn import_unifie(
             "Plusieurs fichiers à la fois ne sont pris en charge que pour des PDF. Importez les CSV un par un.".into(),
         ));
     }
-    let (filename, bytes) = files.into_iter().next().expect("un fichier vérifié ci-dessus");
+    let (filename, bytes) = files
+        .into_iter()
+        .next()
+        .expect("un fichier vérifié ci-dessus");
 
     if bytes.starts_with(b"%PDF") {
         return pdf_analyser_bytes(&state, &session, vec![(filename, bytes)]).await;
@@ -5446,7 +5480,11 @@ async fn gttt(
     let period_start = today - Duration::days(span);
     let mut band_codes = all_litters
         .iter()
-        .filter(|litter| litter.farrowing_date.is_some_and(|date| date >= period_start))
+        .filter(|litter| {
+            litter
+                .farrowing_date
+                .is_some_and(|date| date >= period_start)
+        })
         .filter_map(|litter| litter.band.clone())
         .collect::<Vec<_>>();
     band_codes.sort();
@@ -5487,7 +5525,9 @@ async fn gttt(
             .iter()
             .filter(|litter| {
                 litter.band.as_deref() == Some(code.as_str())
-                    && litter.farrowing_date.is_some_and(|date| date >= period_start)
+                    && litter
+                        .farrowing_date
+                        .is_some_and(|date| date >= period_start)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -10946,8 +10986,14 @@ async fn structure(
     ctx.insert("sites".into(), Value::Array(sites));
     ctx.insert("salles".into(), Value::Array(rooms));
     ctx.insert("cases".into(), Value::Array(cases));
-    ctx.insert("comparaison_stades".into(), Value::Array(comparaison_stades));
-    ctx.insert("comparaison_salles".into(), Value::Array(comparaison_salles));
+    ctx.insert(
+        "comparaison_stades".into(),
+        Value::Array(comparaison_stades),
+    );
+    ctx.insert(
+        "comparaison_salles".into(),
+        Value::Array(comparaison_salles),
+    );
     ctx.insert("comparaison_sites".into(), Value::Array(comparaison_sites));
     render(&state, "structure.html", Value::Object(ctx))
 }
@@ -12508,7 +12554,6 @@ async fn silo_supprimer(
         .await?;
     Ok(Redirect::to("/aliment-previsions").into_response())
 }
-
 
 async fn reception_supprimer(
     State(state): State<AppState>,

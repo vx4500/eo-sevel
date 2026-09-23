@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.15.5** — Dernière mise à jour de ce document : 20 septembre 2026.
+Version actuelle : **2.16.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.16.0 — Rapport températures et actions 48 h, régulation
+
+Version Rust 2.16.0 : nouvelle page `/rapport` (bouton « Rapport » du menu), bilan complet de l'élevage sur 7/14/30 jours : synthèse chiffrée, bandes, reproduction, maternité, mortalité (sans double compte des pertes de maternité), sanitaire et délais d'attente, stocks, ventes, eau/électricité, actions à mener dans les 48 h (étapes des bandes, rappels sanitaires, soins de portée, tâches, entretiens, alertes d'ambiance ouvertes, sondes ou régulation muettes) et récapitulatif des températures par salle (actuel, consigne, moyenne/min/max 24 h et 7 j, écart à la consigne, part des relevés hors seuils, alertes). Imprimable / PDF depuis le navigateur ; l'ancienne adresse `/rapport-hebdomadaire.pdf` y renvoie. `eo-regul` ne lève plus l'alerte « ventilation inefficace » quand sa commande n'est pas envoyée (simulation ou salle observée) : c'était la source des fausses alertes critiques. Saisie rapide « Perte porc après maternité » (bande seule) reprise de la version du 21/09. Feuille de style : celle déployée le 21/09 (navigation compacte recentrée, thèmes) plus la console des équipements 2.15.
 
 ### Version 2.15.5 — GTTT imprimable sur trois périodes
 

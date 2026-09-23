@@ -78,10 +78,10 @@ fn saisie_rapide_prepare_le_sevrage_avant_lenvoi() {
         serialisation < form_data,
         "les truies doivent être sérialisées avant FormData"
     );
-    // Mouvement, sevrage, création de cochette et observation comportementale
-    // ne portent sur aucune truie déjà au cheptel : le sélecteur doit être
-    // neutralisé pour les quatre.
-    assert!(template.contains("var sansTruie=movement||sevrage||cochette||comportement;"));
+    // Perte de porcs par bande, mouvement, sevrage, création de cochette et
+    // observation comportementale ne portent sur aucune truie déjà au
+    // cheptel : le sélecteur doit être neutralisé pour les cinq.
+    assert!(template.contains("var sansTruie=bandLoss||movement||sevrage||cochette||comportement;"));
     assert!(template.contains("sow.disabled=sansTruie;"));
     assert!(template.contains("selected=sevrageWholeSelection.slice()"));
     assert!(!template.contains("inp.previousSibling.checked"));
