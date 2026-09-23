@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.18.3** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.18.4** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.18.4 — Adoptions constatées au sevrage
+
+Version Rust 2.18.4 : sur la page de sevrage, une truie peut avoir plus de sevrés que de présents. Les porcelets en plus sont enregistrés comme adoptions (`adoptionporcelet`, « Adoption constatée au sevrage ») depuis les truies cochées qui en ont en moins, les plus gros écarts d'abord ; ce qui manque encore part en perte avec la cause choisie ; un surplus net de la bande est refusé, sauf choix « Nés vifs sous-estimés » qui corrige la mise-bas. Le tout dans la même transaction que le sevrage.
 
 ### Version 2.18.3 — Connexion rétablie
 

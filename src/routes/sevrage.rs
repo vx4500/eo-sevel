@@ -151,6 +151,55 @@ struct Ligne {
     case_source: Option<i64>,
 }
 
+/// Rapprochement des écarts de comptage (sevrés − présents, par truie) :
+/// les porcelets en plus sont pris comme adoptions sur les truies qui en ont
+/// en moins ; ce qui manque encore part en perte, ce qui reste en plus est un
+/// surplus (nés vifs sous-estimés).
+#[derive(Debug, Default, PartialEq)]
+struct Rapprochement {
+    /// (source, destination, nombre) en indices de lignes.
+    adoptions: Vec<(usize, usize, i64)>,
+    pertes: Vec<(usize, i64)>,
+    surplus: Vec<(usize, i64)>,
+}
+
+fn rapprocher(ecarts: &[i64]) -> Rapprochement {
+    let mut plus: Vec<(usize, i64)> = ecarts
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| **e > 0)
+        .map(|(i, e)| (i, *e))
+        .collect();
+    let mut moins: Vec<(usize, i64)> = ecarts
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| **e < 0)
+        .map(|(i, e)| (i, -*e))
+        .collect();
+    // Les plus gros écarts d'abord : moins d'adoptions, plus lisibles.
+    plus.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    moins.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let mut r = Rapprochement::default();
+    let mut k = 0;
+    for (destination, mut besoin) in plus {
+        while besoin > 0 && k < moins.len() {
+            let pris = besoin.min(moins[k].1);
+            r.adoptions.push((moins[k].0, destination, pris));
+            besoin -= pris;
+            moins[k].1 -= pris;
+            if moins[k].1 == 0 {
+                k += 1;
+            }
+        }
+        if besoin > 0 {
+            r.surplus.push((destination, besoin));
+        }
+    }
+    r.pertes = moins.into_iter().filter(|(_, n)| *n > 0).collect();
+    r.pertes.sort_unstable();
+    r
+}
+
 pub(super) async fn enregistrer(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -202,12 +251,6 @@ pub(super) async fn enregistrer(
             .ok_or_else(|| {
                 AppError::Invalid(format!("Truie {numero} : nombre de sevrés manquant"))
             })?;
-        if sevres > presents {
-            return Err(AppError::Invalid(format!(
-                "Truie {numero} : {sevres} sevrés pour {presents} présents. \
-                 Enregistrez d’abord l’adoption des porcelets reçus (page Maternité)."
-            )));
-        }
         let date_mb: String = portee.try_get("date")?;
         if date < date_mb {
             return Err(AppError::Invalid(format!(
@@ -235,11 +278,31 @@ pub(super) async fn enregistrer(
             "Cochez au moins une truie à sevrer".into(),
         ));
     }
-    let ecart_total: i64 = lignes.iter().map(|l| l.presents - l.sevres).sum();
-    if ecart_total > 0 {
+    // Écarts entre comptage et présents : d'abord des adoptions entre truies
+    // de la bande (les porcelets en plus viennent de celles qui en ont moins),
+    // puis perte pour ce qui manque encore, et correction des nés vifs pour
+    // un surplus restant si l'éleveur l'a choisi.
+    let ecarts: Vec<i64> = lignes.iter().map(|l| l.sevres - l.presents).collect();
+    let plan = rapprocher(&ecarts);
+    let manquants: i64 = plan.pertes.iter().map(|(_, n)| n).sum();
+    let surplus: i64 = plan.surplus.iter().map(|(_, n)| n).sum();
+    if surplus > 0 && form_text(&form, "surplus").as_deref() != Some("corriger_nv") {
+        let qui: Vec<String> = plan
+            .surplus
+            .iter()
+            .map(|(i, n)| format!("{} (+{n})", lignes[*i].numero))
+            .collect();
+        return Err(AppError::Invalid(format!(
+            "{surplus} porcelet(s) de plus que les présents sur l’ensemble de la bande ({}). \
+             Aucune truie cochée n’en a assez en moins pour expliquer une adoption. Vérifiez le comptage, \
+             ou choisissez « Nés vifs sous-estimés : corriger la mise-bas » pour les porcelets en plus.",
+            qui.join(", ")
+        )));
+    }
+    if manquants > 0 {
         let cause = cause.as_deref().ok_or_else(|| {
             AppError::Invalid(format!(
-                "{ecart_total} porcelet(s) manquent par rapport aux présents : choisissez la cause de l’écart"
+                "{manquants} porcelet(s) manquent par rapport aux présents : choisissez la cause de l’écart"
             ))
         })?;
         let connue: i64 =
@@ -251,6 +314,7 @@ pub(super) async fn enregistrer(
             return Err(AppError::Invalid("Choisissez une cause configurée".into()));
         }
     }
+    let ecart_total = manquants;
     let total: i64 = lignes.iter().map(|l| l.sevres).sum();
     // Cases de destination : chacune doit être en post-sevrage et avoir la
     // place pour tout ce qu'on y envoie.
@@ -289,26 +353,56 @@ pub(super) async fn enregistrer(
         salle_de_case.insert(*case_id, ligne.try_get("salle_id")?);
     }
 
-    for l in &lignes {
-        let ecart = l.presents - l.sevres;
-        if ecart > 0 {
-            let age = match (parse_stored_date(&date), parse_stored_date(&l.date_mb)) {
-                (Some(a), Some(b)) => Some((a - b).num_days()),
-                _ => None,
-            };
-            sqlx::query(
-                "INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date,evenement_id) VALUES(?,?,?,?,?,?,?)",
-            )
-            .bind(l.truie_id)
-            .bind(band_id)
-            .bind(age)
-            .bind(ecart)
-            .bind(cause.as_deref())
-            .bind(&date)
-            .bind(l.mise_bas_id)
-            .execute(&mut *tx)
-            .await?;
-        }
+    let mut notes: Vec<Vec<String>> = vec![Vec::new(); lignes.len()];
+    for (source, destination, nombre) in &plan.adoptions {
+        sqlx::query(
+            "INSERT INTO adoptionporcelet(date,source_id,destination_id,nombre,note) VALUES(?,?,?,?,?)",
+        )
+        .bind(&date)
+        .bind(lignes[*source].mise_bas_id)
+        .bind(lignes[*destination].mise_bas_id)
+        .bind(nombre)
+        .bind("Adoption constatée au sevrage")
+        .execute(&mut *tx)
+        .await?;
+        notes[*destination].push(format!("{nombre} adopté(s) de {}", lignes[*source].numero));
+        notes[*source].push(format!(
+            "{nombre} passé(s) à {}",
+            lignes[*destination].numero
+        ));
+    }
+    for (i, nombre) in &plan.pertes {
+        let l = &lignes[*i];
+        let age = match (parse_stored_date(&date), parse_stored_date(&l.date_mb)) {
+            (Some(a), Some(b)) => Some((a - b).num_days()),
+            _ => None,
+        };
+        sqlx::query(
+            "INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date,evenement_id) VALUES(?,?,?,?,?,?,?)",
+        )
+        .bind(l.truie_id)
+        .bind(band_id)
+        .bind(age)
+        .bind(nombre)
+        .bind(cause.as_deref())
+        .bind(&date)
+        .bind(l.mise_bas_id)
+        .execute(&mut *tx)
+        .await?;
+        notes[*i].push(format!("{nombre} en perte"));
+    }
+    for (i, nombre) in &plan.surplus {
+        sqlx::query(
+            "UPDATE evenement SET nes_vifs=COALESCE(nes_vifs,0)+?,nes_totaux=COALESCE(nes_totaux,0)+? WHERE id=?",
+        )
+        .bind(nombre)
+        .bind(nombre)
+        .bind(lignes[*i].mise_bas_id)
+        .execute(&mut *tx)
+        .await?;
+        notes[*i].push(format!("nés vifs corrigés +{nombre}"));
+    }
+    for (index, l) in lignes.iter().enumerate() {
         // Contrôle final : la vue doit maintenant donner exactement le nombre
         // compté, sinon la base refuserait le sevrage.
         let presents: i64 = sqlx::query_scalar("SELECT presents FROM portee_effectif WHERE id=?")
@@ -321,10 +415,10 @@ pub(super) async fn enregistrer(
                 l.numero, l.sevres
             )));
         }
-        let note = if ecart > 0 {
-            format!("Sevrage de bande · écart de {ecart} enregistré en perte")
-        } else {
+        let note = if notes[index].is_empty() {
             "Sevrage de bande".to_string()
+        } else {
+            format!("Sevrage de bande · {}", notes[index].join(", "))
         };
         sqlx::query(
             "INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,?,0)",
@@ -457,6 +551,92 @@ mod tests {
         .await
         .unwrap();
         state
+    }
+
+    #[test]
+    fn rapprochement_des_ecarts() {
+        // Cas B3.19 simplifié : +6 et +2 compensés par des truies à -3,-3,-1,-1.
+        let r = rapprocher(&[6, 2, -3, -3, -1, -1, 0]);
+        assert!(r.pertes.is_empty() && r.surplus.is_empty());
+        let recu = |d: usize| {
+            r.adoptions
+                .iter()
+                .filter(|a| a.1 == d)
+                .map(|a| a.2)
+                .sum::<i64>()
+        };
+        assert_eq!((recu(0), recu(1)), (6, 2));
+        // Manque net : perte ; surplus net : surplus.
+        let r = rapprocher(&[2, -5]);
+        assert_eq!(r.adoptions, vec![(1, 0, 2)]);
+        assert_eq!(r.pertes, vec![(1, 3)]);
+        let r = rapprocher(&[4, -1]);
+        assert_eq!(r.surplus, vec![(0, 3)]);
+    }
+
+    #[tokio::test]
+    async fn adoption_constatee_au_sevrage() -> anyhow::Result<()> {
+        let state = elevage().await;
+        // T1 : 12 présents, T2 : 12, T3 : 10. On compte T1=9, T2=12, T3=13 :
+        // 3 porcelets passés de T1 à T3 sans adoption enregistrée.
+        enregistrer(
+            State(state.clone()),
+            Extension(session()),
+            Path(1),
+            Form(formulaire(&[
+                ("sel_1", "1"),
+                ("nb_1", "9"),
+                ("sel_2", "1"),
+                ("nb_2", "12"),
+                ("sel_3", "1"),
+                ("nb_3", "13"),
+            ])),
+        )
+        .await?;
+        let adoption: (i64, i64, i64) =
+            sqlx::query_as("SELECT source_id,destination_id,nombre FROM adoptionporcelet")
+                .fetch_one(&state.pool)
+                .await?;
+        assert_eq!(adoption, (10, 12, 3));
+        let sevres: i64 =
+            sqlx::query_scalar("SELECT SUM(nb_sevres) FROM evenement WHERE type='sevrage'")
+                .fetch_one(&state.pool)
+                .await?;
+        assert_eq!(sevres, 34);
+        let pertes: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM perteporcelet WHERE date=date('now')")
+                .fetch_one(&state.pool)
+                .await?;
+        assert_eq!(pertes, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn surplus_net_corrige_les_nes_vifs_sur_demande() -> anyhow::Result<()> {
+        let state = elevage().await;
+        let champs = [("sel_3", "1"), ("nb_3", "11")];
+        assert!(enregistrer(
+            State(state.clone()),
+            Extension(session()),
+            Path(1),
+            Form(formulaire(&champs)),
+        )
+        .await
+        .is_err());
+        let mut avec = champs.to_vec();
+        avec.push(("surplus", "corriger_nv"));
+        enregistrer(
+            State(state.clone()),
+            Extension(session()),
+            Path(1),
+            Form(formulaire(&avec)),
+        )
+        .await?;
+        let nv: i64 = sqlx::query_scalar("SELECT nes_vifs FROM evenement WHERE id=12")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(nv, 11);
+        Ok(())
     }
 
     #[tokio::test]

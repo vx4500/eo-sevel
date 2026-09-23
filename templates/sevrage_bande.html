@@ -4,7 +4,8 @@
 .sv-table input[type=number]{width:74px;padding:6px;font-size:1rem;text-align:right}
 .sv-table input.poids{width:66px}
 .sv-table tr.ecart td{background:var(--cd-orange-fond)}
-.sv-table tr.trop td{background:var(--cd-rouge-fond)}
+.sv-table tr.trop td{background:#e8f1f8}
+.sv-total .info{color:#2c5d7e;font-weight:700}
 .sv-table tr.off td{opacity:.45}
 .sv-total{position:sticky;bottom:0;background:#fff;border-top:2px solid var(--cd-vert);padding:12px 0;display:flex;gap:18px;align-items:center;flex-wrap:wrap;z-index:5}
 .sv-total b{font-size:1.3rem}
@@ -33,6 +34,8 @@
   <label>Truies sevrées vers
     <select name="salle_truies"><option value="">— ne pas déplacer —</option>
     {% for s in salles_truies %}<option value="{{ s.id }}"{% if loop.first and s.verraterie %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
+  <label>Porcelets en plus au total de la bande
+    <select name="surplus" id="sv-surplus"><option value="">Refuser : vérifier le comptage</option><option value="corriger_nv">Nés vifs sous-estimés : corriger la mise-bas</option></select></label>
   <label>Cause si des porcelets manquent
     <select name="cause_ecart" id="sv-cause"><option value="">— à choisir s’il y a un écart —</option>
     {% for c in causes %}<option{% if c == 'Autre' %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
@@ -71,29 +74,34 @@
   <span id="sv-ecart"></span>
   <button type="submit" id="sv-valider">Confirmer le sevrage</button>
 </div>
-<p class="note">À la confirmation : le sevrage est enregistré pour chaque truie cochée ; s’il manque des porcelets par rapport aux présents, l’écart est enregistré en perte avec la cause choisie ; les porcelets passent dans la case indiquée ; <b>les truies sortent de la bande</b> (elles rejoignent la file « Prochaine IA ») et vont dans la salle choisie. Plus de porcelets que de présents = une adoption à enregistrer d’abord dans la Maternité.</p>
+<p class="note">À la confirmation : le sevrage est enregistré pour chaque truie cochée ; les porcelets en plus chez une truie sont enregistrés comme adoptions depuis les truies de la bande qui en ont en moins, et ce qui manque encore part en perte avec la cause choisie ; les porcelets passent dans la case indiquée ; <b>les truies sortent de la bande</b> (elles rejoignent la file « Prochaine IA ») et vont dans la salle choisie. S’il reste des porcelets en plus au total de la bande, choisissez « Nés vifs sous-estimés » pour corriger la mise-bas.</p>
 </form>
 <script>
 (function(){
   var form=document.getElementById('sv-form'); if(!form) return;
   var rows=[].slice.call(form.querySelectorAll('tbody tr'));
   function maj(){
-    var n=0,s=0,e=0,trop=0;
+    var n=0,s=0,moins=0,plus=0,nPlus=0;
     rows.forEach(function(r){
       var on=r.querySelector('.sv-sel').checked, inp=r.querySelector('.sv-nb');
       var p=+r.dataset.presents, v=inp.value===''?0:+inp.value;
       inp.disabled=!on; r.querySelector('.poids').disabled=!on; r.querySelector('.sv-case').disabled=!on;
       r.classList.toggle('off',!on); r.classList.toggle('ecart',on&&v<p); r.classList.toggle('trop',on&&v>p);
-      if(on){n++; s+=v; if(v<p) e+=p-v; if(v>p) trop++;}
+      if(on){n++; s+=v; if(v<p) moins+=p-v; if(v>p){plus+=v-p; nPlus++;}}
     });
+    var adoptes=Math.min(plus,moins), pertes=moins-adoptes, surplus=plus-adoptes;
     document.getElementById('sv-truies').textContent=n;
     document.getElementById('sv-sevres').textContent=s;
     document.getElementById('sv-moyenne').textContent=n?('soit '+(s/n).toFixed(1).replace('.',',')+' par portée'):'';
-    var el=document.getElementById('sv-ecart');
-    if(trop){el.className='trop';el.textContent=trop+' truie(s) avec plus de sevrés que de présents : enregistrez l’adoption';}
-    else if(e){el.className='ecart';el.textContent=e+' porcelet(s) manquant(s) → enregistrés en perte';}
-    else {el.className='';el.textContent='';}
-    document.getElementById('sv-valider').disabled=!n||trop>0;
+    var el=document.getElementById('sv-ecart'), msgs=[], bloque=false;
+    if(adoptes) msgs.push('<span class="info">'+adoptes+' porcelet(s) en plus chez '+nPlus+' truie(s) → enregistrés comme adoptions depuis les truies qui en ont moins</span>');
+    if(pertes) msgs.push('<span class="ecart">'+pertes+' manquant(s) → en perte</span>');
+    if(surplus){
+      if(document.getElementById('sv-surplus').value==='corriger_nv'){ msgs.push('<span class="info">'+surplus+' en plus au total → nés vifs corrigés</span>'); }
+      else { bloque=true; msgs.push('<span class="trop" style="color:var(--cd-rouge)">'+surplus+' porcelet(s) en plus au total de la bande : vérifiez le comptage, ou choisissez « Nés vifs sous-estimés » en haut</span>'); }
+    }
+    el.innerHTML=msgs.join(' · ');
+    document.getElementById('sv-valider').disabled=!n||bloque;
   }
   // Remplit les cases dans l'ordre, sans jamais couper une portée.
   function repartir(){
@@ -115,7 +123,7 @@
   form.addEventListener('submit',function(ev){
     var n=document.getElementById('sv-truies').textContent, s=document.getElementById('sv-sevres').textContent;
     var msg='Confirmer le sevrage de '+n+' truie(s), '+s+' porcelets ?\nLes truies sortiront de la bande {{ code }}.';
-    var e=document.getElementById('sv-ecart').textContent; if(e) msg+='\n'+e+' (cause : '+document.getElementById('sv-cause').value+')';
+    var e=document.getElementById('sv-ecart').textContent; if(e) msg+='\n'+e+'\n(cause des manquants : '+document.getElementById('sv-cause').value+')';
     if(!confirm(msg)) ev.preventDefault();
   });
   maj();
