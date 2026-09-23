@@ -523,6 +523,87 @@ pub(super) async fn enregistrer(
     Ok(Redirect::to(&format!("/bande/{band_id}/sevrage?ok={}", lignes.len())).into_response())
 }
 
+/// Truie vide : la « mise-bas » enregistrée à 0 né est annulée et la truie
+/// sort de la bande (file « Prochaine IA »). Refusé dès qu'un porcelet, une
+/// perte, une adoption ou un sevrage est rattaché à cette mise-bas.
+pub(super) async fn truie_vide(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path((band_id, mise_bas_id)): Path<(i64, i64)>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let pool = &state.pool;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let ligne = sqlx::query(
+        "SELECT e.truie_id,t.num_travail,b.code,COALESCE(e.nes_totaux,0) AS nt,COALESCE(e.nes_vifs,0) AS nv,\
+         COALESCE(pe.pertes,0) AS pertes,COALESCE(pe.adoptes,0) AS adoptes,COALESCE(pe.retires,0) AS retires,pe.sevrage_id \
+         FROM evenement e JOIN truie t ON t.id=e.truie_id JOIN bande b ON b.id=e.bande_id \
+         LEFT JOIN portee_effectif pe ON pe.id=e.id WHERE e.id=? AND e.bande_id=? AND e.type='mise_bas'",
+    )
+    .bind(mise_bas_id)
+    .bind(band_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AppError::NotFound)?;
+    let numero: String = ligne.try_get("num_travail")?;
+    let code: String = ligne.try_get("code")?;
+    let truie_id: i64 = ligne.try_get("truie_id")?;
+    let bloquants = [
+        ligne.try_get::<i64, _>("nt").unwrap_or(0),
+        ligne.try_get::<i64, _>("nv").unwrap_or(0),
+        ligne.try_get::<i64, _>("pertes").unwrap_or(0),
+        ligne.try_get::<i64, _>("adoptes").unwrap_or(0),
+        ligne.try_get::<i64, _>("retires").unwrap_or(0),
+    ];
+    let sevree = ligne
+        .try_get::<Option<i64>, _>("sevrage_id")
+        .ok()
+        .flatten()
+        .is_some();
+    let adoptions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM adoptionporcelet WHERE source_id=?1 OR destination_id=?1",
+    )
+    .bind(mise_bas_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if bloquants.iter().any(|n| *n != 0) || sevree || adoptions > 0 {
+        return Err(AppError::Invalid(format!(
+            "Truie {numero} : cette mise-bas a des porcelets, pertes, adoptions ou un sevrage enregistrés — elle ne peut pas être annulée comme « truie vide »."
+        )));
+    }
+    sqlx::query("DELETE FROM soinportee WHERE evenement_id=? AND date_realisee IS NULL")
+        .bind(mise_bas_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM evenement WHERE id=? AND type='mise_bas'")
+        .bind(mise_bas_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "UPDATE truie SET bande_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND bande_code=?",
+    )
+    .bind(truie_id)
+    .bind(&code)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    db::journal(
+        pool,
+        &session.nom,
+        "truie vide",
+        "mise-bas",
+        &format!("{code} : mise-bas à 0 né de la truie {numero} annulée, truie sortie de la bande"),
+        &format!("/bande/{band_id}/sevrage"),
+    )
+    .await;
+    let retour = form_text(&form, "retour")
+        .filter(|r| r.starts_with('/') && !r.starts_with("//"))
+        .unwrap_or_else(|| format!("/bande/{band_id}/sevrage"));
+    Ok(Redirect::to(&retour).into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::documents::tests::{session, state};
@@ -636,6 +717,46 @@ mod tests {
             .fetch_one(&state.pool)
             .await?;
         assert_eq!(nv, 11);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn truie_vide_annule_seulement_une_mise_bas_a_zero() -> anyhow::Result<()> {
+        let state = elevage().await;
+        sqlx::raw_sql(
+            "INSERT INTO truie(id,num_travail,bande_code,rang) VALUES(4,'T4','B1.01',2); \
+             INSERT INTO evenement(id,type,date,truie_id,bande_id,nes_totaux,nes_vifs,suivi_actif) VALUES(13,'mise_bas',date('now','-20 day'),4,1,0,0,0);",
+        )
+        .execute(&state.pool)
+        .await?;
+        // Une vraie portée (T1, 13 nés vifs) est refusée.
+        assert!(truie_vide(
+            State(state.clone()),
+            Extension(session()),
+            Path((1, 10)),
+            Form(formulaire(&[])),
+        )
+        .await
+        .is_err());
+        truie_vide(
+            State(state.clone()),
+            Extension(session()),
+            Path((1, 13)),
+            Form(formulaire(&[])),
+        )
+        .await?;
+        let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evenement WHERE id=13")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(reste, 0);
+        let bande: Option<String> = sqlx::query_scalar("SELECT bande_code FROM truie WHERE id=4")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(bande, None);
+        let t1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evenement WHERE id=10")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(t1, 1);
         Ok(())
     }
 

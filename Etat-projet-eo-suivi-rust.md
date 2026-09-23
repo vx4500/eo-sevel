@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.18.4** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.19.0** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.19.0 — Truie vide, bandes avec truies / sevrées
+
+Version Rust 2.19.0 : bouton « Truie vide : annuler la mise-bas » (maternité, onglet Sevrage, et page de sevrage) sur les mises-bas à 0 né : `POST /bande/{id}/mise-bas/{mise_bas_id}/vide` supprime la mise-bas et ses soins non faits, sort la truie de la bande et journalise ; refusé s'il y a des porcelets, pertes, adoptions ou un sevrage. Page Bandes séparée en « Bandes avec truies » (gestation, maternité) et « Bandes sevrées » (au moins un sevrage et plus aucune portée en cours).
 
 ### Version 2.18.4 — Adoptions constatées au sevrage
 

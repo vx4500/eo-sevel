@@ -52,7 +52,7 @@
 {% if reprise_selection %}{% set coche = reprise[cle_nb] is defined or reprise[cle_sel] is defined %}{% else %}{% set coche = not a_completer %}{% endif %}
 <tr data-presents="{{ p.presents }}"{% if not coche %} class="off"{% endif %}>
   <td><input type="checkbox" class="sv-sel" name="sel_{{ p.truie_id }}" value="1"{% if coche %} checked{% endif %}></td>
-  <td><a href="/truie/{{ p.truie_id }}"><b>{{ p.num_travail }}</b></a> <small class="note">rg {{ p.rang or '?' }}</small>{% if a_completer %}<br><span class="cd-badge orange">mise-bas à compléter</span>{% endif %}</td>
+  <td><a href="/truie/{{ p.truie_id }}"><b>{{ p.num_travail }}</b></a> <small class="note">rg {{ p.rang or '?' }}</small>{% if a_completer %}<br><span class="cd-badge orange">mise-bas à compléter</span><br><button type="submit" form="vide-{{ p.mise_bas_id }}" class="ghost danger" style="margin-top:4px;font-size:.8rem" onclick="return confirm('Truie {{ p.num_travail }} vide : annuler sa mise-bas à 0 né et la sortir de la bande ?')">Truie vide : annuler la mise-bas</button>{% endif %}</td>
   <td>{{ p.salle or '—' }} {{ p.case_nom or '' }}</td>
   <td class="n">J{{ p.age }}</td>
   <td class="n">{{ p.nv or 0 }}</td>
@@ -76,6 +76,7 @@
 </div>
 <p class="note">À la confirmation : le sevrage est enregistré pour chaque truie cochée ; les porcelets en plus chez une truie sont enregistrés comme adoptions depuis les truies de la bande qui en ont en moins, et ce qui manque encore part en perte avec la cause choisie ; les porcelets passent dans la case indiquée ; <b>les truies sortent de la bande</b> (elles rejoignent la file « Prochaine IA ») et vont dans la salle choisie. S’il reste des porcelets en plus au total de la bande, choisissez « Nés vifs sous-estimés » pour corriger la mise-bas.</p>
 </form>
+{% for p in portees %}{% if not p.nv and not p.presents %}<form id="vide-{{ p.mise_bas_id }}" method="post" action="/bande/{{ bande_id }}/mise-bas/{{ p.mise_bas_id }}/vide" hidden><input type="hidden" name="csrf_token" value="{{ session.csrf }}"></form>{% endif %}{% endfor %}
 <script>
 (function(){
   var form=document.getElementById('sv-form'); if(!form) return;

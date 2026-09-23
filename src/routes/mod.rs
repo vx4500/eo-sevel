@@ -181,6 +181,10 @@ pub fn router(state: AppState) -> Router {
             "/bande/{id}/sevrage",
             get(sevrage::page).post(sevrage::enregistrer),
         )
+        .route(
+            "/bande/{id}/mise-bas/{mise_bas_id}/vide",
+            post(sevrage::truie_vide),
+        )
         .route("/bande/{id}/marquage", post(bande_marquage))
         .route("/bande/{id}/imprimer", get(bande_imprimer))
         .route("/bande/{id}/truies/saisie", post(bande_truies_saisie))
@@ -2561,6 +2565,7 @@ async fn bandes(
         .await?;
     let schedule = load_band_schedule(&state.pool).await?;
     let mut views = Vec::new();
+    let mut sevrees: Vec<bool> = Vec::new();
     for band in bands {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM truie WHERE bande_code=? AND reformee=0")
@@ -2570,6 +2575,16 @@ async fn bandes(
         let flux = band_flow_summary(&state.pool, &band).await?;
         let actual_stage = actual_band_stage(&state.pool, &band).await?;
         let reproduction = band_reproduction_stats(&state.pool, &band).await?;
+        // Sevrée : au moins un sevrage et plus aucune portée en cours. Les
+        // truies sont reparties ; il ne reste que les porcs de la bande.
+        let (sevrages, ouvertes): (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='sevrage'),\
+             (SELECT COUNT(*) FROM portee_effectif WHERE bande_id=?1 AND cloturee=0 AND date<=date('now'))",
+        )
+        .bind(band.id)
+        .fetch_one(&state.pool)
+        .await?;
+        sevrees.push(sevrages > 0 && ouvertes == 0);
         views.push(band_view(
             &band,
             count,
@@ -2579,11 +2594,16 @@ async fn bandes(
             reproduction,
         ));
     }
+    let mut vues = serde_json::to_value(views).unwrap_or_default();
+    if let Some(liste) = vues.as_array_mut() {
+        for (vue, sevree) in liste.iter_mut().zip(&sevrees) {
+            if let Some(objet) = vue.as_object_mut() {
+                objet.insert("sevree".into(), json!(sevree));
+            }
+        }
+    }
     let mut ctx = context(&session);
-    ctx.insert(
-        "bandes".into(),
-        serde_json::to_value(views).unwrap_or_default(),
-    );
+    ctx.insert("bandes".into(), vues);
     // Aucun repli : tant que la conduite n'a pas été choisie, le formulaire le
     // dit au lieu de présenter un système au hasard comme s'il était retenu.
     let nombre_bandes: Option<i64> = sqlx::query_scalar(
@@ -4019,7 +4039,7 @@ async fn maternite(
     )
     .await?;
     let weaning_sows = generic_rows(&state.pool, &format!(
-        "SELECT t.id,t.num_travail,e.date AS date_mise_bas,e.case_id AS case_source_id,c.nom AS case_source,c.num_vanne AS vanne_source,COALESCE((SELECT presents FROM portee_effectif pe WHERE pe.id=e.id),0) AS porcelets_presents FROM evenement e JOIN truie t ON t.id=e.truie_id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE e.bande_id={band_id} AND e.type='mise_bas' AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.bande_id={band_id} AND e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now')) ORDER BY e.date,t.num_travail COLLATE NOCASE"
+        "SELECT t.id,e.id AS mise_bas_id,COALESCE(e.nes_totaux,0) AS nt,COALESCE(e.nes_vifs,0) AS nv,t.num_travail,e.date AS date_mise_bas,e.case_id AS case_source_id,c.nom AS case_source,c.num_vanne AS vanne_source,COALESCE((SELECT presents FROM portee_effectif pe WHERE pe.id=e.id),0) AS porcelets_presents FROM evenement e JOIN truie t ON t.id=e.truie_id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE e.bande_id={band_id} AND e.type='mise_bas' AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.bande_id={band_id} AND e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now')) ORDER BY e.date,t.num_travail COLLATE NOCASE"
     )).await?;
     let mut destinations = generic_rows(&state.pool, "SELECT c.id,c.salle_id,c.nom,c.num_vanne,c.nb_max_porcs,s.nom AS salle,COALESCE(si.nom,si.code) AS site FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id WHERE lower(COALESCE(s.type,'')) LIKE '%sevr%' OR lower(s.nom) LIKE '%sevr%' ORDER BY COALESCE(si.nom,si.code),s.ordre,c.nom").await?;
     for destination in &mut destinations {
