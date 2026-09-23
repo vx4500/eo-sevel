@@ -45,3 +45,14 @@ affiche une colonne par période + référence IFIP, avec en-tête nom
 d'élevage. Les cases à cocher masquer bloc/ligne (2.15.3) conservées.
 Décision prise avec Emmanuel : le rapprochement GTTT (ISSF, réformes,
 IDSR...) est reporté à une session ultérieure, chantier séparé.
+
+### 2026-09-23 — claude — incident mémoire, règles ajoutées
+Une compilation lancée par Claude (cache de 800 Mo copié dans `/tmp`, qui
+est en RAM, alors que le swap était déjà plein) a bloqué le serveur de
+06:40 à 10:30. Services repartis sans perte de base. À la demande
+d'Emmanuel : section 7 de `COLLABORATION-AGENTS.md` — les agents doivent
+limiter leur usage de la machine (mémoire, compilations bridées, pas de
+fichiers lourds dans `/tmp`, moins d'allers-retours).
+Constaté aussi : la version en service (« 2.11.5 », déployée le 21/09 depuis
+le portable, hors Git) diverge de la 2.15.5 du dépôt. Ne pas redéployer
+depuis Git sans décision d'Emmanuel.

@@ -129,3 +129,34 @@ Ne pas se fier à ce qu'un fichier contenait dans une conversation
 précédente. Toujours refaire un `Read`/`cat` juste avant d'éditer — `git
 status`/`git log` en tête de séance suffit à détecter qu'un fichier a
 changé depuis la dernière fois que vous l'avez vu.
+
+## 7. Ménager la machine : c'est aussi le serveur de production
+
+Ce serveur est une petite VM (2 cœurs, 5 Go de RAM, 5 Go de swap) qui fait
+tourner **en même temps** l'application et la régulation de ventilation.
+Le 23/09/2026, une compilation lancée par un agent (avec son cache copié
+dans `/tmp`, qui est un tmpfs **en mémoire vive**) a saturé RAM et swap :
+la machine a été bloquée environ 4 heures, jusqu'au redémarrage.
+
+Règles, pour tout agent :
+
+- **Jamais de gros fichiers dans `/tmp`** (tmpfs = RAM) : pas de copie de
+  `target/`, de base, de binaires ou d'archives. Travailler sur le disque
+  (`/opt/eo-sevel-src`, `/var/tmp`).
+- **Vérifier la mémoire avant de compiler** : `free -h`. Si le swap est
+  déjà largement utilisé, ne pas compiler et prévenir Emmanuel.
+- **Compiler bridé** : un seul job, priorité basse, plafond mémoire, pour
+  que ce soit la compilation qui s'arrête et jamais les services :
+
+```bash
+systemd-run --scope -p MemoryMax=2G -p MemorySwapMax=512M \
+  nice -n 19 ionice -c3 cargo build --release -j 1
+```
+
+- **Pas de compilation en arrière-plan laissée sans surveillance**, ni
+  plusieurs compilations/tests en parallèle.
+- **Limiter les échanges et les allers-retours** avec le serveur : pas de
+  boucles de commandes, de `strings`/copies de binaires de 20 Mo répétées,
+  ni de connexions SSH en rafale. Regrouper les vérifications.
+- Après intervention, **supprimer ce qu'on a créé** (copies, binaires
+  temporaires, sauvegardes intermédiaires devenues inutiles).
