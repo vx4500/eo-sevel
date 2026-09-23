@@ -103,6 +103,28 @@ pub(super) async fn page(
     ctx.insert("prevu".into(), json!(prevu.map(|d| d.to_string())));
     ctx.insert("date_proposee".into(), json!(date_proposee.to_string()));
     ctx.insert("aujourd_hui".into(), json!(aujourd_hui.to_string()));
+    // Reprise d'une saisie faite ailleurs (saisie groupée de la fiche bande) :
+    // nombres par truie, date, poids et sélection passés dans l'adresse.
+    let reprise: Map<String, Value> = query
+        .iter()
+        .filter(|(cle, _)| {
+            cle.starts_with("nb_") || cle.starts_with("sel_") || *cle == "nb" || *cle == "poids"
+        })
+        .map(|(cle, valeur)| (cle.clone(), json!(valeur)))
+        .collect();
+    let reprise_selection = reprise
+        .keys()
+        .any(|k| k.starts_with("sel_") || (k.starts_with("nb_")));
+    let date_reprise = query
+        .get("date")
+        .and_then(|d| parse_stored_date(d))
+        .filter(|d| *d <= aujourd_hui)
+        .map(|d| d.to_string());
+    if let Some(date) = date_reprise {
+        ctx.insert("date_proposee".into(), json!(date));
+    }
+    ctx.insert("reprise".into(), Value::Object(reprise));
+    ctx.insert("reprise_selection".into(), json!(reprise_selection));
     ctx.insert("portees".into(), Value::Array(portees));
     let total_deja: i64 = deja.iter().filter_map(|d| d["nb_sevres"].as_i64()).sum();
     ctx.insert("deja".into(), Value::Array(deja));

@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.18.1** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.18.2** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.18.2 — Plus aucune saisie perdue sur une erreur
+
+Version Rust 2.18.2 : une erreur d'enregistrement reste affichée sur la page (même si la réponse n'est pas du HTML) ; alerte du navigateur avant de quitter une page dont un formulaire a été modifié sans être enregistré ; la page d'erreur propose « Revenir à ma saisie ». Fiche bande, saisie groupée : une ligne « Sevrés » remplie coche la truie, contrôle avant envoi, et l'action Sevrage renvoie vers `/bande/{id}/sevrage` avec les chiffres saisis préremplis (l'ancien sevrage groupé n'effectuait ni contrôle d'effectif ni sortie de bande).
 
 ### Version 2.18.1 — Plans d'alimentation lisibles
 

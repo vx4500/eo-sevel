@@ -86,9 +86,33 @@
 <section class="card"><h2>Truies de la bande — pédigrée et saisie rapide</h2>
 {% if session.peut_modifier %}<form method="post" action="/bande/{{ bande.id }}/truies/saisie">
 <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
-<div class="rust-actions"><label>Action<select name="action"><option value="echo_pleine">Écho — pleine</option><option value="echo_vide">Écho — vide</option><option value="echo_doute">Écho — douteuse</option><option value="sevrage">Sevrage</option><option value="deplacer">Déplacer</option></select></label><label>Date<input type="date" name="date" value="{{ today }}" required></label><label>Sevrés (par défaut)<input type="number" name="nb_sevres" min="0" style="max-width:90px"></label><label>Poids moyen<input name="poids_moyen" style="max-width:90px"></label><label>Vers la bande<select name="cible_bande_code"><option value="">—</option>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }}</option>{% endfor %}</select></label><label>Vers la case<select name="cible_case_id"><option value="">—</option>{% for c in cases %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}</select></label><label>Note<input name="note"></label><button>Appliquer aux truies cochées</button><button type="button" class="ghost" onclick="document.querySelectorAll('.band-sow-check').forEach(x=>x.checked=true)">Tout cocher</button><button type="button" class="ghost" onclick="document.querySelectorAll('.band-sow-check').forEach(x=>x.checked=false)">Tout décocher</button></div>{% endif %}
+<div class="rust-actions"><label>Action<select name="action"><option value="echo_pleine">Écho — pleine</option><option value="echo_vide">Écho — vide</option><option value="echo_doute">Écho — douteuse</option><option value="sevrage">Sevrage</option><option value="deplacer">Déplacer</option></select></label><label>Date<input type="date" name="date" value="{{ today }}" required></label><label>Sevrés (par défaut)<input type="number" name="nb_sevres" min="0" style="max-width:90px"></label><label>Poids moyen<input name="poids_moyen" style="max-width:90px"></label><label>Vers la bande<select name="cible_bande_code"><option value="">—</option>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }}</option>{% endfor %}</select></label><label>Vers la case<select name="cible_case_id"><option value="">—</option>{% for c in cases %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}</select></label><label>Note<input name="note"></label><button>Appliquer aux truies cochées</button><a id="bande-lien-sevrage" href="/bande/{{ bande.id }}/sevrage" hidden style="font-weight:700">→ Page de sevrage de la bande (recommandée)</a><button type="button" class="ghost" onclick="document.querySelectorAll('.band-sow-check').forEach(x=>x.checked=true)">Tout cocher</button><button type="button" class="ghost" onclick="document.querySelectorAll('.band-sow-check').forEach(x=>x.checked=false)">Tout décocher</button></div>{% endif %}
 <div class="rust-scroll"><table><thead><tr>{% if session.peut_modifier %}<th>Choix</th>{% endif %}<th>N° travail</th><th>N° national</th><th>Rang</th><th>Race / lignée</th><th>Père</th><th>Mère</th><th>Naissance</th><th>Dernière IA</th><th>Écho</th><th>Dernière MB</th><th>Dernier sevrage</th><th>Emplacement</th>{% if session.peut_modifier %}<th>Sevrés</th>{% endif %}</tr></thead><tbody>{% for t in truies_pedigree %}<tr>{% if session.peut_modifier %}<td><input class="band-sow-check" type="checkbox" name="truie_{{ t.id }}" value="1"></td>{% endif %}<td><a href="/truie/{{ t.id }}"><b>{{ t.num_travail }}</b></a>{% if t.mere_cochette %} · mère cochettes{% endif %}</td><td>{{ t.num_national or '—' }}</td><td>{{ t.rang }}</td><td>{{ t.lignee or t.race or '—' }}</td><td>{{ t.pere_national or '—' }}</td><td>{{ t.mere_national or '—' }}</td><td>{{ t.date_naissance|date_fr }}</td><td>{{ t.derniere_ia|date_fr }}</td><td>{% if t.echo_resultat %}{{ t.echo_resultat }} · {{ t.echo_date|date_fr }}{% else %}—{% endif %}</td><td>{{ t.derniere_mb|date_fr }}</td><td>{{ t.dernier_sevrage|date_fr }}</td><td>{{ t.salle or '—' }}{% if t.unite %} · {{ t.unite }}{% endif %}</td>{% if session.peut_modifier %}<td><input type="number" name="sevres_{{ t.id }}" min="0" style="max-width:80px"></td>{% endif %}</tr>{% else %}<tr><td colspan="14" class="rust-empty">Aucune truie affectée.</td></tr>{% endfor %}</tbody></table></div>
-{% if session.peut_modifier %}</form>{% endif %}</section>
+{% if session.peut_modifier %}</form>
+<script>
+(function(){
+  var form=document.querySelector('form[action="/bande/{{ bande.id }}/truies/saisie"]'); if(!form) return;
+  var action=form.querySelector('[name="action"]'), lien=document.getElementById('bande-lien-sevrage');
+  function maj(){ if(lien) lien.hidden = action.value !== 'sevrage'; }
+  action.addEventListener('change', maj); maj();
+  // Remplir « Sevrés » sur une ligne coche la truie.
+  form.querySelectorAll('input[name^="sevres_"]').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      var cb=form.querySelector('input[name="truie_'+inp.name.slice(7)+'"]');
+      if(cb && inp.value.trim()!=='') cb.checked=true;
+    });
+  });
+  form.addEventListener('submit', function(e){
+    if(action.value==='sevrage') return; // repris sur la page de sevrage
+    if(!form.querySelector('.band-sow-check:checked')){
+      e.preventDefault(); e.stopImmediatePropagation(); window.eoSaisieEnCours = true;
+      if(window.eoAlert){ window.eoAlert('Cochez au moins une truie dans la colonne « Choix » (ou « Tout cocher »). Votre saisie est conservée.','error'); }
+      else { alert('Cochez au moins une truie.'); }
+    }
+  }, true);
+})();
+</script>
+{% endif %}</section>
 <div class="rust-grid">
 <section class="card"><h2>Événements</h2>{% for e in evenements %}<p>{{ e.date|date_fr }} — <b>{{ e.type }}</b>{% if e.note %} — {{ e.note }}{% endif %}</p>{% else %}<p class="muted">Aucun événement.</p>{% endfor %}</section>
 </div>

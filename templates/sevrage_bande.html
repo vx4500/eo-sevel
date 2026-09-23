@@ -18,6 +18,7 @@
 <div class="cd-barre no-print"><a href="/bande/{{ bande_id }}">← Bande {{ code }}</a><a href="/maternite?bande_id={{ bande_id }}">Maternité</a><a href="/conduite">Calendrier</a></div>
 <h1>Sevrage de la bande {{ code }}</h1>
 <p class="note">Mise-bas le {{ date_mb|date_fr }}{% if prevu %} · sevrage prévu le {{ prevu|date_fr }}{% endif %}. Saisissez le nombre de porcelets <b>comptés</b> au sevrage pour chaque truie.</p>
+{% if reprise %}<div class="sv-ok" style="background:#fff3e3;border-left-color:#c7832f">Votre saisie de la fiche bande a été reprise ici, rien n’est perdu. Vérifiez les nombres puis cliquez sur <b>Confirmer le sevrage</b> en bas de page.</div>{% endif %}
 {% if ok %}<div class="sv-ok">✓ Sevrage enregistré pour {{ ok }} truie(s). Elles sont sorties de la bande {{ code }}.</div>{% endif %}
 
 {% if portees %}
@@ -44,8 +45,10 @@
 <tbody>
 {% for p in portees %}
 {% set a_completer = not p.nv and not p.presents %}
-<tr data-presents="{{ p.presents }}"{% if a_completer %} class="off"{% endif %}>
-  <td><input type="checkbox" class="sv-sel" name="sel_{{ p.truie_id }}" value="1"{% if not a_completer %} checked{% endif %}></td>
+{% set cle_nb = 'nb_' ~ p.truie_id %}{% set cle_sel = 'sel_' ~ p.truie_id %}
+{% if reprise_selection %}{% set coche = reprise[cle_nb] is defined or reprise[cle_sel] is defined %}{% else %}{% set coche = not a_completer %}{% endif %}
+<tr data-presents="{{ p.presents }}"{% if not coche %} class="off"{% endif %}>
+  <td><input type="checkbox" class="sv-sel" name="sel_{{ p.truie_id }}" value="1"{% if coche %} checked{% endif %}></td>
   <td><a href="/truie/{{ p.truie_id }}"><b>{{ p.num_travail }}</b></a> <small class="note">rg {{ p.rang or '?' }}</small>{% if a_completer %}<br><span class="cd-badge orange">mise-bas à compléter</span>{% endif %}</td>
   <td>{{ p.salle or '—' }} {{ p.case_nom or '' }}</td>
   <td class="n">J{{ p.age }}</td>
@@ -53,8 +56,8 @@
   <td class="n">{% set net = (p.adoptes or 0) - (p.retires or 0) %}{% if net > 0 %}+{{ net }}{% elif net < 0 %}{{ net }}{% else %}—{% endif %}</td>
   <td class="n">{{ p.pertes or 0 }}</td>
   <td class="n"><b>{{ p.presents }}</b></td>
-  <td class="n"><input type="number" class="sv-nb" name="nb_{{ p.truie_id }}" value="{{ p.presents }}" min="0" inputmode="numeric" required></td>
-  <td class="n"><input type="number" class="poids" name="poids_{{ p.truie_id }}" step="0.1" min="0" max="30" inputmode="decimal" placeholder="—"></td>
+  <td class="n"><input type="number" class="sv-nb" name="nb_{{ p.truie_id }}" value="{% if reprise[cle_nb] is defined %}{{ reprise[cle_nb] }}{% elif reprise.nb is defined %}{{ reprise.nb }}{% else %}{{ p.presents }}{% endif %}" min="0" inputmode="numeric" required></td>
+  <td class="n"><input type="number" class="poids" name="poids_{{ p.truie_id }}" step="0.1" min="0" max="30" inputmode="decimal" placeholder="—"{% if reprise.poids is defined %} value="{{ reprise.poids|replace(',', '.') }}"{% endif %}></td>
   <td><select class="sv-case" name="case_{{ p.truie_id }}"><option value="">—</option>{% for c in cases %}<option value="{{ c.id }}" data-libres="{{ c.libres if c.libres is not none else 100000 }}">{{ c.libelle }}</option>{% endfor %}</select></td>
 </tr>
 {% endfor %}

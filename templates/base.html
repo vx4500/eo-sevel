@@ -1290,7 +1290,8 @@
   document.addEventListener('submit', function(event){
     if(event.defaultPrevented) return;
     var form = event.target;
-    if(!(form instanceof HTMLFormElement) || skip(form)) return;
+    if(!(form instanceof HTMLFormElement)) return;
+    try{ if(skip(form)) return; } catch(e){ /* en cas de doute, on reste sur la page */ }
 
     event.preventDefault();
     hideAlert();
@@ -1308,6 +1309,11 @@
       headers: {'X-Requested-With': 'fetch'}
     }).then(function(response){
       var type = response.headers.get('content-type') || '';
+      // Une erreur reste toujours affichée sur la page : ne jamais renvoyer
+      // le formulaire en navigation classique, qui ferait perdre la saisie.
+      if(!response.ok){
+        return response.text().then(function(html){ return {response: response, html: html}; });
+      }
       if(type.indexOf('text/html') === -1){
         // fichier ou réponse non HTML : on laisse le navigateur faire
         form.setAttribute('data-no-ajax', '');
@@ -1324,6 +1330,7 @@
         showAlert(message || ('L\u2019enregistrement a \u00e9chou\u00e9 (erreur ' + result.response.status + ').'), 'error');
         return;
       }
+      window.eoSaisieEnCours = false;
       if(swap(result.html, result.response.url) && window.eoToast){
         window.eoToast('Modification enregistr\u00e9e.', 'success');
       }
@@ -1331,6 +1338,28 @@
       release();
       showAlert('Enregistrement impossible : ' + ((err && err.message) ? err.message : 'connexion interrompue') + '.', 'error');
     });
+  });
+})();
+</script>
+<script>
+/* Saisie en cours : prévenir avant de quitter une page où des champs ont été
+   modifiés sans être enregistrés (lien, retour, fermeture de l'onglet). */
+(function(){
+  window.eoSaisieEnCours = false;
+  document.addEventListener('input', function(e){
+    var champ = e.target;
+    if(!champ || !champ.form) return;
+    if(champ.form.closest('#fab-panel') || champ.form.getAttribute('role') === 'search') return;
+    if((champ.form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+    window.eoSaisieEnCours = true;
+  }, true);
+  document.addEventListener('submit', function(){ window.eoSaisieEnCours = false; }, true);
+  document.addEventListener('eo:contenu-actualise', function(){ window.eoSaisieEnCours = false; });
+  window.addEventListener('beforeunload', function(e){
+    if(!window.eoSaisieEnCours) return;
+    e.preventDefault();
+    e.returnValue = 'Des informations saisies ne sont pas enregistrées.';
+    return e.returnValue;
   });
 })();
 </script>

@@ -34,7 +34,7 @@ impl IntoResponse for AppError {
         (
             status,
             Html(format!(
-                "<!doctype html><meta charset='utf-8'><main style='font-family:sans-serif;max-width:760px;margin:60px auto'><h1>EO_Sevel</h1><p data-app-error=\"{}\">{}</p><p><a href='/'>Retour à l’accueil</a></p></main>",
+                "<!doctype html><meta charset='utf-8'><main style='font-family:sans-serif;max-width:760px;margin:60px auto'><h1>EO_Sevel</h1><p data-app-error=\"{}\">{}</p><p><button type='button' onclick='history.back()' style='font-size:1.1rem;padding:10px 18px;font-weight:700'>← Revenir à ma saisie</button></p><p style='color:#555'>Ce que vous aviez tapé est normalement conservé sur la page précédente. Rien n’a été enregistré.</p><p><a href='/'>Retour à l’accueil</a></p></main>",
                 escaped, escaped
             )),
         )

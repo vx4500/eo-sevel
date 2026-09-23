@@ -3101,12 +3101,62 @@ async fn bande_truies_saisie(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let ids = form_selected_ids(&form, "truie_");
-    if ids.is_empty() {
-        return Err(AppError::Invalid("Coche au moins une truie".into()));
-    }
     let action =
         form_text(&form, "action").ok_or_else(|| AppError::Invalid("Action obligatoire".into()))?;
+    // Le sevrage se fait sur sa page dédiée (effectif contrôlé, écart en perte,
+    // porcelets en post-sevrage, truies sorties de la bande). Rien de ce qui a
+    // été saisi ici n'est perdu : les chiffres y sont repris tels quels.
+    if action == "sevrage" {
+        let mut reprise: Vec<String> = Vec::new();
+        for (cle, valeur) in &form {
+            let valeur = valeur.trim();
+            if valeur.is_empty() {
+                continue;
+            }
+            if let Some(truie) = cle.strip_prefix("sevres_") {
+                if truie.parse::<i64>().is_ok() && valeur.parse::<i64>().is_ok() {
+                    reprise.push(format!("nb_{truie}={valeur}"));
+                }
+            }
+        }
+        for (cle, nom) in [
+            ("date", "date"),
+            ("nb_sevres", "nb"),
+            ("poids_moyen", "poids"),
+        ] {
+            if let Some(valeur) = form_text(&form, cle) {
+                if valeur
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '-' || c == ',' || c == '.')
+                {
+                    reprise.push(format!("{nom}={valeur}"));
+                }
+            }
+        }
+        for truie in form_selected_ids(&form, "truie_") {
+            reprise.push(format!("sel_{truie}=1"));
+        }
+        reprise.sort();
+        return Ok(
+            Redirect::to(&format!("/bande/{id}/sevrage?{}", reprise.join("&"))).into_response(),
+        );
+    }
+    let mut ids = form_selected_ids(&form, "truie_");
+    // Une ligne remplie vaut sélection : l'éleveur ne doit pas perdre sa
+    // saisie parce qu'il a oublié de cocher la case en début de ligne.
+    ids.extend(
+        form.iter()
+            .filter(|(cle, valeur)| cle.starts_with("sevres_") && !valeur.trim().is_empty())
+            .filter_map(|(cle, _)| cle.trim_start_matches("sevres_").parse::<i64>().ok()),
+    );
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Err(AppError::Invalid(
+            "Cochez au moins une truie dans la colonne « Choix » (ou utilisez « Tout cocher »)"
+                .into(),
+        ));
+    }
     let date = form_date_or_today(&form, "date")?;
     let note = form_text(&form, "note");
     let retour = format!("/bande/{id}");
