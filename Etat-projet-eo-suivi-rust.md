@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.18.2** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.18.3** — Dernière mise à jour de ce document : 23 septembre 2026.
+
+### Version 2.18.3 — Connexion rétablie
+
+Version Rust 2.18.3 : retour du renvoi classique des formulaires quand la réponse du fetch n'est pas du HTML. Le script global envoie `FormData` (multipart) et les routes `Form` répondent 415 : ce 415 était jusqu'ici silencieusement suivi d'un envoi classique. La 2.18.2 le transformait en erreur affichée, ce qui bloquait tous les formulaires dont la connexion (retirée au bout de quelques minutes, retour en 2.18.1). À faire proprement, avec essai en navigateur : envoyer en `application/x-www-form-urlencoded` hors formulaires de fichiers.
 
 ### Version 2.18.2 — Plus aucune saisie perdue sur une erreur
 

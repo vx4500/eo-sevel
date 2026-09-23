@@ -1309,11 +1309,11 @@
       headers: {'X-Requested-With': 'fetch'}
     }).then(function(response){
       var type = response.headers.get('content-type') || '';
-      // Une erreur reste toujours affichée sur la page : ne jamais renvoyer
-      // le formulaire en navigation classique, qui ferait perdre la saisie.
-      if(!response.ok){
-        return response.text().then(function(html){ return {response: response, html: html}; });
-      }
+      // Réponse non HTML (fichier téléchargé, ou 415 : la plupart des routes
+      // n'acceptent que les formulaires classiques, pas le multipart de
+      // FormData) : on laisse le navigateur envoyer le formulaire lui-même.
+      // Ne pas transformer ce cas en erreur affichée : en 2.18.2, cela a
+      // bloqué tous les formulaires, connexion comprise.
       if(type.indexOf('text/html') === -1){
         // fichier ou réponse non HTML : on laisse le navigateur faire
         form.setAttribute('data-no-ajax', '');
