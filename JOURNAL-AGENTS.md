@@ -100,3 +100,13 @@ IA, échos, chaleurs, imports, nourrice) et échouaient en production alors que
 les tests passaient. Un test (`chaque_saisie_d_evenement_renseigne_suivi_actif`)
 l'impose désormais. Toujours tester une écriture sur une copie de la base
 réelle, pas seulement sur la base de test.
+
+### 2026-09-23 — claude — 2.18.2 → retour 2.18.1 → 2.18.3
+La 2.18.2 a bloqué la connexion (erreur 415) pendant quelques minutes :
+Emmanuel ne pouvait plus se connecter. Retour immédiat au binaire 2.18.1,
+puis 2.18.3. Cause : le script global de base.html envoie les formulaires
+en multipart (FormData) alors que les routes `Form` attendent de
+l'urlencoded ; le 415 était masqué par un renvoi classique. **Ne pas toucher
+à ce script sans essai réel dans un navigateur** (Chrome indisponible pour
+Claude ce jour-là). Chantier à reprendre : envoyer en urlencoded hors
+formulaires de fichiers, pour que les erreurs s'affichent vraiment sur place.
