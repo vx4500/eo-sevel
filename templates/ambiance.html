@@ -60,9 +60,10 @@
 </table></div><p class="muted">Acquitter une alerte ne la corrige pas : elle reste ouverte tant que la cause dure, et se referme d'elle-même au retour à la normale.</p></section>
 {% endif %}
 
-{% if eclairages %}
 <section class="card"><h2>Éclairage</h2>
-<p class="muted">Commande manuelle des sorties d'éclairage déclarées dans <a href="/ambiance/ipx">l'inventaire IPX</a> (rôle « éclairage », pilotable). Aucune extinction automatique n'est programmée pour l'instant : à éteindre à la main en sortant, comme à l'allumage.</p>
+<p><a class="button" href="/ambiance/eclairage">💡 Programmes d'éclairage</a> <span class="muted">— horaires, luminosité, minuterie d'extinction.</span></p>
+{% if eclairages %}
+<p class="muted">Commande manuelle des sorties d'éclairage déclarées dans <a href="/ambiance/ipx">l'inventaire IPX</a> (rôle « éclairage », pilotable). Une lampe suivie par un programme y revient au prochain changement prévu.</p>
 <div class="rust-scroll"><table><tr><th>Salle</th><th>Nom</th><th></th></tr>
 {% for e in eclairages %}<tr><td>{{ e.salle or '—' }}</td><td>{{ e.nom }}</td><td>{% if session.peut_modifier %}<div class="rust-actions">
 <form method="post" action="/ambiance/ipx/point/{{ e.id }}/commander" onsubmit="return confirm('Allumer « {{ e.nom }} » ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="valeur" value="1"><button>Allumer</button></form>

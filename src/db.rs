@@ -338,6 +338,10 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0015_plan.sql"))
         .execute(pool)
         .await?;
+    // Programmes d'éclairage (voir /ambiance/eclairage), appliqués par eo-regul.
+    sqlx::raw_sql(include_str!("../migrations/0016_eclairage.sql"))
+        .execute(pool)
+        .await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))

@@ -26,6 +26,7 @@ mod adoptions;
 mod ambiance;
 mod ameliorations;
 mod conduite;
+mod eclairage;
 mod demo_portal;
 pub(crate) mod documents;
 mod factures;
@@ -124,6 +125,24 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/kren", get(equipement_kren))
         .route("/ambiance", get(ambiance::page))
         .route("/ambiance/etat.json", get(ambiance::etat_json))
+        .route("/ambiance/eclairage", get(eclairage::page))
+        .route("/ambiance/eclairage/etat.json", get(eclairage::etat_json))
+        .route("/ambiance/eclairage/nouveau", get(eclairage::nouveau))
+        .route(
+            "/ambiance/eclairage/enregistrer",
+            post(eclairage::enregistrer),
+        )
+        .route("/ambiance/eclairage/{id}", get(eclairage::modifier))
+        .route("/ambiance/eclairage/{id}/actif", post(eclairage::basculer))
+        .route("/ambiance/eclairage/{id}/forcer", post(eclairage::forcer))
+        .route(
+            "/ambiance/eclairage/{id}/dupliquer",
+            post(eclairage::dupliquer),
+        )
+        .route(
+            "/ambiance/eclairage/{id}/supprimer",
+            post(eclairage::supprimer),
+        )
         .route("/ambiance/ipx", get(ambiance::ipx_page))
         .route("/ambiance/ipx/lire.json", get(ambiance::ipx_lire))
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))

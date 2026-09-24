@@ -1,0 +1,210 @@
+{% extends "base.html" %}{% block title %}Éclairage — EO_Sevel{% endblock %}{% block content %}
+{% include "ambiance_eclairage_style.html" %}
+<div class="ecl">
+<div class="ecl-tete">
+  <div>
+    <p class="muted" style="margin:0"><a href="/ambiance">← Ambiance et ventilation</a> · <a href="/ambiance/ipx">Automate IPX800</a> · <a href="/ambiance/ipx/carte">Carte de l'automate</a></p>
+    <h1 style="margin:4px 0">💡 Éclairage automatique</h1>
+    <p class="muted" style="margin:0">Horaires, luminosité, minuterie : chaque programme allume et éteint ses lampes tout seul.</p>
+  </div>
+  {% if session.peut_modifier and nb_sorties > 0 %}<a class="ecl-bouton principal" href="/ambiance/eclairage/nouveau">＋ Nouveau programme</a>{% endif %}
+</div>
+
+{% if ok %}<div class="ecl-message ok">{{ ok }}</div>{% endif %}
+
+{% if not demon.actif and programmes %}
+<div class="ecl-message alerte"><b>Les programmes ne s'appliquent pas en ce moment.</b> {{ demon.texte }}. C'est le service <code>eo-regul</code> qui allume et éteint les lampes.</div>
+{% endif %}
+
+{% if nb_sorties == 0 %}
+<section class="card ecl-guide">
+  <h2>Pour commencer : déclarer les lampes</h2>
+  <p>Aucune sortie de l'automate n'est encore déclarée « pilotable ». Un programme a besoin de savoir sur quel relais se trouve chaque éclairage.</p>
+  <ol>
+    <li>Ouvrez la <a href="/ambiance/ipx/carte">carte de l'automate</a> (ou l'<a href="/ambiance/ipx">explorateur</a>) et repérez le relais de chaque éclairage.</li>
+    <li>Enregistrez-le avec le rôle <b>Éclairage</b>, la salle, son <b>chemin d'écriture</b> et cochez <b>Pilotable</b>.</li>
+    <li>Revenez ici : créez un programme, laissez-le en <b>mode essai</b> une journée, regardez le journal, puis passez-le en réel.</li>
+  </ol>
+  {% if nb_capteurs %}<p class="muted">{{ nb_capteurs }} capteur{% if nb_capteurs > 1 %}s{% endif %} de luminosité déjà déclaré{% if nb_capteurs > 1 %}s{% endif %} : ils pourront servir de condition.</p>{% endif %}
+</section>
+{% elif not programmes %}
+<section class="card ecl-guide">
+  <h2>Aucun programme pour l'instant</h2>
+  <p>{{ nb_sorties }} lampe{% if nb_sorties > 1 %}s{% endif %} pilotable{% if nb_sorties > 1 %}s{% endif %} disponible{% if nb_sorties > 1 %}s{% endif %}. Exemples de programmes :</p>
+  <ul>
+    <li><b>Maternité</b> : tous les jours de 6h30 à 20h00, seulement s'il fait moins de 100 lux.</li>
+    <li><b>Couloir</b> : minuterie seule, extinction 15 min après qu'on a allumé.</li>
+    <li><b>Quai d'embarquement</b> : le vendredi de 4h00 à 7h00.</li>
+  </ul>
+  {% if session.peut_modifier %}<a class="ecl-bouton principal" href="/ambiance/eclairage/nouveau">＋ Créer le premier programme</a>{% endif %}
+</section>
+{% endif %}
+
+{% if programmes and nb_sorties_libres > 0 %}<p class="muted">{{ nb_sorties_libres }} lampe{% if nb_sorties_libres > 1 %}s{% endif %} pilotable{% if nb_sorties_libres > 1 %}s{% endif %} sans programme.</p>{% endif %}
+
+<div class="ecl-grille">
+{% for p in programmes %}
+<section class="ecl-carte{% if not p.actif %} en-pause{% endif %}" id="programme-{{ p.id }}" data-programme="{{ p.id }}">
+  <header>
+    <h2>{{ p.nom }}</h2>
+    <div class="ecl-badges">
+      {% if not p.actif %}<span class="ecl-badge gris">En pause</span>
+      {% elif p.essai %}<span class="ecl-badge orange" title="Le démon calcule et journalise, mais n'envoie rien aux lampes">Mode essai</span>
+      {% else %}<span class="ecl-badge vert">En service</span>{% endif %}
+      {% if p.forcage %}<span class="ecl-badge bleu js-forcage">Forcé {% if p.forcage.allume %}allumé{% else %}éteint{% endif %} jusqu'à {{ p.forcage.fin }}</span>{% endif %}
+      {% if p.horaires_actif %}<span class="ecl-puce" title="Horaires">🕒</span>{% endif %}
+      {% if p.lux_actif %}<span class="ecl-puce" title="Luminosité : {{ p.lux_nom or 'capteur' }}">☀️</span>{% endif %}
+      {% if p.minuterie_actif %}<span class="ecl-puce" title="Minuterie">⏱️</span>{% endif %}
+    </div>
+  </header>
+
+  <div class="ecl-resume">{% for phrase in p.resume %}<p>{{ phrase }}</p>{% endfor %}</div>
+
+  {% if p.horaires_actif or p.lux_actif %}
+  <div class="ecl-semaine" aria-label="Plages de la semaine">
+    {% for j in p.semaine %}
+    <div class="ecl-jour{% if j.aujourdhui %} aujourdhui{% endif %}">
+      <span title="{{ j.long }}">{{ j.jour }}</span>
+      <div class="ecl-barre{% if j.toute_la_journee %} lux{% endif %}">
+        {% for s in j.segments %}<i style="left:{{ s.gauche|round(2) }}%;width:{{ s.largeur|round(2) }}%"></i>{% endfor %}
+        {% if j.aujourdhui %}<b class="ecl-maintenant" style="left:{{ maintenant_pct|round(2) }}%" title="Maintenant"></b>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="ecl-jour graduation"><span></span><div><em style="left:0">0h</em><em style="left:25%">6h</em><em style="left:50%">12h</em><em style="left:75%">18h</em><em style="left:100%">24h</em></div></div>
+  </div>
+  {% if p.prochain and p.actif %}<p class="muted ecl-prochain">Prochain changement prévu : <b>{% if p.prochain.allume %}allumage{% else %}extinction{% endif %} {{ p.prochain.jour }} à {{ p.prochain.heure }}</b>{% if p.lux_actif and p.prochain.allume %} (si assez sombre){% endif %}.</p>{% endif %}
+  {% endif %}
+
+  <ul class="ecl-lampes">
+    {% for s in p.sorties %}
+    <li data-sortie="{{ s.id }}">
+      <span class="ecl-ampoule {% if s.allume == true %}on{% elif s.allume == false %}off{% else %}inconnu{% endif %}" aria-hidden="true"></span>
+      <div>
+        <b>{{ s.nom }}</b>{% if s.salle %} <span class="muted">· {{ s.salle }}</span>{% endif %}
+        <small class="js-etat">{% if s.allume == true %}Allumée{% if s.allume_depuis_min is not none %} depuis {{ s.allume_depuis_min }} min{% endif %}{% elif s.allume == false %}Éteinte{% else %}État pas encore connu{% endif %}{% if p.essai and s.allume is not none %} (simulé){% endif %}{% if s.raison %} — {{ s.raison }}{% endif %}</small>
+        {% if s.erreur %}<small class="ecl-erreur">⚠ {{ s.erreur }}</small>{% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="muted">Aucune lampe : modifiez le programme pour en choisir.</li>
+    {% endfor %}
+  </ul>
+
+  {% if session.peut_modifier %}
+  <footer>
+    <a class="ecl-bouton" href="/ambiance/eclairage/{{ p.id }}">✏️ Modifier</a>
+    {% if p.actif %}
+    <details class="ecl-forcer">
+      <summary class="ecl-bouton">✋ Forcer</summary>
+      <div class="ecl-pop">
+        {% if p.forcage %}
+        <form method="post" action="/ambiance/eclairage/{{ p.id }}/forcer" data-no-ajax><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="etat" value="reprendre"><button>▶ Reprendre le programme maintenant</button></form>
+        {% endif %}
+        <form method="post" action="/ambiance/eclairage/{{ p.id }}/forcer" data-no-ajax>
+          <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+          <label>Pendant
+            <select name="duree_min"><option value="15">15 min</option><option value="30">30 min</option><option value="60" selected>1 heure</option><option value="120">2 heures</option><option value="240">4 heures</option><option value="480">8 heures</option><option value="1440">24 heures</option></select>
+          </label>
+          <div class="ecl-ligne">
+            <button name="etat" value="allumer">💡 Allumer</button>
+            <button name="etat" value="eteindre" class="ghost">⚫ Éteindre</button>
+          </div>
+        </form>
+        <p class="muted">Le programme reprend la main à la fin du forçage. {% if p.essai %}En mode essai, rien n'est envoyé aux lampes.{% endif %}</p>
+      </div>
+    </details>
+    {% endif %}
+    <form method="post" action="/ambiance/eclairage/{{ p.id }}/actif" data-no-ajax>
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+      {% if p.actif %}<input type="hidden" name="actif" value="0"><button class="ghost">⏸ Pause</button>
+      {% else %}<input type="hidden" name="actif" value="1"><button class="ghost">▶ Relancer</button>{% endif %}
+    </form>
+    {% if p.actif and p.essai %}
+    <form method="post" action="/ambiance/eclairage/{{ p.id }}/actif" data-no-ajax onsubmit='return confirm({{ ("« " ~ p.nom ~ " » va commander les lampes pour de vrai. Continuer ?")|tojson }})'>
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="actif" value="1"><input type="hidden" name="essai" value="0">
+      <button>✅ Mettre en service</button>
+    </form>
+    {% elif p.actif %}
+    <form method="post" action="/ambiance/eclairage/{{ p.id }}/actif" data-no-ajax>
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="actif" value="1"><input type="hidden" name="essai" value="1">
+      <button class="ghost">🧪 Repasser en essai</button>
+    </form>
+    {% endif %}
+    <details class="ecl-plus">
+      <summary class="ecl-bouton" title="Plus d'actions">⋯</summary>
+      <div class="ecl-pop">
+        <form method="post" action="/ambiance/eclairage/{{ p.id }}/dupliquer" data-no-ajax><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">📄 Dupliquer</button></form>
+        <form method="post" action="/ambiance/eclairage/{{ p.id }}/supprimer" data-no-ajax onsubmit='return confirm({{ ("Supprimer le programme « " ~ p.nom ~ " » ? Les lampes restent dans leur état actuel.")|tojson }})'><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="danger">🗑 Supprimer</button></form>
+      </div>
+    </details>
+  </footer>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+
+{% if journal %}
+<section class="card" id="journal">
+  <h2>Journal de l'éclairage</h2>
+  <p class="muted">Ce que les programmes ont fait (ou auraient fait, en mode essai), et les commandes manuelles sur ces lampes.</p>
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Quand</th><th>Qui</th><th>Lampe</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for j in journal %}
+    <tr><td>{{ j.horodatage }}</td><td>{{ j.utilisateur or '—' }}</td><td>{{ j.nom_point or '—' }}</td><td>{{ j.resultat or '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Comment ça marche</h2>
+  <ul class="ecl-aide">
+    <li><b>Le programme agit aux changements</b> (début ou fin de plage, jour qui se lève, minuterie). Entre deux, il ne touche à rien : si quelqu'un allume ou éteint à la main, son geste tient jusqu'au prochain changement.</li>
+    <li><b>Luminosité</b> : deux seuils (allumer en dessous, éteindre au-dessus) et un délai de confirmation, pour qu'un nuage ne fasse pas clignoter la salle.</li>
+    <li><b>Minuterie</b> : éteint après la durée choisie, sans rallumer ensuite dans la même plage.</li>
+    <li><b>Forcer</b> : allume ou éteint pour une durée, puis le programme reprend.</li>
+    <li><b>Mode essai</b> : tout est calculé et noté dans le journal, rien n'est envoyé. À utiliser une journée avant la mise en service.</li>
+    <li>Les programmes tournent dans le service de régulation, pas dans la page : ils continuent quand personne n'est connecté.</li>
+  </ul>
+</section>
+</div>
+
+<script>
+(function(){
+  // Rafraîchit l'état des lampes toutes les 30 s, sans recharger la page.
+  var racine = document.querySelector('.ecl');
+  if(!racine || !document.querySelector('[data-sortie]')) return;
+  if(window.eoEclairageMinuteur){ clearInterval(window.eoEclairageMinuteur); }
+  function texte(s, essai){
+    var t = s.allume === true ? 'Allumée' + (s.allume_depuis_min != null ? ' depuis ' + s.allume_depuis_min + ' min' : '')
+          : s.allume === false ? 'Éteinte' : 'État pas encore connu';
+    if(essai && s.allume != null) t += ' (simulé)';
+    if(s.raison) t += ' — ' + s.raison;
+    return t;
+  }
+  function actualiser(){
+    if(!document.body.contains(racine)){ clearInterval(window.eoEclairageMinuteur); return; }
+    fetch('/ambiance/eclairage/etat.json', {credentials:'same-origin'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+      if(!d) return;
+      (d.programmes || []).forEach(function(p){
+        var carte = document.getElementById('programme-' + p.id);
+        if(!carte) return;
+        var essai = !!carte.querySelector('.ecl-badge.orange');
+        (p.sorties || []).forEach(function(s){
+          var li = carte.querySelector('[data-sortie="' + s.id + '"]');
+          if(!li) return;
+          var ampoule = li.querySelector('.ecl-ampoule');
+          ampoule.className = 'ecl-ampoule ' + (s.allume === true ? 'on' : s.allume === false ? 'off' : 'inconnu');
+          var etat = li.querySelector('.js-etat');
+          if(etat) etat.textContent = texte(s, essai);
+        });
+      });
+    }).catch(function(){});
+  }
+  window.eoEclairageMinuteur = setInterval(actualiser, 30000);
+})();
+</script>
+{% endblock %}

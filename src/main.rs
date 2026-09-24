@@ -6,6 +6,7 @@ mod cleanup;
 mod config;
 mod db;
 mod demo;
+mod eclairage_core;
 mod demo_portal;
 mod economic_import;
 mod error;

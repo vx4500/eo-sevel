@@ -87,6 +87,18 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         include_str!("../templates/ambiance_ipx.html"),
     )?;
     env.add_template(
+        "ambiance_eclairage_style.html",
+        include_str!("../templates/ambiance_eclairage_style.html"),
+    )?;
+    env.add_template(
+        "ambiance_eclairage.html",
+        include_str!("../templates/ambiance_eclairage.html"),
+    )?;
+    env.add_template(
+        "ambiance_eclairage_form.html",
+        include_str!("../templates/ambiance_eclairage_form.html"),
+    )?;
+    env.add_template(
         "ambiance_carte.html",
         include_str!("../templates/ambiance_carte.html"),
     )?;

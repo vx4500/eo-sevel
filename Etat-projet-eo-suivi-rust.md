@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.19.2** — Dernière mise à jour de ce document : 23 septembre 2026.
+Version actuelle : **2.20.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+
+### Version 2.20.0 — Programmes d'éclairage
+
+Version Rust 2.20.0 : page `/ambiance/eclairage` (src/routes/eclairage.rs, migration 0016_eclairage.sql). Programmes combinant plages horaires, seuils de luminosité avec hystérésis et délai, minuterie d'extinction ; forçage temporaire, mode essai par programme, pause, duplication, journal (ipx_commande_journal). Décision dans `src/eclairage_core.rs`, pure et testée, compilée dans l'application et dans `eo-regul`, qui l'applique à chaque cycle (passe bornée à 20 s). Le programme agit sur fronts : un geste manuel n'est pas contredit avant le prochain changement. État par sortie dans `eclairage_etat`. Au 24/09, aucun relais d'éclairage n'est encore déclaré pilotable sur l'IPX : à faire depuis la carte de l'automate avant le premier programme.
 
 ### Version 2.19.2 — IA toujours rattachées à la bande
 

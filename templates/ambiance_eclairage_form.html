@@ -1,0 +1,275 @@
+{% extends "base.html" %}{% block title %}{% if programme.id %}Modifier l'éclairage{% else %}Nouveau programme d'éclairage{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{% include "ambiance_eclairage_style.html" %}
+<div class="ecl">
+<p class="muted" style="margin:0"><a href="/ambiance/eclairage">← Programmes d'éclairage</a></p>
+<h1 style="margin:4px 0 14px">{% if programme.id %}Modifier « {{ programme.nom }} »{% else %}💡 Nouveau programme d'éclairage{% endif %}</h1>
+
+{% if erreur %}<div class="ecl-message alerte" role="alert"><b>À corriger :</b> {{ erreur }}</div>{% endif %}
+
+<form method="post" action="/ambiance/eclairage/enregistrer" data-no-ajax id="ecl-form" autocomplete="off">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+{% if programme.id %}<input type="hidden" name="id" value="{{ programme.id }}">{% endif %}
+<div class="ecl-form">
+<div>
+
+  <!-- 1. Nom et lampes -->
+  <section class="ecl-etape">
+    <header><span class="ecl-num">1</span><h2>Nom et lampes</h2></header>
+    <label style="max-width:420px;margin-bottom:12px">Nom du programme
+      <input name="nom" value="{{ programme.nom }}" required maxlength="80" placeholder="ex. Maternité — jour">
+    </label>
+    <p class="aide">Cochez les lampes que ce programme commande. Une lampe ne suit qu'un seul programme.</p>
+    {% if sorties %}
+    <div class="ecl-tuiles">
+      {% for s in sorties %}
+      {% set prise = (s.programme_id is not none and s.programme_id != programme.id) or s.ventilation %}
+      <label class="ecl-tuile{% if prise %} prise{% endif %}">
+        <input type="checkbox" name="sortie_{{ s.id }}" value="on" data-nom="{{ s.nom }}"{% if s.id in programme.sortie_ids %} checked{% endif %}{% if prise %} disabled{% endif %}>
+        <span>{% if s.eclairage %}💡{% else %}🔌{% endif %} <b>{{ s.nom }}</b>
+          <small>{% if s.salle %}{{ s.salle }}{% else %}sans salle{% endif %}{% if s.ventilation %} · sortie de ventilation pilotée{% elif s.programme_id is not none and s.programme_id != programme.id %} · déjà dans « {{ s.programme }} »{% endif %}</small>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="ecl-message alerte">Aucune sortie pilotable. Déclarez d'abord les relais d'éclairage sur la <a href="/ambiance/ipx/carte">carte de l'automate</a> (rôle Éclairage, chemin d'écriture, « Pilotable »).</div>
+    {% endif %}
+  </section>
+
+  <!-- 2. Horaires -->
+  <section class="ecl-etape{% if not programme.horaires_actif %} eteinte{% endif %}" data-section="horaires">
+    <header><span class="ecl-num">2</span><h2>🕒 Horaires</h2>
+      <label class="ecl-inter"><input type="checkbox" name="horaires_actif" value="1"{% if programme.horaires_actif %} checked{% endif %} data-bascule><i></i><span>Allumer selon des horaires</span></label>
+    </header>
+    <div class="ecl-corps">
+      <p class="aide">La lumière est allumée pendant chaque plage. Une fin plus tôt que le début passe minuit (22:00 → 06:00). Début égal à la fin : toute la journée.</p>
+      <div id="ecl-plages">
+        {% for pl in programme.plages %}
+        <div class="ecl-plage">
+          <div class="ecl-jours">{% for j in range(7) %}<label title="{{ jours_longs[j] }}"><input type="checkbox" data-jour="{{ j }}" name="plage_{{ loop.index0 }}_j{{ j }}" value="1"{% if pl.jours[j] %} checked{% endif %}><span>{{ jours_courts[j] }}</span></label>{% endfor %}</div>
+          <div class="ecl-heures">de <input type="time" data-champ="debut" name="plage_{{ loop.index0 }}_debut" value="{{ pl.debut }}"> à <input type="time" data-champ="fin" name="plage_{{ loop.index0 }}_fin" value="{{ pl.fin }}"></div>
+          <div class="ecl-raccourcis"><button type="button" data-preset="1111111">7/7</button><button type="button" data-preset="1111100">L–V</button><button type="button" data-preset="0000011">S–D</button></div>
+          <button type="button" class="ecl-suppr" data-supprimer title="Retirer cette plage">✕ Retirer</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="ghost" id="ecl-ajouter">＋ Ajouter une plage</button>
+    </div>
+  </section>
+
+  <!-- 3. Luminosité -->
+  <section class="ecl-etape{% if not programme.lux_actif %} eteinte{% endif %}" data-section="lux">
+    <header><span class="ecl-num">3</span><h2>☀️ Luminosité</h2>
+      <label class="ecl-inter"><input type="checkbox" name="lux_actif" value="1"{% if programme.lux_actif %} checked{% endif %} data-bascule><i></i><span>Tenir compte de la lumière du jour</span></label>
+    </header>
+    <div class="ecl-corps">
+      {% if capteurs %}
+      <p class="aide">Avec des horaires : n'allume pendant la plage que s'il fait sombre. Sans horaires : allume dès qu'il fait sombre, à toute heure.</p>
+      <label class="ecl-phrase">Capteur
+        <select name="lux_point_id" class="large" id="ecl-capteur">
+          {% for c in capteurs %}<option value="{{ c.id }}"{% if c.id == programme.lux_point_id %} selected{% endif %}>{{ c.nom }}{% if c.salle %} ({{ c.salle }}){% endif %}</option>{% endfor %}
+        </select>
+        <button type="button" class="ghost" id="ecl-lire">Lire maintenant</button> <span class="ecl-lecture" id="ecl-lecture"></span>
+      </label>
+      <label class="ecl-phrase">Allumer quand il fait moins de <input name="lux_allumer_sous" inputmode="decimal" value="{{ programme.lux_allumer_sous if programme.lux_allumer_sous is not none else 100 }}"> lux</label>
+      <label class="ecl-phrase">Éteindre quand il fait plus de <input name="lux_eteindre_au_dessus" inputmode="decimal" value="{{ programme.lux_eteindre_au_dessus if programme.lux_eteindre_au_dessus is not none else 300 }}"> lux</label>
+      <label class="ecl-phrase">Attendre <input name="lux_temporisation_min" type="number" min="0" max="120" value="{{ programme.lux_temporisation_min if programme.lux_temporisation_min is not none else 5 }}"> min de confirmation avant de changer</label>
+      <p class="aide">Le seuil d'extinction doit être plus haut que celui d'allumage : la lampe allumée éclaire aussi le capteur. Le délai évite qu'un nuage fasse clignoter la salle.</p>
+      <div class="ecl-radios"><b style="font-size:.9rem">Si le capteur ne répond plus :</b>
+        <label><input type="radio" name="lux_si_muet" value="horaire"{% if programme.lux_si_muet != 'eteindre' and programme.lux_si_muet != 'garder' %} checked{% endif %}> suivre les horaires seuls (conseillé : les animaux ne restent pas dans le noir)</label>
+        <label><input type="radio" name="lux_si_muet" value="garder"{% if programme.lux_si_muet == 'garder' %} checked{% endif %}> garder la dernière mesure connue</label>
+        <label><input type="radio" name="lux_si_muet" value="eteindre"{% if programme.lux_si_muet == 'eteindre' %} checked{% endif %}> considérer qu'il fait jour (ne pas allumer)</label>
+      </div>
+      {% else %}
+      <div class="ecl-message alerte">Aucun capteur de luminosité déclaré. Enregistrez-en un avec le rôle « Luminosité » dans l'<a href="/ambiance/ipx">inventaire de l'automate</a>.</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- 4. Minuterie -->
+  <section class="ecl-etape{% if not programme.minuterie_actif %} eteinte{% endif %}" data-section="minuterie">
+    <header><span class="ecl-num">4</span><h2>⏱️ Minuterie</h2>
+      <label class="ecl-inter"><input type="checkbox" name="minuterie_actif" value="1"{% if programme.minuterie_actif %} checked{% endif %} data-bascule><i></i><span>Éteindre après un temps</span></label>
+    </header>
+    <div class="ecl-corps">
+      <label class="ecl-phrase">Éteindre automatiquement <input name="minuterie_min" type="number" min="1" max="1440" value="{{ programme.minuterie_min if programme.minuterie_min is not none else 30 }}"> min après l'allumage</label>
+      <label class="ecl-phrase"><input type="checkbox" name="minuterie_manuel" value="1" style="width:auto"{% if programme.minuterie_manuel %} checked{% endif %}> même quand la lumière a été allumée à la main (interrupteur, application)</label>
+      <p class="aide">Seule, la minuterie n'allume jamais : c'est l'oubli de lumière en sortant qui est corrigé. Après l'extinction, le programme ne rallume pas avant la plage ou la tombée du jour suivante.</p>
+    </div>
+  </section>
+
+  <!-- 5. Mise en service -->
+  <section class="ecl-etape">
+    <header><span class="ecl-num">5</span><h2>Mise en service</h2></header>
+    <div class="ecl-radios">
+      <label><input type="checkbox" name="actif" value="1"{% if programme.actif %} checked{% endif %}> <b>Programme actif</b> — décoché, il est mis en pause et ne touche plus aux lampes.</label>
+      <label><input type="checkbox" name="essai" value="1" id="ecl-essai"{% if programme.essai %} checked{% endif %}> <b>Mode essai</b> — tout est calculé et noté au journal, rien n'est envoyé aux lampes. Conseillé la première journée.</label>
+    </div>
+    <details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Réglages avancés</summary>
+      <div style="margin-top:10px">
+        <label class="ecl-phrase">Valeur envoyée pour allumer <input name="valeur_allume" inputmode="decimal" value="{{ programme.valeur_allume if programme.valeur_allume is not none else 1 }}"> et pour éteindre <input name="valeur_eteint" inputmode="decimal" value="{{ programme.valeur_eteint if programme.valeur_eteint is not none else 0 }}"></label>
+        <p class="aide">1 et 0 pour un relais. Pour un variateur, mettez par exemple 60 pour 60 %.</p>
+        <label style="max-width:560px">Note<input name="note" value="{{ programme.note or '' }}" placeholder="facultatif"></label>
+      </div>
+    </details>
+  </section>
+</div>
+
+<!-- Aperçu en direct -->
+<aside class="ecl-apercu">
+  <section class="ecl-etape">
+    <header><h2>En résumé</h2></header>
+    <ul id="ecl-resume"><li class="muted">…</li></ul>
+    <div class="ecl-semaine" id="ecl-frise"></div>
+  </section>
+  <div class="ecl-enregistrer">
+    <button type="submit">Enregistrer le programme</button>
+    <a href="/ambiance/eclairage">Annuler</a>
+  </div>
+</aside>
+</div>
+</form>
+
+<template id="ecl-modele-plage">
+  <div class="ecl-plage">
+    <div class="ecl-jours">{% for j in range(7) %}<label title="{{ jours_longs[j] }}"><input type="checkbox" data-jour="{{ j }}" value="1" checked><span>{{ jours_courts[j] }}</span></label>{% endfor %}</div>
+    <div class="ecl-heures">de <input type="time" data-champ="debut" value="06:30"> à <input type="time" data-champ="fin" value="20:00"></div>
+    <div class="ecl-raccourcis"><button type="button" data-preset="1111111">7/7</button><button type="button" data-preset="1111100">L–V</button><button type="button" data-preset="0000011">S–D</button></div>
+    <button type="button" class="ecl-suppr" data-supprimer title="Retirer cette plage">✕ Retirer</button>
+  </div>
+</template>
+</div>
+
+<script>
+(function(){
+  var form = document.getElementById('ecl-form');
+  if(!form) return;
+  var liste = document.getElementById('ecl-plages');
+  var JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+  var COURTS = ['L','M','M','J','V','S','D'];
+
+  function numeroter(){
+    Array.prototype.forEach.call(liste.querySelectorAll('.ecl-plage'), function(ligne, i){
+      ligne.querySelectorAll('[data-jour]').forEach(function(c){ c.name = 'plage_' + i + '_j' + c.getAttribute('data-jour'); });
+      ligne.querySelector('[data-champ=debut]').name = 'plage_' + i + '_debut';
+      ligne.querySelector('[data-champ=fin]').name = 'plage_' + i + '_fin';
+    });
+  }
+  function sectionActive(nom){
+    var s = form.querySelector('[data-section=' + nom + ']');
+    return s && s.querySelector('[data-bascule]').checked;
+  }
+  function minutes(v){ var m = /^(\d{1,2}):(\d{2})/.exec(v || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function heure(v){ return (v || '').replace(':', 'h'); }
+  function joursTexte(j){
+    var n = j.filter(Boolean).length, cle = j.map(function(x){ return x ? 1 : 0; }).join('');
+    if(n === 7) return 'tous les jours';
+    if(n === 0) return 'aucun jour';
+    if(cle === '1111100') return 'du lundi au vendredi';
+    if(cle === '0000011') return 'le week-end';
+    if(cle === '1111110') return 'du lundi au samedi';
+    var noms = JOURS.filter(function(_, i){ return j[i]; });
+    return noms.length === 1 ? 'le ' + noms[0] : noms.slice(0, -1).join(', ') + ' et ' + noms[noms.length - 1];
+  }
+  function plages(){
+    if(!sectionActive('horaires')) return [];
+    return Array.prototype.map.call(liste.querySelectorAll('.ecl-plage'), function(l){
+      return {
+        jours: Array.prototype.map.call(l.querySelectorAll('[data-jour]'), function(c){ return c.checked; }),
+        debut: l.querySelector('[data-champ=debut]').value,
+        fin: l.querySelector('[data-champ=fin]').value
+      };
+    });
+  }
+  function valeur(nom){ var c = form.querySelector('[name=' + nom + ']'); return c ? c.value : ''; }
+  function coche(nom){ var c = form.querySelector('[name=' + nom + ']'); return !!(c && c.checked); }
+
+  function apercu(){
+    var p = plages(), lux = sectionActive('lux') && form.querySelector('[name=lux_point_id]'), minu = sectionActive('minuterie');
+    var lignes = [];
+    var lampes = Array.prototype.filter.call(form.querySelectorAll('[name^=sortie_]'), function(c){ return c.checked; })
+      .map(function(c){ return c.getAttribute('data-nom'); });
+    lignes.push(lampes.length ? '<b>Lampes :</b> ' + lampes.map(echapper).join(', ') : '<span style="color:#a3361a">Aucune lampe cochée.</span>');
+    if(p.length){
+      var t = p.map(function(pl){
+        var d = minutes(pl.debut), f = minutes(pl.fin);
+        if(d !== null && d === f) return joursTexte(pl.jours) + ' toute la journée';
+        return joursTexte(pl.jours) + ' de ' + heure(pl.debut) + ' à ' + heure(pl.fin) + (d !== null && f !== null && f < d ? ' le lendemain' : '');
+      }).join(' ; ');
+      lignes.push('Allume ' + t + (lux ? ', seulement s’il fait moins de ' + echapper(valeur('lux_allumer_sous')) + ' lux' : '') + '.');
+    } else if(lux){
+      lignes.push('Allume dès qu’il fait moins de ' + echapper(valeur('lux_allumer_sous')) + ' lux, à toute heure.');
+    }
+    if(lux){ lignes.push('Éteint au-dessus de ' + echapper(valeur('lux_eteindre_au_dessus')) + ' lux (' + echapper(valeur('lux_temporisation_min')) + ' min de confirmation).'); }
+    if(minu){ lignes.push('Éteint ' + echapper(valeur('minuterie_min')) + ' min après l’allumage' + (coche('minuterie_manuel') ? ', même allumé à la main' : '') + '.'); }
+    if(!p.length && !lux && !minu){ lignes.push('<span style="color:#a3361a">Choisissez au moins : horaires, luminosité ou minuterie.</span>'); }
+    lignes.push(coche('actif') ? (coche('essai') ? '🧪 Mode essai : rien ne sera envoyé aux lampes.' : '✅ Commandera les lampes pour de vrai.') : '⏸ En pause.');
+    document.getElementById('ecl-resume').innerHTML = lignes.map(function(l){ return '<li>' + l + '</li>'; }).join('');
+    frise(p, lux && !p.length);
+  }
+  function echapper(t){ var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function frise(p, touteLaJournee){
+    var cible = document.getElementById('ecl-frise');
+    if(!p.length && !touteLaJournee){ cible.innerHTML = ''; return; }
+    var html = '';
+    for(var j = 0; j < 7; j++){
+      var segs = '';
+      p.forEach(function(pl){
+        var d = minutes(pl.debut), f = minutes(pl.fin), veille = (j + 6) % 7;
+        if(d === null || f === null) return;
+        function seg(a, b){ if(b > a) segs += '<i style="left:' + (a / 14.4) + '%;width:' + ((b - a) / 14.4) + '%"></i>'; }
+        if(d === f){ if(pl.jours[j]) seg(0, 1440); }
+        else if(d < f){ if(pl.jours[j]) seg(d, f); }
+        else { if(pl.jours[j]) seg(d, 1440); if(pl.jours[veille]) seg(0, f); }
+      });
+      html += '<div class="ecl-jour"><span title="' + JOURS[j] + '">' + COURTS[j] + '</span><div class="ecl-barre' + (touteLaJournee ? ' lux' : '') + '">' + segs + '</div></div>';
+    }
+    html += '<div class="ecl-jour graduation"><span></span><div><em style="left:0">0h</em><em style="left:25%">6h</em><em style="left:50%">12h</em><em style="left:75%">18h</em><em style="left:100%">24h</em></div></div>';
+    cible.innerHTML = html;
+  }
+
+  form.addEventListener('click', function(e){
+    var preset = e.target.closest('[data-preset]');
+    if(preset){
+      var motif = preset.getAttribute('data-preset');
+      preset.closest('.ecl-plage').querySelectorAll('[data-jour]').forEach(function(c){ c.checked = motif.charAt(+c.getAttribute('data-jour')) === '1'; });
+      apercu();
+    }
+    var suppr = e.target.closest('[data-supprimer]');
+    if(suppr){ suppr.closest('.ecl-plage').remove(); numeroter(); apercu(); }
+  });
+  document.getElementById('ecl-ajouter').addEventListener('click', function(){
+    if(liste.querySelectorAll('.ecl-plage').length >= 24) return;
+    liste.appendChild(document.getElementById('ecl-modele-plage').content.cloneNode(true));
+    numeroter(); apercu();
+  });
+  form.querySelectorAll('[data-bascule]').forEach(function(c){
+    c.addEventListener('change', function(){
+      var s = c.closest('.ecl-etape');
+      s.classList.toggle('eteinte', !c.checked);
+      if(c.checked && s.getAttribute('data-section') === 'horaires' && !liste.querySelector('.ecl-plage')){
+        document.getElementById('ecl-ajouter').click();
+      }
+    });
+  });
+  form.addEventListener('input', apercu);
+  form.addEventListener('change', apercu);
+
+  var bouton = document.getElementById('ecl-lire');
+  if(bouton){
+    bouton.addEventListener('click', function(){
+      var sortie = document.getElementById('ecl-lecture');
+      var id = document.getElementById('ecl-capteur').value;
+      sortie.textContent = 'lecture…';
+      fetch('/ambiance/ipx/points.json', {credentials:'same-origin'}).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); }).then(function(d){
+        var liste = Array.isArray(d) ? d : (d.points || []);
+        var p = liste.filter(function(x){ return String(x.id) === String(id); })[0];
+        sortie.textContent = p && p.valeur != null ? Math.round(p.valeur) + ' lux en ce moment' : 'pas de réponse du capteur';
+      }).catch(function(){ sortie.textContent = 'lecture impossible'; });
+    });
+  }
+  numeroter();
+  apercu();
+})();
+</script>
+{% endblock %}

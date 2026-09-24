@@ -36,6 +36,13 @@ use std::time::Duration;
 #[path = "../regul_core.rs"]
 mod regul_core;
 
+#[path = "../eclairage_core.rs"]
+mod eclairage_core;
+
+#[path = "../formule.rs"]
+#[allow(dead_code)]
+mod formule;
+
 use regul_core::{
     calculer, consigne_courbe, depuis_dixiemes, doit_ecrire, doit_enregistrer, en_dixiemes,
     Decision, Lecture, Mode, PointCourbe, Reglages,
@@ -274,6 +281,18 @@ async fn cycle(
     // suivis par l'application, avec leur répartition de coût par bande.
     if let Err(error) = relever_compteurs(pool, client, &acces).await {
         tracing::error!(error = %error, "relevé des compteurs impossible");
+    }
+    // Programmes d'éclairage, bornés dans le temps : une passe qui traîne
+    // (automate injoignable) ne doit pas retarder le battement de cœur.
+    match tokio::time::timeout(
+        Duration::from_secs(ECLAIRAGE_PASSE_MAX_S),
+        eclairer(pool, client, &acces),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::error!(error = %error, "programmes d'éclairage non appliqués"),
+        Err(_) => tracing::warn!("passe d'éclairage interrompue : automate trop lent"),
     }
     Ok(traitees)
 }
@@ -1095,6 +1114,342 @@ async fn ecrire(
         "écriture refusée par l'automate (statut {})",
         reponse.status()
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Programmes d'éclairage
+//
+// La décision est dans `eclairage_core` ; ici, seulement lire, écrire et
+// retenir. Indépendant du mode simulation de la ventilation : chaque
+// programme porte son propre « mode essai », pour qu'on puisse confier la
+// lumière au démon sans attendre la fin de la comparaison de ventilation.
+// ---------------------------------------------------------------------------
+
+/// Durée maximale d'une passe d'éclairage. Un automate injoignable fait
+/// attendre chaque requête cinq secondes : sans ce plafond, une dizaine de
+/// sorties suffirait à retarder le battement de cœur de la ventilation.
+const ECLAIRAGE_PASSE_MAX_S: u64 = 20;
+
+/// Luminosité au-delà de laquelle une lecture est tenue pour aberrante (le
+/// plein soleil dépasse rarement 100 000 lux).
+const LUX_PLAUSIBLE_MAX: f64 = 200_000.0;
+
+async fn eclairer(pool: &SqlitePool, client: &reqwest::Client, acces: &AccesIpx) -> Result<()> {
+    use chrono::{Datelike, Timelike};
+    let local = chrono::Local::now();
+    let ts = maintenant();
+    let jour = local.weekday().num_days_from_monday() as usize;
+    let minute = local.hour() * 60 + local.minute();
+
+    // Une sortie retirée d'un programme, ou dont le programme est en pause,
+    // perd sa mémoire : à la reprise, la demande sera réappliquée d'office.
+    sqlx::query(
+        "DELETE FROM eclairage_etat WHERE point_id NOT IN (\
+           SELECT s.point_id FROM eclairage_sortie s \
+           JOIN eclairage_programme p ON p.id=s.programme_id WHERE p.actif=1)",
+    )
+    .execute(pool)
+    .await?;
+
+    let programmes = sqlx::query(
+        "SELECT p.id, p.nom, p.essai, p.lux_point_id, p.lux_allumer_sous, \
+                p.lux_eteindre_au_dessus, p.lux_temporisation_min, p.lux_si_muet, \
+                p.minuterie_min, p.minuterie_manuel, p.valeur_allume, p.valeur_eteint, \
+                p.forcage, p.forcage_fin, \
+                l.hote AS lux_hote, l.chemin AS lux_chemin, l.coefficient AS lux_coef, \
+                l.decalage AS lux_decalage, l.formule AS lux_formule \
+         FROM eclairage_programme p LEFT JOIN ipx_point l ON l.id=p.lux_point_id \
+         WHERE p.actif=1 ORDER BY p.id",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for ligne in &programmes {
+        let nom: String = ligne.try_get("nom").unwrap_or_default();
+        if let Err(error) = eclairer_programme(pool, client, acces, ligne, ts, jour, minute).await {
+            tracing::error!(programme = %nom, error = %error, "programme d'éclairage non appliqué");
+        }
+    }
+
+    // Les forçages échus sont effacés : la page n'affiche plus « forcé ».
+    sqlx::query(
+        "UPDATE eclairage_programme SET forcage=NULL, forcage_fin=NULL \
+         WHERE forcage_fin IS NOT NULL AND forcage_fin<=?",
+    )
+    .bind(ts)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn eclairer_programme(
+    pool: &SqlitePool,
+    client: &reqwest::Client,
+    acces: &AccesIpx,
+    ligne: &sqlx::sqlite::SqliteRow,
+    ts: i64,
+    jour: usize,
+    minute: u32,
+) -> Result<()> {
+    let programme_id: i64 = ligne.try_get("id")?;
+    let nom_programme: String = ligne.try_get("nom").unwrap_or_default();
+    let essai = ligne.try_get::<i64, _>("essai").unwrap_or(1) != 0;
+    let valeur_allume: f64 = ligne.try_get("valeur_allume").unwrap_or(1.0);
+    let valeur_eteint: f64 = ligne.try_get("valeur_eteint").unwrap_or(0.0);
+
+    let plages: Vec<eclairage_core::Plage> = sqlx::query_as::<_, (String, i64, i64)>(
+        "SELECT jours,debut,fin FROM eclairage_plage WHERE programme_id=? ORDER BY debut",
+    )
+    .bind(programme_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(jours, debut, fin)| eclairage_core::Plage {
+        jours: eclairage_core::jours_depuis_texte(&jours),
+        debut: debut.clamp(0, 1439) as u32,
+        fin: fin.clamp(0, 1439) as u32,
+    })
+    .collect();
+
+    let lux_point: Option<i64> = ligne.try_get("lux_point_id").ok().flatten();
+    let allumer_sous: Option<f64> = ligne.try_get("lux_allumer_sous").ok().flatten();
+    let eteindre_au_dessus: Option<f64> = ligne.try_get("lux_eteindre_au_dessus").ok().flatten();
+    let luminosite = match (lux_point, allumer_sous) {
+        (Some(_), Some(allumer_sous)) => Some(eclairage_core::Luminosite {
+            allumer_sous,
+            eteindre_au_dessus: eteindre_au_dessus.unwrap_or(allumer_sous).max(allumer_sous),
+            temporisation_s: ligne
+                .try_get::<i64, _>("lux_temporisation_min")
+                .unwrap_or(5)
+                .max(0)
+                * 60,
+            si_muet: eclairage_core::SiCapteurMuet::depuis_code(
+                &ligne.try_get::<String, _>("lux_si_muet").unwrap_or_default(),
+            ),
+        }),
+        _ => None,
+    };
+    let programme = eclairage_core::Programme {
+        plages,
+        luminosite,
+        minuterie_s: ligne
+            .try_get::<Option<i64>, _>("minuterie_min")
+            .ok()
+            .flatten()
+            .filter(|minutes| *minutes > 0)
+            .map(|minutes| minutes * 60),
+        minuterie_manuel: ligne.try_get::<i64, _>("minuterie_manuel").unwrap_or(1) != 0,
+    };
+
+    let lux = if programme.luminosite.is_some() {
+        let hote: String = ligne.try_get("lux_hote").unwrap_or_default();
+        let chemin: Option<String> = ligne.try_get("lux_chemin").ok().flatten();
+        let formule: Option<String> = ligne.try_get("lux_formule").ok().flatten();
+        let coefficient: f64 = ligne.try_get("lux_coef").unwrap_or(1.0);
+        let decalage: f64 = ligne.try_get("lux_decalage").unwrap_or(0.0);
+        lire(client, acces, &hote, chemin.as_deref())
+            .await
+            .valeur
+            .and_then(|brut| match formule.as_deref().filter(|f| !f.trim().is_empty()) {
+                Some(formule) => formule::evaluer(formule, brut),
+                None => Some(brut * coefficient + decalage),
+            })
+            .filter(|lux| lux.is_finite() && (0.0..=LUX_PLAUSIBLE_MAX).contains(lux))
+    } else {
+        None
+    };
+
+    let forcage = match (
+        ligne.try_get::<Option<i64>, _>("forcage").ok().flatten(),
+        ligne.try_get::<Option<i64>, _>("forcage_fin").ok().flatten(),
+    ) {
+        (Some(allume), Some(fin)) => Some(eclairage_core::Forcage {
+            allume: allume != 0,
+            fin,
+        }),
+        _ => None,
+    };
+
+    let sorties = sqlx::query(
+        "SELECT p.id, p.hote, p.chemin, p.chemin_ecriture, p.nom, \
+                (SELECT COUNT(*) FROM ambiance_salle a WHERE a.actif=1 AND a.pilote=1 \
+                   AND trim(a.sortie_ventil)=trim(p.chemin_ecriture)) AS ventilation \
+         FROM eclairage_sortie s JOIN ipx_point p ON p.id=s.point_id \
+         WHERE s.programme_id=? AND p.actif=1 AND p.pilotable=1",
+    )
+    .bind(programme_id)
+    .fetch_all(pool)
+    .await?;
+
+    for sortie in sorties {
+        let point_id: i64 = sortie.try_get("id")?;
+        let hote: String = sortie.try_get("hote").unwrap_or_default();
+        let chemin: String = sortie.try_get("chemin").unwrap_or_default();
+        let nom_point: String = sortie.try_get("nom").unwrap_or_default();
+        let Some(chemin_ecriture) = sortie
+            .try_get::<Option<String>, _>("chemin_ecriture")
+            .ok()
+            .flatten()
+            .filter(|chemin| !chemin.trim().is_empty())
+        else {
+            continue;
+        };
+        // Jamais sur une sortie de ventilation en régulation : le démon se
+        // contredirait lui-même d'un cycle à l'autre.
+        if sortie.try_get::<i64, _>("ventilation").unwrap_or(0) > 0 {
+            continue;
+        }
+
+        let (precedente, erreur_precedente) = charger_memoire(pool, point_id, programme_id).await?;
+        // En essai, on ne lit pas la sortie : la mémoire simule seule l'état,
+        // sinon la lampe réellement éteinte serait prise pour un geste manuel.
+        let etat_lu = if essai {
+            None
+        } else {
+            lire(client, acces, &hote, Some(&chemin))
+                .await
+                .valeur
+                .map(|valeur| (valeur - valeur_allume).abs() < (valeur - valeur_eteint).abs())
+        };
+        let decision = eclairage_core::decider(
+            &programme,
+            &eclairage_core::Entree {
+                ts,
+                jour,
+                minute,
+                lux,
+                etat_lu,
+                forcage,
+            },
+            &precedente,
+        );
+
+        let mut memoire = decision.memoire.clone();
+        let mut erreur: Option<String> = None;
+        if let Some(allumer) = decision.commande {
+            let valeur = if allumer { valeur_allume } else { valeur_eteint };
+            let resultat = if essai {
+                Ok("essai, non envoyée")
+            } else {
+                ecrire(client, acces, &hote, &chemin_ecriture, valeur)
+                    .await
+                    .map(|_| "envoyée")
+            };
+            let action = if allumer { "allumer" } else { "éteindre" };
+            match resultat {
+                Ok(texte) => {
+                    journaliser_eclairage(
+                        pool,
+                        &nom_programme,
+                        point_id,
+                        &nom_point,
+                        valeur,
+                        &format!("{action} : {texte} — {}", decision.raison),
+                    )
+                    .await?;
+                    tracing::info!(programme = %nom_programme, sortie = %nom_point, action, essai, "éclairage");
+                }
+                Err(error) => {
+                    // Mémoire inchangée : la commande repart au cycle suivant.
+                    memoire = precedente.clone();
+                    let message = format!("{action} : échec ({error})");
+                    // Un seul message au journal par panne, pas un toutes les
+                    // trente secondes.
+                    if erreur_precedente.as_deref() != Some(message.as_str()) {
+                        journaliser_eclairage(pool, &nom_programme, point_id, &nom_point, valeur, &message)
+                            .await?;
+                    }
+                    tracing::warn!(programme = %nom_programme, sortie = %nom_point, error = %error, "éclairage non commandé");
+                    erreur = Some(message);
+                }
+            }
+        }
+        sqlx::query(
+            "INSERT INTO eclairage_etat(point_id,programme_id,demande,sombre,bascule_depuis,allume,\
+             allume_depuis,par_programme,force,lux,raison,erreur,maj) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) \
+             ON CONFLICT(point_id) DO UPDATE SET programme_id=excluded.programme_id,\
+             demande=excluded.demande,sombre=excluded.sombre,bascule_depuis=excluded.bascule_depuis,\
+             allume=excluded.allume,allume_depuis=excluded.allume_depuis,\
+             par_programme=excluded.par_programme,force=excluded.force,lux=excluded.lux,\
+             raison=excluded.raison,erreur=excluded.erreur,maj=excluded.maj",
+        )
+        .bind(point_id)
+        .bind(programme_id)
+        .bind(memoire.demande.map(i64::from))
+        .bind(memoire.sombre.map(i64::from))
+        .bind(memoire.bascule_depuis)
+        .bind(memoire.allume.map(i64::from))
+        .bind(memoire.allume_depuis)
+        .bind(i64::from(memoire.par_programme))
+        .bind(i64::from(memoire.force))
+        .bind(lux)
+        .bind(&decision.raison)
+        .bind(erreur)
+        .bind(ts)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Mémoire enregistrée d'une sortie, si elle appartient bien à ce programme.
+async fn charger_memoire(
+    pool: &SqlitePool,
+    point_id: i64,
+    programme_id: i64,
+) -> Result<(eclairage_core::Memoire, Option<String>)> {
+    let ligne = sqlx::query(
+        "SELECT demande,sombre,bascule_depuis,allume,allume_depuis,par_programme,force,erreur \
+         FROM eclairage_etat WHERE point_id=? AND programme_id=?",
+    )
+    .bind(point_id)
+    .bind(programme_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(ligne) = ligne else {
+        return Ok((eclairage_core::Memoire::default(), None));
+    };
+    let booleen = |colonne: &str| -> Option<bool> {
+        ligne
+            .try_get::<Option<i64>, _>(colonne)
+            .ok()
+            .flatten()
+            .map(|valeur| valeur != 0)
+    };
+    let memoire = eclairage_core::Memoire {
+        demande: booleen("demande"),
+        sombre: booleen("sombre"),
+        bascule_depuis: ligne.try_get("bascule_depuis").ok().flatten(),
+        allume: booleen("allume"),
+        allume_depuis: ligne.try_get("allume_depuis").ok().flatten(),
+        par_programme: booleen("par_programme").unwrap_or(false),
+        force: booleen("force").unwrap_or(false),
+    };
+    Ok((memoire, ligne.try_get("erreur").ok().flatten()))
+}
+
+/// Même journal que les commandes manuelles : une seule liste « qui a fait
+/// quoi sur l'automate », que l'auteur soit une personne ou un programme.
+async fn journaliser_eclairage(
+    pool: &SqlitePool,
+    programme: &str,
+    point_id: i64,
+    nom_point: &str,
+    valeur: f64,
+    resultat: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO ipx_commande_journal(utilisateur,point_id,nom_point,valeur,resultat) \
+         VALUES(?,?,?,?,?)",
+    )
+    .bind(format!("programme « {programme} »"))
+    .bind(point_id)
+    .bind(nom_point)
+    .bind(valeur)
+    .bind(resultat)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

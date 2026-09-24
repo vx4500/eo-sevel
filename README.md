@@ -1,4 +1,4 @@
-# EO_Sevel — portage Rust 2.19.2
+# EO_Sevel — portage Rust 2.20.0
 
 Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
 n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà
@@ -313,6 +313,22 @@ secondes : seul l'écart entre deux relevés porte l'information.
 
 Un relevé saisi à la main le même jour l'emporte : le relevé automatique ne
 vient jamais écraser ce qui a été constaté sur le compteur lui-même.
+
+### Programmes d'éclairage
+
+Page **Ambiance → Programmes d'éclairage** (`/ambiance/eclairage`). Un
+programme commande une ou plusieurs sorties déclarées pilotables, avec trois
+conditions combinables : plages horaires (jours, passage de minuit), seuils
+de luminosité (allumer sous X lux, éteindre au-dessus de Y, délai de
+confirmation, comportement si le capteur ne répond plus) et minuterie
+d'extinction (aussi après un allumage manuel). Forçage temporaire depuis la
+page, mode essai, pause, duplication, journal.
+
+C'est `eo-regul` qui applique les programmes (`eclairage_core.rs`, partagé
+avec l'application). Il agit sur les **changements** (début/fin de plage,
+tombée du jour, minuterie) et ne réécrit rien entre deux : un geste à la main
+tient jusqu'au prochain changement prévu. Le mode essai est propre à chaque
+programme, indépendant de `EO_REGUL_SIMULATION` (ventilation).
 
 ### Commande manuelle d'une sortie
 

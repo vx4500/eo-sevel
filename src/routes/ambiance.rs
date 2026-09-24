@@ -39,7 +39,7 @@ fn duree_lisible(secondes: i64) -> String {
 }
 
 /// État du démon de régulation, tel qu'on peut l'affirmer honnêtement.
-async fn etat_demon(pool: &SqlitePool) -> Value {
+pub(super) async fn etat_demon(pool: &SqlitePool) -> Value {
     let ligne: Option<(i64, Option<String>, i64, i64)> =
         sqlx::query_as("SELECT ts,version,cycles,erreurs FROM ambiance_heartbeat WHERE id=1")
             .fetch_optional(pool)
