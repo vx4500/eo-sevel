@@ -41,6 +41,7 @@ mod maternite_suivi;
 mod parity;
 mod plans_aliment;
 mod rapport;
+mod salles;
 #[cfg(test)]
 mod regression_tests;
 mod scan;
@@ -583,6 +584,8 @@ pub fn router(state: AppState) -> Router {
         .route("/sauvegarde", get(sauvegarde))
         .route("/sauvegarde/telecharger", get(sauvegarde_telecharger))
         .route("/structure", get(structure))
+        .route("/salles", get(salles::liste))
+        .route("/salles/{id}", get(salles::fiche))
         .route("/structure/site", post(structure_site))
         .route(
             "/structure/site/{id}/modifier",

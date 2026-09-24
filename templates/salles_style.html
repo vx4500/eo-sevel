@@ -1,0 +1,35 @@
+<style>
+.sl-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.sl-carte{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;text-decoration:none;color:var(--ink)}
+a.sl-carte:hover{border-color:var(--accent2);box-shadow:0 4px 14px #0001}
+.sl-carte header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sl-carte h2{margin:0;font-size:1.15rem}
+.sl-type{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.sl-mesures{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sl-mesures div{background:#f6f8f7;border-radius:9px;padding:6px 8px;text-align:center}
+.sl-mesures b{display:block;font-size:1.15rem}
+.sl-mesures small{color:var(--muted);font-size:.7rem}
+.sl-mesures .perime b{color:var(--muted)}
+.sl-lignes{display:flex;flex-direction:column;gap:3px;font-size:.88rem}
+.sl-lignes span{color:var(--muted)}
+.sl-badges{display:flex;gap:5px;flex-wrap:wrap}
+.sl-badge{font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:999px;background:#eef3f0;color:var(--vert)}
+.sl-badge.rouge{background:#fbeae4;color:#a3361a}.sl-badge.jaune{background:#fff3cd;color:#8a6100}
+.sl-jauge{height:7px;border-radius:4px;background:#e8ecea;overflow:hidden}
+.sl-jauge i{display:block;height:100%;background:var(--accent2)}
+.sl-jauge.plein i{background:#c7832f}.sl-jauge.deborde i{background:#a3361a}
+.sl-blocs{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.sl-blocs .card{margin:0}
+.sl-blocs h2{margin-top:0;font-size:1.05rem}
+.sl-cases{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.sl-case{border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:.85rem}
+.sl-case b{display:block}
+.sl-frise{display:flex;flex-direction:column;gap:4px}
+.sl-frise div{display:grid;grid-template-columns:44px 1fr 110px;gap:8px;align-items:center;font-size:.78rem}
+.sl-frise .piste{position:relative;height:12px;background:#eef1ef;border-radius:6px}
+.sl-frise .piste i{position:absolute;top:2px;bottom:2px;border-radius:4px;background:linear-gradient(90deg,#4f8fc0,#e0823d)}
+.sl-frise .piste b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.sl-ampoule{display:inline-block;width:12px;height:12px;border-radius:50%;background:#c9cfcc;vertical-align:middle;margin-right:4px}
+.sl-ampoule.on{background:#f2b705;box-shadow:0 0 6px 2px #f2b70580}
+.sl-vide{color:var(--muted);font-style:italic}
+</style>

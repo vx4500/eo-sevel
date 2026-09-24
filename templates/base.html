@@ -297,8 +297,11 @@
     </div>{% endif %}
   </div></div>{% endif %}
 
-  {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or session.module_vente_directe %}
+  {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or 'structure' in session.pages or session.module_vente_directe %}
   <div class="rust-menu" data-rubrique="Ma gestion"><button type="button" aria-expanded="false">Ma gestion <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
+    {% if 'structure' in session.pages %}<div class="rust-sub-groupe"><h3>Bâtiments</h3>
+      <a href="/salles"><b>Mes salles</b><small>Bande, animaux, ambiance, éclairage : tout par salle</small></a>
+    </div>{% endif %}
     <div class="rust-sub-groupe"><h3>Achats et ventes</h3>
       {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>{% endif %}
       {% if session.module_vente_directe %}{% if 'vente' in session.pages %}<a href="/vente-directe"><b>Vente directe</b><small>Commandes, clients, sessions</small></a>

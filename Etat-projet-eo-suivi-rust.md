@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.22.1** — Dernière mise à jour de ce document : 24 septembre 2026.
+Version actuelle : **2.23.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+
+### Version 2.23.0 — Mes salles
+
+Version Rust 2.23.0 : Ma gestion → Mes salles (`/salles`, `/salles/{id}`, src/routes/salles.rs). Une carte par salle (bande en place et jour, truies, porcs/places, T/H/lux, lampes, alertes, lavage) et une fiche réunissant tout ce qui est relié à la salle : cases et animaux, ambiance et 14 jours d'historique, éclairage et programmes, dimensions et ventilateurs (renouvellement d'air), alertes, mortalités et observations 30 j, mouvements, préconditionnement, points de l'automate. Rien n'est saisi : chaque bloc se construit à partir des liens en base et disparaît s'il est vide (demande d'Emmanuel : « chaque chose qui se relie à la salle s'incrémente ou le contraire »). Accès : droit « structure ».
 
 ### Version 2.22.1 — Section actuelle dans la liste des truies
 
