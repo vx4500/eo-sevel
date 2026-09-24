@@ -25,6 +25,7 @@ use std::sync::Arc;
 mod adoptions;
 mod ambiance;
 mod ameliorations;
+mod automate;
 mod conduite;
 mod eclairage;
 mod demo_portal;
@@ -143,7 +144,10 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/eclairage/{id}/supprimer",
             post(eclairage::supprimer),
         )
+        .route("/ambiance/automate", get(automate::page))
         .route("/ambiance/ipx", get(ambiance::ipx_page))
+        .route("/ambiance/ipx/explorateur", get(ambiance::ipx_explorateur))
+        .route("/ambiance/ipx/acces", get(ambiance::ipx_acces))
         .route("/ambiance/ipx/lire.json", get(ambiance::ipx_lire))
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))
         .route("/ambiance/ipx/points.json", get(ambiance::ipx_points_json))

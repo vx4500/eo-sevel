@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Automate IPX800 — EO_Sevel{% endblock %}{% block content %}
+{{ onglets('ensemble') }}
+<style>
+.auto-tuiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+.auto-tuile{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;text-decoration:none;color:var(--ink)}
+.auto-tuile:hover{border-color:var(--accent2)}
+.auto-tuile small{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.auto-tuile b{display:block;font-size:1.7rem;margin:4px 0 2px}
+.auto-tuile span{color:var(--muted);font-size:13px}
+.auto-tuile.alerte{border-color:#efc1b1;background:#fdf3ef}
+.auto-etapes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.auto-etapes li{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:10px;background:#f6f8f7}
+.auto-etapes li.fait{opacity:.7}
+.auto-etapes i{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:13px;background:#e3e8e5;color:var(--muted)}
+.auto-etapes li.fait i{background:#2d6a4f;color:#fff}
+.auto-etapes li.prochaine{background:#fff6e6;outline:1.5px solid #e9b96e}
+.auto-etapes a{margin-left:auto;white-space:nowrap}
+.auto-deux{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+</style>
+
+{% if not acces.hote %}
+<div class="card"><p><b>Aucun automate renseigné.</b> Commencez par indiquer son adresse dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.</p></div>
+{% endif %}
+
+<div class="auto-tuiles">
+  <a class="auto-tuile" href="/ambiance/ipx/acces"><small>Automate</small><b style="font-size:1.2rem">{{ acces.hote or 'non renseigné' }}</b><span>{% if acces.cle_definie %}clé d'API enregistrée{% else %}clé d'API manquante{% endif %}</span></a>
+  <a class="auto-tuile{% if not demon.actif %} alerte{% endif %}" href="/ambiance"><small>Régulation (eo-regul)</small><b style="font-size:1.2rem">{% if demon.actif %}✅ en marche{% else %}⛔ à l'arrêt{% endif %}</b><span>{{ demon.texte }}</span></a>
+  <a class="auto-tuile" href="/ambiance/ipx"><small>Entrées et sorties</small><b>{{ nb_points }}</b><span>{{ nb_pilotables }} pilotable{% if nb_pilotables > 1 %}s{% endif %}</span></a>
+  <a class="auto-tuile" href="/ambiance"><small>Salles raccordées</small><b>{{ salles.mesurees }}</b><span>{{ salles.pilotees }} en régulation automatique</span></a>
+  <a class="auto-tuile" href="/ambiance/eclairage"><small>Éclairage</small><b>{{ eclairage.programmes }}</b><span>programme{% if eclairage.programmes > 1 %}s{% endif %} · {{ eclairage.en_service }} en service · {{ eclairage.essai }} en essai</span></a>
+  <a class="auto-tuile{% if alertes > 0 %} alerte{% endif %}" href="/ambiance"><small>Alertes ouvertes</small><b>{{ alertes }}</b><span>ambiance et liaison</span></a>
+</div>
+
+<div class="auto-deux">
+<section class="card">
+  <h2>Mise en route</h2>
+  <ol class="auto-etapes">
+    {% for e in etapes %}
+    <li class="{% if e.fait %}fait{% elif loop.index0 == prochaine %}prochaine{% endif %}"><i>{% if e.fait %}✓{% else %}{{ loop.index }}{% endif %}</i><span>{{ e.texte }}</span><a href="{{ e.lien }}">{{ e.action }} →</a></li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Points par rôle</h2>
+  {% if roles %}
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Rôle</th><th>Points</th><th>Pilotables</th></tr></thead>
+    <tbody>{% for r in roles %}<tr><td>{{ r.libelle }}</td><td>{{ r.nombre }}</td><td>{{ r.pilotables or '—' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="rust-empty">Aucun point enregistré.</p>{% endif %}
+  <p class="muted"><a href="/ambiance/ipx">Voir et modifier les entrées et sorties →</a></p>
+</section>
+</div>
+
+<section class="card">
+  <h2>Dernières commandes envoyées à l'automate</h2>
+  {% if commandes %}
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Quand</th><th>Qui</th><th>Point</th><th>Valeur</th><th>Résultat</th></tr></thead>
+    <tbody>{% for c in commandes %}<tr><td>{{ c.horodatage }}</td><td>{{ c.utilisateur or '—' }}</td><td>{{ c.nom_point }}</td><td>{{ c.valeur }}</td><td>{{ c.resultat }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="rust-empty">Aucune commande pour l'instant.</p>{% endif %}
+</section>
+{% endblock %}

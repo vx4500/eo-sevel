@@ -1,0 +1,20 @@
+{% macro onglets(actif) %}
+<style>
+.auto-onglets{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.auto-onglets a{padding:8px 13px;border-radius:9px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;white-space:nowrap}
+.auto-onglets a:hover{background:#eef3f0;color:var(--vert)}
+.auto-onglets a.actif{background:var(--vert);color:#fff}
+.auto-titre{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px}
+.auto-titre h1{margin:0}
+@media(max-width:640px){.auto-onglets{flex-wrap:nowrap;overflow-x:auto}}
+</style>
+<div class="auto-titre"><h1>Automate IPX800</h1><a class="muted" href="/ambiance">← EO_Awel · Ambiance</a></div>
+<nav class="auto-onglets" aria-label="Sections de l'automate">
+  <a href="/ambiance/automate"{% if actif == 'ensemble' %} class="actif" aria-current="page"{% endif %}>🏠 Vue d'ensemble</a>
+  <a href="/ambiance/ipx"{% if actif == 'points' %} class="actif" aria-current="page"{% endif %}>🔌 Entrées et sorties</a>
+  <a href="/ambiance/ipx/carte"{% if actif == 'carte' %} class="actif" aria-current="page"{% endif %}>🗺️ Carte</a>
+  <a href="/ambiance/eclairage"{% if actif == 'eclairage' %} class="actif" aria-current="page"{% endif %}>💡 Éclairage</a>
+  <a href="/ambiance/ipx/explorateur"{% if actif == 'explorateur' %} class="actif" aria-current="page"{% endif %}>🔍 Explorateur</a>
+  <a href="/ambiance/ipx/acces"{% if actif == 'acces' %} class="actif" aria-current="page"{% endif %}>⚙️ Accès</a>
+</nav>
+{% endmacro %}

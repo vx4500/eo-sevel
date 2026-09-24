@@ -1,8 +1,9 @@
-{% extends "base.html" %}{% block title %}{% if programme.id %}Modifier l'éclairage{% else %}Nouveau programme d'éclairage{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}{% if programme.id %}Modifier l'éclairage{% else %}Nouveau programme d'éclairage{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{{ onglets('eclairage') }}
 {% include "ambiance_eclairage_style.html" %}
 <div class="ecl">
 <p class="muted" style="margin:0"><a href="/ambiance/eclairage">← Programmes d'éclairage</a></p>
-<h1 style="margin:4px 0 14px">{% if programme.id %}Modifier « {{ programme.nom }} »{% else %}💡 Nouveau programme d'éclairage{% endif %}</h1>
+<h2 style="margin:4px 0 14px;font-size:1.5rem">{% if programme.id %}Modifier « {{ programme.nom }} »{% else %}💡 Nouveau programme d'éclairage{% endif %}</h2>
 
 {% if erreur %}<div class="ecl-message alerte" role="alert"><b>À corriger :</b> {{ erreur }}</div>{% endif %}
 

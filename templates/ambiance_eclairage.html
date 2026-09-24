@@ -1,10 +1,10 @@
-{% extends "base.html" %}{% block title %}Éclairage — EO_Sevel{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Éclairage — EO_Sevel{% endblock %}{% block content %}
+{{ onglets('eclairage') }}
 {% include "ambiance_eclairage_style.html" %}
 <div class="ecl">
 <div class="ecl-tete">
   <div>
-    <p class="muted" style="margin:0"><a href="/ambiance">← Ambiance et ventilation</a> · <a href="/ambiance/ipx">Automate IPX800</a> · <a href="/ambiance/ipx/carte">Carte de l'automate</a></p>
-    <h1 style="margin:4px 0">💡 Éclairage automatique</h1>
+    <h2 style="margin:0 0 4px">💡 Éclairage automatique</h2>
     <p class="muted" style="margin:0">Horaires, luminosité, minuterie : chaque programme allume et éteint ses lampes tout seul.</p>
   </div>
   {% if session.peut_modifier and nb_sorties > 0 %}<a class="ecl-bouton principal" href="/ambiance/eclairage/nouveau">＋ Nouveau programme</a>{% endif %}
@@ -21,7 +21,7 @@
   <h2>Pour commencer : déclarer les lampes</h2>
   <p>Aucune sortie de l'automate n'est encore déclarée « pilotable ». Un programme a besoin de savoir sur quel relais se trouve chaque éclairage.</p>
   <ol>
-    <li>Ouvrez la <a href="/ambiance/ipx/carte">carte de l'automate</a> (ou l'<a href="/ambiance/ipx">explorateur</a>) et repérez le relais de chaque éclairage.</li>
+    <li>Ouvrez la <a href="/ambiance/ipx/carte">carte de l'automate</a> (ou l'<a href="/ambiance/ipx/explorateur">explorateur</a>) et repérez le relais de chaque éclairage.</li>
     <li>Enregistrez-le avec le rôle <b>Éclairage</b>, la salle, son <b>chemin d'écriture</b> et cochez <b>Pilotable</b>.</li>
     <li>Revenez ici : créez un programme, laissez-le en <b>mode essai</b> une journée, regardez le journal, puis passez-le en réel.</li>
   </ol>

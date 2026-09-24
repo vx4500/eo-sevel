@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.20.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+Version actuelle : **2.21.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+
+### Version 2.21.0 — Pages de l'automate réorganisées
+
+Version Rust 2.21.0 : les pages IPX800 partagent une barre d'onglets (`ambiance_automate_onglets.html`) : Vue d'ensemble (nouvelle, `/ambiance/automate`, src/routes/automate.rs — état de l'accès et de la régulation, compteurs, étapes de mise en route, dernières commandes, sans lecture en direct), Entrées et sorties (`/ambiance/ipx`), Carte, Éclairage, Explorateur (`/ambiance/ipx/explorateur`) et Accès (`/ambiance/ipx/acces`). L'ancienne page unique `/ambiance/ipx` est découpée par le paramètre `vue` ; « Ajouter » dans l'explorateur ouvre le formulaire d'ajout prérempli. Les adresses existantes restent valables.
 
 ### Version 2.20.0 — Programmes d'éclairage
 

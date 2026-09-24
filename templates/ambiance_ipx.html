@@ -1,9 +1,11 @@
-{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% block title %}Automate IPX800 — EO_Sevel{% endblock %}{% block content %}
-<h1>Automate IPX800</h1>
-<p class="muted"><a href="/ambiance">← Ambiance et ventilation</a> · <a href="/ambiance/ipx/carte">Carte de l'automate</a></p>
+{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}{% if vue == 'acces' %}Accès à l'automate{% elif vue == 'explorateur' %}Explorateur IPX800{% else %}Entrées et sorties{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{{ onglets(vue) }}
 {% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
 
-{% if session.peut_modifier %}
+{% if vue == 'acces' and not session.peut_modifier %}
+<section class="card"><p class="rust-empty">Les réglages d'accès sont réservés aux comptes qui peuvent modifier.</p></section>
+{% endif %}
+{% if vue == 'acces' and session.peut_modifier %}
 <section class="card"><h2>Accès à l'automate</h2>
 <form method="post" action="/ambiance/ipx/reglages">
   <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
@@ -29,7 +31,8 @@
 </section>
 {% endif %}
 
-<section class="card" id="points"><h2>Points enregistrés</h2>
+{% if vue == 'points' %}
+<section class="card" id="points"><h2>Entrées et sorties enregistrées</h2>
 <p class="muted">Une entrée ou une sortie de l'automate à laquelle vous avez donné un nom. Sans ça, il ne reste que des chemins d'API — lisibles par la machine, illisibles dans six mois.</p>
 
 {% if points %}
@@ -90,7 +93,7 @@
   </tbody>
 </table></div>
 {% else %}
-<p class="rust-empty">Aucun point enregistré. Utilisez l'explorateur ci-dessous pour trouver les chemins, puis ajoutez-les ici.</p>
+<p class="rust-empty">Aucun point enregistré. Repérez les objets sur la <a href="/ambiance/ipx/carte">carte</a> ou dans l'<a href="/ambiance/ipx/explorateur">explorateur</a>, puis ajoutez-les ici.</p>
 {% endif %}
 
 {% if session.peut_modifier %}
@@ -137,7 +140,9 @@
 </table></div>
 {% endif %}
 </section>
+{% endif %}
 
+{% if vue == 'explorateur' %}
 <section class="card"><h2>Explorateur en direct</h2>
 {% if hotes %}
 <div class="rust-grid">
@@ -162,11 +167,12 @@
   <thead><tr><th>Chemin</th><th>Valeur</th><th></th></tr></thead>
   <tbody id="ipx-lignes"><tr><td colspan="3" class="rust-empty">Lancez une lecture.</td></tr></tbody>
 </table></div>
-<p class="muted">Pour raccorder une salle, copiez le chemin de l'objet voulu et collez-le dans « Entrée température », « Sortie ventilation », etc., sur la page Ambiance.</p>
+<p class="muted">« Ajouter » ouvre le formulaire de l'onglet Entrées et sorties, prérempli avec ce chemin. Pour raccorder une salle, copiez le chemin et collez-le dans ses réglages sur la page Ambiance.</p>
 {% else %}
-<p class="rust-empty">Aucune adresse d'automate enregistrée. Renseignez-la ci-dessus, ou dans les réglages d'une salle, puis revenez ici.</p>
+<p class="rust-empty">Aucune adresse d'automate enregistrée. Renseignez-la dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>, puis revenez ici.</p>
 {% endif %}
 </section>
+{% endif %}
 
 <script>
 (function () {
@@ -251,6 +257,15 @@
         }
       });
       action.appendChild(bouton);
+      // L'explorateur et le formulaire d'ajout sont sur deux onglets : on
+      // rejoint le formulaire avec le chemin repéré déjà rempli.
+      var versAjout = document.createElement('a');
+      versAjout.className = 'ghost';
+      versAjout.style.marginLeft = '6px';
+      versAjout.href = '/ambiance/ipx?ajout_chemin=' + encodeURIComponent(l.chemin)
+        + '&ajout_hote=' + encodeURIComponent(hote.value) + '#ajout-point';
+      versAjout.appendChild(document.createTextNode('Ajouter'));
+      action.appendChild(versAjout);
       var ajouter = document.getElementById('ajout-chemin');
       if (ajouter) {
         var plus = document.createElement('button');
@@ -377,6 +392,21 @@
   }
   rafraichir();
   setInterval(rafraichir, 10000);
+})();
+
+// Arrivée depuis l'explorateur : formulaire d'ajout ouvert et prérempli.
+(function () {
+  var chemin = document.getElementById('ajout-chemin');
+  if (!chemin) { return; }
+  var params = new URLSearchParams(window.location.search);
+  if (!params.get('ajout_chemin')) { return; }
+  chemin.value = params.get('ajout_chemin');
+  var hote = document.getElementById('ajout-hote');
+  if (hote && params.get('ajout_hote')) { hote.value = params.get('ajout_hote'); }
+  var bloc = document.getElementById('ajout-point');
+  bloc.open = true;
+  bloc.scrollIntoView({ block: 'start' });
+  document.getElementById('ajout-nom').focus();
 })();
 
 // L'unité par défaut suit le rôle choisi : une hygrométrie en pourcent, un

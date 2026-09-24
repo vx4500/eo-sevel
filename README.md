@@ -1,4 +1,4 @@
-# EO_Sevel — portage Rust 2.20.0
+# EO_Sevel — portage Rust 2.21.0
 
 Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
 n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà
@@ -287,7 +287,13 @@ elles ne sont insérées que si la table est vide.
 
 ## Points de l'automate
 
-La page **Ambiance → Automate IPX800** sert à trois choses.
+Tout ce qui touche à l'automate est regroupé sous **Automate IPX800**
+(`/ambiance/automate`), avec une barre d'onglets : Vue d'ensemble (état,
+mise en route pas à pas, dernières commandes), Entrées et sorties
+(`/ambiance/ipx`), Carte, Éclairage, Explorateur (`/ambiance/ipx/explorateur`)
+et Accès (`/ambiance/ipx/acces`).
+
+Ces pages servent à trois choses.
 
 **Régler l'accès** : adresse, clé d'API, gabarits d'appel. Les jetons `{hote}`,
 `{id}` et `{cle}` y sont remplacés à chaque requête, ce qui permet de suivre un

@@ -1,6 +1,5 @@
-{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% block title %}Carte de l'automate — EO_Sevel{% endblock %}{% block content %}
-<h1>Carte de l'automate</h1>
-<p class="muted"><a href="/ambiance">← Ambiance</a> · <a href="/ambiance/ipx">Explorateur et réglages</a></p>
+{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Carte de l'automate — EO_Sevel{% endblock %}{% block content %}
+{{ onglets('carte') }}
 
 {% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
 
@@ -10,7 +9,7 @@
   <button class="ghost">Relire</button>
 </form>
 {% else %}
-<div class="rust-empty">Aucun automate enregistré. Renseignez son adresse dans <a href="/ambiance/ipx">Explorateur et réglages</a>.</div>
+<div class="rust-empty">Aucun automate enregistré. Renseignez son adresse dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.</div>
 {% endif %}
 
 {% for s in sections %}
@@ -19,7 +18,7 @@
   {% if s.note %}<p class="muted">{{ s.note }}</p>{% endif %}
 
   {% if s.a_renseigner %}
-  <p class="rust-empty">Ni motif de nom ni plage d'identifiants. Repérez un objet de ce bloc dans l'<a href="/ambiance/ipx">explorateur</a>, puis indiquez ci-dessous soit un fragment de son nom, soit sa plage d'identifiants.</p>
+  <p class="rust-empty">Ni motif de nom ni plage d'identifiants. Repérez un objet de ce bloc dans l'<a href="/ambiance/ipx/explorateur">explorateur</a>, puis indiquez ci-dessous soit un fragment de son nom, soit sa plage d'identifiants.</p>
   {% elif not s.objets %}
   <p class="rust-empty">{% if s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
   {% else %}

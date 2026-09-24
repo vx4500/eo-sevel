@@ -732,7 +732,7 @@ async fn hotes_autorises(pool: &SqlitePool) -> Vec<String> {
     hotes
 }
 
-async fn parametre_texte(pool: &SqlitePool, cle: &str, defaut: &str) -> String {
+pub(super) async fn parametre_texte(pool: &SqlitePool, cle: &str, defaut: &str) -> String {
     sqlx::query_scalar::<_, Option<String>>("SELECT valeur FROM parametre WHERE cle=?")
         .bind(cle)
         .fetch_optional(pool)
@@ -897,6 +897,28 @@ pub(super) async fn ipx_lire(
         .into_response())
 }
 
+/// Explorateur en direct : même page, onglet « Explorateur ».
+pub(super) async fn ipx_explorateur(
+    state: State<AppState>,
+    session: Extension<SessionData>,
+    Query(mut parametres): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    parametres.insert("vue".into(), "explorateur".into());
+    ipx_page(state, session, Query(parametres)).await
+}
+
+/// Réglages d'accès (adresse, clé, gabarits) : onglet « Accès ».
+pub(super) async fn ipx_acces(
+    state: State<AppState>,
+    session: Extension<SessionData>,
+    Query(mut parametres): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    parametres.insert("vue".into(), "acces".into());
+    ipx_page(state, session, Query(parametres)).await
+}
+
+/// Entrées et sorties enregistrées (onglet par défaut), explorateur ou accès,
+/// selon `vue`. Les trois vues partagent le même gabarit et le même contexte.
 pub(super) async fn ipx_page(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -904,6 +926,12 @@ pub(super) async fn ipx_page(
 ) -> AppResult<Html<String>> {
     let hotes = hotes_autorises(&state.pool).await;
     let mut contexte = context(&session);
+    let vue = match parametres.get("vue").map(String::as_str) {
+        Some("explorateur") => "explorateur",
+        Some("acces") => "acces",
+        _ => "points",
+    };
+    contexte.insert("vue".into(), json!(vue));
     contexte.insert("points".into(), Value::Array(points(&state.pool).await?));
     contexte.insert(
         "roles".into(),
@@ -1033,7 +1061,7 @@ pub(super) async fn ipx_reglages(
         .execute(&state.pool)
         .await?;
     }
-    Ok(Redirect::to("/ambiance/ipx?ok=1").into_response())
+    Ok(Redirect::to("/ambiance/ipx/acces?ok=Acc%C3%A8s+enregistr%C3%A9").into_response())
 }
 
 // ---------------------------------------------------------------------------
