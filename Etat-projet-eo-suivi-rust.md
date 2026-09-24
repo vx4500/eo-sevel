@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.22.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+Version actuelle : **2.22.1** — Dernière mise à jour de ce document : 24 septembre 2026.
+
+### Version 2.22.1 — Section actuelle dans la liste des truies
+
+Version Rust 2.22.1 : colonne « Section » sur /truies — salle actuelle (celle de la case si la case est connue, sinon `truie.salle_id`) et nom de la case.
 
 ### Version 2.22.0 — Ajouter une lampe en trois clics
 

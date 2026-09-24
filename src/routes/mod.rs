@@ -3504,11 +3504,35 @@ async fn truies(
     let bands = sqlx::query_as::<_, Bande>(BAND_SELECT_ACTIVE)
         .fetch_all(&state.pool)
         .await?;
+    // Section actuelle : la salle, et la case quand elle est connue. La salle
+    // de la case l'emporte sur celle notée sur la truie, qui peut être restée
+    // en retard après un déplacement case par case.
+    let sections: HashMap<i64, (Option<String>, Option<String>)> =
+        sqlx::query_as::<_, (i64, Option<String>, Option<String>)>(
+            "SELECT t.id, COALESCE(sc.nom, s.nom), c.nom FROM truie t \
+             LEFT JOIN casesalle c ON c.id=t.case_id \
+             LEFT JOIN salle sc ON sc.id=c.salle_id \
+             LEFT JOIN salle s ON s.id=t.salle_id \
+             WHERE t.reformee=0",
+        )
+        .fetch_all(&state.pool)
+        .await?
+        .into_iter()
+        .map(|(id, salle, case)| (id, (salle, case)))
+        .collect();
+    let mut truies_json = serde_json::to_value(sows).unwrap_or_default();
+    if let Some(liste) = truies_json.as_array_mut() {
+        for truie in liste {
+            let id = truie.get("id").and_then(Value::as_i64).unwrap_or(0);
+            let (salle, case) = sections.get(&id).cloned().unwrap_or((None, None));
+            if let Some(objet) = truie.as_object_mut() {
+                objet.insert("section".into(), json!(salle));
+                objet.insert("case_nom".into(), json!(case));
+            }
+        }
+    }
     let mut ctx = context(&session);
-    ctx.insert(
-        "truies".into(),
-        serde_json::to_value(sows).unwrap_or_default(),
-    );
+    ctx.insert("truies".into(), truies_json);
     ctx.insert(
         "bandes".into(),
         serde_json::to_value(bands).unwrap_or_default(),
