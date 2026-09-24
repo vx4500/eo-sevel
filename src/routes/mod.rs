@@ -133,6 +133,22 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/eclairage/enregistrer",
             post(eclairage::enregistrer),
         )
+        .route(
+            "/ambiance/eclairage/lampe/nouvelle",
+            get(eclairage::lampe_nouvelle),
+        )
+        .route(
+            "/ambiance/eclairage/lampe/tester",
+            post(eclairage::lampe_tester),
+        )
+        .route(
+            "/ambiance/eclairage/lampe/enregistrer",
+            post(eclairage::lampe_enregistrer),
+        )
+        .route(
+            "/ambiance/eclairage/lampe/{id}/supprimer",
+            post(eclairage::lampe_supprimer),
+        )
         .route("/ambiance/eclairage/{id}", get(eclairage::modifier))
         .route("/ambiance/eclairage/{id}/actif", post(eclairage::basculer))
         .route("/ambiance/eclairage/{id}/forcer", post(eclairage::forcer))

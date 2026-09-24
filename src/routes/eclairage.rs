@@ -392,6 +392,7 @@ pub(super) async fn page(
         json!(capteurs_lux(&state.pool).await?.len()),
     );
     contexte.insert("journal".into(), Value::Array(journal(&state.pool).await?));
+    contexte.insert("lampes".into(), Value::Array(lampes(&state.pool).await?));
     contexte.insert("demon".into(), super::ambiance::etat_demon(&state.pool).await);
     contexte.insert("ok".into(), json!(parametres.get("ok")));
     let (jour, minute) = jour_et_minute();
@@ -985,6 +986,254 @@ pub(super) async fn supprimer(
     ))
 }
 
+// ---------------------------------------------------------------------------
+// Lampes : déclarer un relais comme éclairage sans connaître l'API
+//
+// On lit la liste des sorties commandables sur l'automate, l'éleveur
+// reconnaît la sienne à son nom, l'essaie (Allumer / Éteindre) et
+// l'enregistre. Le chemin d'API est déduit, jamais saisi.
+// ---------------------------------------------------------------------------
+
+/// Chemin d'un objet tout-ou-rien de l'IPX : `api/core/io/<nombre>`.
+fn chemin_io_valide(chemin: &str) -> bool {
+    chemin
+        .strip_prefix("api/core/io/")
+        .is_some_and(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Lampes déclarées (rôle éclairage), y compris celles mal configurées, pour
+/// qu'on puisse les voir et les supprimer.
+async fn lampes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    let lignes = sqlx::query(
+        "SELECT p.id, p.nom, p.chemin, p.chemin_ecriture, p.pilotable, s.nom AS salle, \
+                ep.nom AS programme \
+         FROM ipx_point p LEFT JOIN salle s ON s.id=p.salle_id \
+         LEFT JOIN eclairage_sortie es ON es.point_id=p.id \
+         LEFT JOIN eclairage_programme ep ON ep.id=es.programme_id \
+         WHERE p.role='eclairage' AND p.actif=1 ORDER BY s.nom, p.nom",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(lignes
+        .into_iter()
+        .map(|l| {
+            let ecriture: Option<String> = l.try_get("chemin_ecriture").ok().flatten();
+            let pilotable = l.try_get::<i64, _>("pilotable").unwrap_or(0) != 0;
+            let valide = pilotable
+                && ecriture
+                    .as_deref()
+                    .is_some_and(|c| !c.trim().is_empty() && !c.trim_start().starts_with('['));
+            json!({
+                "id": l.try_get::<i64, _>("id").unwrap_or(0),
+                "nom": l.try_get::<String, _>("nom").unwrap_or_default(),
+                "salle": l.try_get::<Option<String>, _>("salle").ok().flatten(),
+                "programme": l.try_get::<Option<String>, _>("programme").ok().flatten(),
+                "valide": valide,
+            })
+        })
+        .collect())
+}
+
+/// Choisir le relais d'une nouvelle lampe.
+pub(super) async fn lampe_nouvelle(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Query(parametres): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    require_writer(&session)?;
+    let hotes = super::ambiance::hotes_connus(&state.pool).await;
+    let hote = parametres
+        .get("hote")
+        .filter(|h| hotes.contains(h))
+        .cloned()
+        .or_else(|| hotes.first().cloned())
+        .unwrap_or_default();
+    let sorties = if hote.is_empty() {
+        None
+    } else {
+        super::ambiance::sorties_commandables(&state.pool, &hote).await?
+    };
+    // Ce qui est déjà déclaré, par chemin : nom et rôle choisis par l'éleveur.
+    let connus: HashMap<String, (String, String)> = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT chemin, nom, role FROM ipx_point WHERE hote=?",
+    )
+    .bind(&hote)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|(chemin, nom, role)| (chemin, (nom, role)))
+    .collect();
+    let sorties: Option<Vec<Value>> = sorties.map(|liste| {
+        liste
+            .into_iter()
+            .map(|mut s| {
+                let chemin = s.get("chemin").and_then(Value::as_str).unwrap_or("").to_string();
+                let nom_ipx = s.get("nom_ipx").and_then(Value::as_str).unwrap_or("");
+                let probable = {
+                    let bas = nom_ipx.to_lowercase();
+                    bas.contains("ecl") || bas.contains("écl") || bas.contains("lum") || bas.contains("light")
+                };
+                if let Some(objet) = s.as_object_mut() {
+                    objet.insert("probable".into(), json!(probable));
+                    if let Some((nom, role)) = connus.get(&chemin) {
+                        objet.insert("deja".into(), json!(nom));
+                        objet.insert("deja_lampe".into(), json!(role == "eclairage"));
+                    }
+                }
+                s
+            })
+            .collect()
+    });
+    let mut contexte = context(&session);
+    contexte.insert("hote".into(), json!(hote));
+    contexte.insert("hotes".into(), json!(hotes));
+    contexte.insert("sorties".into(), json!(sorties));
+    contexte.insert(
+        "salles".into(),
+        Value::Array(generic_rows(&state.pool, "SELECT id, nom FROM salle ORDER BY ordre, nom").await?),
+    );
+    contexte.insert("ok".into(), json!(parametres.get("ok")));
+    render(&state, "ambiance_eclairage_lampe.html", Value::Object(contexte))
+}
+
+/// Allume ou éteint une sortie pour vérifier que c'est la bonne lampe :
+/// soit une lampe déclarée (`point_id`), soit un relais pas encore déclaré
+/// (`hote` + `chemin`). Journalisé comme toute commande.
+pub(super) async fn lampe_tester(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let allumer = form.get("etat").map(String::as_str) == Some("1");
+    let (hote, chemin, nom, point_id) = match form_i64(&form, "point_id") {
+        Some(id) => {
+            let ligne: Option<(String, Option<String>, String)> = sqlx::query_as(
+                "SELECT hote, chemin_ecriture, nom FROM ipx_point WHERE id=? AND pilotable=1",
+            )
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?;
+            let (hote, chemin, nom) = ligne.ok_or(AppError::NotFound)?;
+            let chemin = chemin.ok_or_else(|| AppError::Invalid("Lampe sans adresse de commande".into()))?;
+            (hote, chemin, nom, Some(id))
+        }
+        None => {
+            let hote = form_text(&form, "hote").unwrap_or_default();
+            let chemin = form_text(&form, "chemin").unwrap_or_default();
+            if !super::ambiance::hotes_connus(&state.pool).await.contains(&hote) || !chemin_io_valide(&chemin) {
+                return Err(AppError::Invalid("Sortie inconnue".into()));
+            }
+            let nom = form_text(&form, "nom").unwrap_or_else(|| chemin.clone());
+            (hote, chemin, nom, None)
+        }
+    };
+    let ventilation: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM ambiance_salle WHERE actif=1 AND pilote=1 AND trim(sortie_ventil)=?",
+    )
+    .bind(chemin.trim())
+    .fetch_one(&state.pool)
+    .await?;
+    if ventilation > 0 {
+        return Err(AppError::Invalid(
+            "Cette sortie commande la ventilation d'une salle en régulation automatique.".into(),
+        ));
+    }
+    let valeur = if allumer { 1.0 } else { 0.0 };
+    let compte_rendu = super::ambiance::envoyer_commande(&state.pool, &hote, &chemin, valeur).await?;
+    sqlx::query(
+        "INSERT INTO ipx_commande_journal(utilisateur,point_id,nom_point,valeur,resultat) VALUES(?,?,?,?,?)",
+    )
+    .bind(&session.identifiant)
+    .bind(point_id)
+    .bind(&nom)
+    .bind(valeur)
+    .bind(format!("essai de lampe : {compte_rendu}"))
+    .execute(&state.pool)
+    .await?;
+    let message = if compte_rendu == "envoyée" {
+        format!(
+            "« {nom} » : commande « {} » envoyée. La lampe a-t-elle réagi ?",
+            if allumer { "allumer" } else { "éteindre" }
+        )
+    } else {
+        format!("« {nom} » : commande {compte_rendu}")
+    };
+    let cible = if form.get("retour").map(String::as_str) == Some("choix") {
+        format!(
+            "/ambiance/eclairage/lampe/nouvelle?hote={}&ok={}#sortie-{}",
+            encode_query(&hote),
+            encode_query(&message),
+            chemin.rsplit('/').next().unwrap_or("")
+        )
+    } else {
+        format!("/ambiance/eclairage?ok={}#lampes", encode_query(&message))
+    };
+    Ok(Redirect::to(&cible).into_response())
+}
+
+/// Enregistre un relais comme lampe : rôle éclairage, pilotable, chemin de
+/// lecture et d'écriture identiques.
+pub(super) async fn lampe_enregistrer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let hote = form_text(&form, "hote").unwrap_or_default();
+    let chemin = form_text(&form, "chemin").unwrap_or_default();
+    if !super::ambiance::hotes_connus(&state.pool).await.contains(&hote) || !chemin_io_valide(&chemin) {
+        return Err(AppError::Invalid("Sortie inconnue".into()));
+    }
+    let nom = form_text(&form, "nom").ok_or_else(|| AppError::Invalid("Donnez un nom à la lampe".into()))?;
+    let salle_id = form_i64(&form, "salle_id");
+    sqlx::query(
+        "INSERT INTO ipx_point(hote,chemin,chemin_ecriture,nom,role,salle_id,unite,pilotable,actif) \
+         VALUES(?,?,?,?,'eclairage',?,'',1,1) \
+         ON CONFLICT(hote,chemin) DO UPDATE SET chemin_ecriture=excluded.chemin_ecriture, \
+           nom=excluded.nom, role='eclairage', salle_id=excluded.salle_id, pilotable=1, actif=1",
+    )
+    .bind(&hote)
+    .bind(&chemin)
+    .bind(&chemin)
+    .bind(&nom)
+    .bind(salle_id)
+    .execute(&state.pool)
+    .await?;
+    let message = format!("Lampe « {nom} » ajoutée. Vous pouvez maintenant l'utiliser dans un programme.");
+    Ok(Redirect::to(&format!("/ambiance/eclairage?ok={}#lampes", encode_query(&message))).into_response())
+}
+
+/// Retire une lampe (et elle seule : rôle éclairage). Le journal garde la
+/// trace des commandes passées, sans lien vers le point supprimé.
+pub(super) async fn lampe_supprimer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let nom: String = sqlx::query_scalar("SELECT nom FROM ipx_point WHERE id=? AND role='eclairage'")
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut tx = state.pool.begin().await?;
+    for sql in [
+        "UPDATE ipx_commande_journal SET point_id=NULL WHERE point_id=?",
+        "DELETE FROM eclairage_etat WHERE point_id=?",
+        "DELETE FROM eclairage_sortie WHERE point_id=?",
+        "DELETE FROM ipx_point WHERE id=?",
+    ] {
+        sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(retour(&format!("Lampe « {nom} » retirée"), None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1197,6 +1446,72 @@ mod tests {
         let etat = etat_json(State(state.clone()), Extension(session())).await?;
         assert!(corps(etat).await.contains("\"programmes\""));
         Ok(id)
+    }
+
+    #[tokio::test]
+    async fn ajouter_une_lampe_sans_connaitre_l_api() -> anyhow::Result<()> {
+        use super::super::documents::tests::{session, state};
+        let state = state().await;
+        for sql in [
+            include_str!("../../migrations/0007_ipx_points.sql"),
+            include_str!("../../migrations/0016_eclairage.sql"),
+        ] {
+            sqlx::raw_sql(sql).execute(&state.pool).await?;
+        }
+        sqlx::raw_sql(
+            "CREATE TABLE IF NOT EXISTS ipx_section(id INTEGER PRIMARY KEY, nom TEXT, source TEXT, motif TEXT, \
+             id_debut INTEGER, id_fin INTEGER, commandable INTEGER, ordre INTEGER, note TEXT); \
+             INSERT INTO parametre(cle,valeur) VALUES('ambiance_ipx_hote','ipx-test.invalid');",
+        )
+        .execute(&state.pool)
+        .await?;
+        let f = |paires: &[(&str, &str)]| {
+            let mut f = formulaire(paires);
+            f.insert("csrf_token".into(), "test".into());
+            f
+        };
+
+        // Automate injoignable : la page le dit au lieu d'afficher une liste vide.
+        let html = lampe_nouvelle(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("ne répond pas"), "{html}");
+
+        // Une adresse qui n'est pas celle d'un relais est refusée.
+        let refus = lampe_enregistrer(State(state.clone()), Extension(session()),
+            Form(f(&[("hote", "ipx-test.invalid"), ("chemin", "[1].name"), ("nom", "X")]))).await;
+        assert!(refus.is_err());
+        let refus = lampe_enregistrer(State(state.clone()), Extension(session()),
+            Form(f(&[("hote", "autre.invalid"), ("chemin", "api/core/io/65536"), ("nom", "X")]))).await;
+        assert!(refus.is_err(), "hôte inconnu");
+
+        lampe_enregistrer(State(state.clone()), Extension(session()),
+            Form(f(&[("hote", "ipx-test.invalid"), ("chemin", "api/core/io/65537"), ("nom", "Verraterie")]))).await?;
+        let (role, pilotable, ecriture): (String, i64, String) = sqlx::query_as(
+            "SELECT role, pilotable, chemin_ecriture FROM ipx_point WHERE chemin='api/core/io/65537'",
+        )
+        .fetch_one(&state.pool)
+        .await?;
+        assert_eq!((role.as_str(), pilotable, ecriture.as_str()), ("eclairage", 1, "api/core/io/65537"));
+
+        let liste = page(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(liste.contains("Mes lampes") && liste.contains("Verraterie") && !liste.contains("Mal configurée"));
+        let fiche = nouveau(State(state.clone()), Extension(session())).await?.0;
+        assert!(fiche.contains("Verraterie"), "la lampe est proposée dans un programme");
+
+        let id: i64 = sqlx::query_scalar("SELECT id FROM ipx_point WHERE chemin='api/core/io/65537'")
+            .fetch_one(&state.pool).await?;
+        lampe_supprimer(State(state.clone()), Extension(session()), Path(id), Form(f(&[]))).await?;
+        let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ipx_point").fetch_one(&state.pool).await?;
+        assert_eq!(reste, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn seul_un_chemin_de_relais_est_accepte() {
+        assert!(chemin_io_valide("api/core/io/65536"));
+        assert!(!chemin_io_valide("[1].name"));
+        assert!(!chemin_io_valide("api/core/io/"));
+        assert!(!chemin_io_valide("api/core/ana/262204"));
+        assert!(!chemin_io_valide("api/core/io/1/../../x"));
     }
 
     #[tokio::test]

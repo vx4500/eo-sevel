@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.21.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+Version actuelle : **2.22.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+
+### Version 2.22.0 — Ajouter une lampe en trois clics
+
+Version Rust 2.22.0 : retour d'Emmanuel — déclarer une lumière était incompréhensible (il avait enregistré « Ecl Verraterie » avec le chemin `[1].name` copié de l'explorateur). Nouvelle page `/ambiance/eclairage/lampe/nouvelle` : liste des sorties commandables lues sur l'automate, bouton Allumer/Éteindre pour reconnaître la bonne, nom + salle, Enregistrer ; carte « Mes lampes » sur la page Éclairage (essai, suppression, lampes mal configurées signalées). **Correctif** : les objets `api/core/io/…` se lisent par `on` et se commandent par `{"on": bool}` (application et eo-regul) ; avant, la lecture d'un relais rendait son `_id` et la commande envoyait `{"value": 1}`.
 
 ### Version 2.21.0 — Pages de l'automate réorganisées
 

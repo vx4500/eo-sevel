@@ -16,17 +16,39 @@
 <div class="ecl-message alerte"><b>Les programmes ne s'appliquent pas en ce moment.</b> {{ demon.texte }}. C'est le service <code>eo-regul</code> qui allume et éteint les lampes.</div>
 {% endif %}
 
-{% if nb_sorties == 0 %}
-<section class="card ecl-guide">
-  <h2>Pour commencer : déclarer les lampes</h2>
-  <p>Aucune sortie de l'automate n'est encore déclarée « pilotable ». Un programme a besoin de savoir sur quel relais se trouve chaque éclairage.</p>
-  <ol>
-    <li>Ouvrez la <a href="/ambiance/ipx/carte">carte de l'automate</a> (ou l'<a href="/ambiance/ipx/explorateur">explorateur</a>) et repérez le relais de chaque éclairage.</li>
-    <li>Enregistrez-le avec le rôle <b>Éclairage</b>, la salle, son <b>chemin d'écriture</b> et cochez <b>Pilotable</b>.</li>
-    <li>Revenez ici : créez un programme, laissez-le en <b>mode essai</b> une journée, regardez le journal, puis passez-le en réel.</li>
-  </ol>
-  {% if nb_capteurs %}<p class="muted">{{ nb_capteurs }} capteur{% if nb_capteurs > 1 %}s{% endif %} de luminosité déjà déclaré{% if nb_capteurs > 1 %}s{% endif %} : ils pourront servir de condition.</p>{% endif %}
+<section class="card" id="lampes">
+  <div class="ecl-tete" style="margin:0 0 10px">
+    <div><h2 style="margin:0">Mes lampes</h2>
+    <p class="muted" style="margin:2px 0 0">{% if lampes %}Allumez ou éteignez pour vérifier qu'une lampe répond.{% else %}Étape 1 : dites à EO_Sevel quels relais de l'automate commandent vos lumières.{% endif %}</p></div>
+    {% if session.peut_modifier %}<a class="ecl-bouton principal" href="/ambiance/eclairage/lampe/nouvelle">＋ Ajouter une lampe</a>{% endif %}
+  </div>
+  {% if lampes %}
+  <ul class="ecl-lampes">
+    {% for l in lampes %}
+    <li>
+      <span class="ecl-ampoule {% if l.valide %}off{% else %}inconnu{% endif %}" aria-hidden="true"></span>
+      <div style="flex:1">
+        <b>{{ l.nom }}</b>{% if l.salle %} <span class="muted">· {{ l.salle }}</span>{% endif %}
+        {% if not l.valide %}<small class="ecl-erreur">⚠ Mal configurée (pas d'adresse de commande valable). Supprimez-la puis refaites « Ajouter une lampe ».</small>
+        {% elif l.programme %}<small>Suivie par le programme « {{ l.programme }} »</small>
+        {% else %}<small>Pas encore dans un programme</small>{% endif %}
+      </div>
+      {% if session.peut_modifier %}
+      <div class="ecl-ligne" style="flex:none">
+        {% if l.valide %}
+        <form method="post" action="/ambiance/eclairage/lampe/tester" data-no-ajax><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="point_id" value="{{ l.id }}"><button name="etat" value="1" class="ghost" title="Allumer">💡</button></form>
+        <form method="post" action="/ambiance/eclairage/lampe/tester" data-no-ajax><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="point_id" value="{{ l.id }}"><button name="etat" value="0" class="ghost" title="Éteindre">⚫</button></form>
+        {% endif %}
+        <form method="post" action="/ambiance/eclairage/lampe/{{ l.id }}/supprimer" data-no-ajax onsubmit='return confirm({{ ("Retirer la lampe « " ~ l.nom ~ " » ?")|tojson }})'><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost" title="Retirer">🗑</button></form>
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
 </section>
+
+{% if nb_sorties == 0 %}
 {% elif not programmes %}
 <section class="card ecl-guide">
   <h2>Aucun programme pour l'instant</h2>

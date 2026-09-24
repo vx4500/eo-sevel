@@ -1254,7 +1254,120 @@ async fn lire_valeur(
         return None;
     }
     let corps: Value = reponse.json().await.ok()?;
-    extraire_premier_nombre(&corps, &acces.champ)
+    let champ = if est_objet_io(chemin) { "on" } else { acces.champ.as_str() };
+    extraire_premier_nombre(&corps, champ)
+}
+
+/// Objet tout-ou-rien de l'IPX800 V5 (relais, sortie, bit virtuel) : il se
+/// lit et se commande par son champ `on` (vrai/faux), pas par `value`. Sans
+/// cette distinction, la lecture d'un relais renvoyait son identifiant (le
+/// premier nombre de la réponse) et la commande envoyait `{"value": 1}`, que
+/// l'automate ignore.
+pub(super) fn est_objet_io(chemin: &str) -> bool {
+    chemin.trim().trim_start_matches('/').starts_with("api/core/io/")
+}
+
+/// Envoie une valeur à une sortie et rend un compte rendu lisible
+/// (« envoyée », « refusée (404) », « échec : … »). Ni contrôle d'accès ni
+/// journal ici : c'est à l'appelant de les faire.
+pub(super) async fn envoyer_commande(
+    pool: &SqlitePool,
+    hote: &str,
+    chemin_ecriture: &str,
+    valeur: f64,
+) -> AppResult<String> {
+    let acces = acces_lecture(pool).await;
+    let adresse = acces
+        .gabarit_ecriture
+        .replace("{hote}", hote)
+        .replace("{id}", chemin_ecriture.trim())
+        .replace("{cle}", &acces.cle);
+    let mut objet = serde_json::Map::new();
+    if est_objet_io(chemin_ecriture) {
+        objet.insert("on".into(), Value::Bool(valeur >= 0.5));
+    } else {
+        objet.insert(acces.champ_ecriture.clone(), Value::from(valeur));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|error| AppError::Internal(error.into()))?;
+    let resultat = client
+        .put(&adresse)
+        .json(&Value::Object(objet))
+        .send()
+        .await;
+    Ok(match &resultat {
+        Ok(reponse) if reponse.status().is_success() => "envoyée".to_string(),
+        Ok(reponse) => format!("refusée ({})", reponse.status()),
+        Err(error) => format!("échec : {error}"),
+    })
+}
+
+/// Hôtes d'automate que le serveur accepte d'interroger (voir plus haut).
+pub(super) async fn hotes_connus(pool: &SqlitePool) -> Vec<String> {
+    hotes_autorises(pool).await
+}
+
+/// Sorties commandables de l'automate, lues en direct : les objets `io` des
+/// sections de la carte marquées « commandable » (relais, collecteurs
+/// ouverts, bits virtuels, marche/arrêt des variateurs). Renvoie `None` si
+/// l'automate n'a pas répondu.
+pub(super) async fn sorties_commandables(
+    pool: &SqlitePool,
+    hote: &str,
+) -> AppResult<Option<Vec<Value>>> {
+    let acces = acces_lecture(pool).await;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|error| AppError::Internal(error.into()))?;
+    let elements = lire_source(&client, &acces, hote, "io").await;
+    if elements.is_empty() {
+        return Ok(None);
+    }
+    let sections = sqlx::query(
+        "SELECT nom,source,motif,id_debut,id_fin FROM ipx_section \
+         WHERE source='io' AND commandable=1 ORDER BY ordre, nom",
+    )
+    .fetch_all(pool)
+    .await?;
+    let criteres: Vec<(String, Critere)> = sections
+        .iter()
+        .map(|ligne| {
+            (
+                ligne.try_get("nom").unwrap_or_default(),
+                Critere {
+                    source: "io".into(),
+                    motif: ligne
+                        .try_get::<Option<String>, _>("motif")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default(),
+                    debut: ligne.try_get("id_debut").ok(),
+                    fin: ligne.try_get("id_fin").ok(),
+                },
+            )
+        })
+        .collect();
+    let mut sorties = Vec::new();
+    for element in &elements {
+        let Some(id) = element.get("_id").and_then(Value::as_i64) else {
+            continue;
+        };
+        let nom = element.get("name").and_then(Value::as_str).unwrap_or("");
+        let Some((section, _)) = criteres.iter().find(|(_, c)| c.accepte("io", id, nom)) else {
+            continue;
+        };
+        sorties.push(json!({
+            "id": id,
+            "chemin": format!("api/core/io/{id}"),
+            "nom_ipx": nom,
+            "etat": element.get("on").and_then(Value::as_bool),
+            "section": section,
+        }));
+    }
+    Ok(Some(sorties))
 }
 
 fn extraire_premier_nombre(valeur: &Value, champ: &str) -> Option<f64> {
@@ -1444,29 +1557,7 @@ pub(super) async fn ipx_point_commander(
         }
     }
 
-    let acces = acces_lecture(&state.pool).await;
-    let adresse = acces
-        .gabarit_ecriture
-        .replace("{hote}", &hote)
-        .replace("{id}", chemin_ecriture.trim())
-        .replace("{cle}", &acces.cle);
-    let mut objet = serde_json::Map::new();
-    objet.insert(acces.champ_ecriture.clone(), Value::from(valeur));
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|error| AppError::Internal(error.into()))?;
-    let resultat = client
-        .put(&adresse)
-        .json(&Value::Object(objet))
-        .send()
-        .await;
-    let compte_rendu = match &resultat {
-        Ok(reponse) if reponse.status().is_success() => "envoyée".to_string(),
-        Ok(reponse) => format!("refusée ({})", reponse.status()),
-        Err(error) => format!("échec : {error}"),
-    };
+    let compte_rendu = envoyer_commande(&state.pool, &hote, &chemin_ecriture, valeur).await?;
 
     sqlx::query(
         "INSERT INTO ipx_commande_journal(utilisateur,point_id,nom_point,valeur,resultat) \

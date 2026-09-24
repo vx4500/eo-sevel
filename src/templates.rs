@@ -103,6 +103,10 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         include_str!("../templates/ambiance_eclairage.html"),
     )?;
     env.add_template(
+        "ambiance_eclairage_lampe.html",
+        include_str!("../templates/ambiance_eclairage_lampe.html"),
+    )?;
+    env.add_template(
         "ambiance_eclairage_form.html",
         include_str!("../templates/ambiance_eclairage_form.html"),
     )?;

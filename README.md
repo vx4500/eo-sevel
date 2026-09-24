@@ -1,4 +1,4 @@
-# EO_Sevel — portage Rust 2.21.0
+# EO_Sevel — portage Rust 2.22.0
 
 Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
 n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà
@@ -329,6 +329,13 @@ de luminosité (allumer sous X lux, éteindre au-dessus de Y, délai de
 confirmation, comportement si le capteur ne répond plus) et minuterie
 d'extinction (aussi après un allumage manuel). Forçage temporaire depuis la
 page, mode essai, pause, duplication, journal.
+
+Déclarer une lampe ne demande aucun chemin d'API : **Ajouter une lampe**
+(`/ambiance/eclairage/lampe/nouvelle`) lit les sorties commandables de
+l'automate (sections « commandable » de la carte), on essaie « Allumer », on
+nomme, on enregistre. Les objets `api/core/io/…` (relais, sorties, bits) se
+lisent et se commandent par leur champ `on` (`{"on": true}`), les autres par
+les champs réglés dans Accès.
 
 C'est `eo-regul` qui applique les programmes (`eclairage_core.rs`, partagé
 avec l'application). Il agit sur les **changements** (début/fin de plage,

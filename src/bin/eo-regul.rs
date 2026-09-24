@@ -1012,6 +1012,10 @@ async fn fermer_alerte(pool: &SqlitePool, salle_id: i64, type_alerte: &str) -> R
     Ok(())
 }
 
+fn est_objet_io(chemin: &str) -> bool {
+    chemin.trim().trim_start_matches('/').starts_with("api/core/io/")
+}
+
 fn url(gabarit: &str, hote: &str, id: &str, cle: &str) -> String {
     gabarit
         .replace("{hote}", hote)
@@ -1048,7 +1052,9 @@ async fn lire(client: &reqwest::Client, acces: &AccesIpx, hote: &str, id: Option
             return Lecture::absente();
         }
     };
-    match extraire_nombre(&corps, &acces.champ_valeur) {
+    // Un objet tout-ou-rien (relais, sortie) se lit par son champ `on`.
+    let champ = if est_objet_io(id) { "on" } else { acces.champ_valeur.as_str() };
+    match extraire_nombre(&corps, champ) {
         Some(valeur) => Lecture::neuve(valeur),
         None => {
             tracing::debug!(adresse, "aucune valeur numérique trouvée dans la réponse");
@@ -1103,10 +1109,15 @@ async fn ecrire(
 ) -> Result<()> {
     let adresse = url(&acces.gabarit_ecriture, hote, id.trim(), &acces.cle);
     let mut objet = serde_json::Map::new();
-    objet.insert(
-        acces.champ_ecriture.clone(),
-        serde_json::Value::from(valeur),
-    );
+    if est_objet_io(id) {
+        // Relais et sorties de l'IPX800 V5 : `{"on": true}`, pas une valeur.
+        objet.insert("on".into(), serde_json::Value::Bool(valeur >= 0.5));
+    } else {
+        objet.insert(
+            acces.champ_ecriture.clone(),
+            serde_json::Value::from(valeur),
+        );
+    }
     let corps = serde_json::Value::Object(objet);
     let reponse = client.put(&adresse).json(&corps).send().await?;
     anyhow::ensure!(
@@ -1484,6 +1495,14 @@ mod tests {
     fn on_se_rabat_sur_le_premier_nombre_si_le_champ_manque() {
         let corps = serde_json::json!({"autreChamp": 18.25});
         assert_eq!(extraire_nombre(&corps, "value"), Some(18.25));
+    }
+
+    #[test]
+    fn un_relais_se_lit_par_son_champ_on_et_non_par_son_identifiant() {
+        let corps = serde_json::json!({"_id": 65536, "name": "Relais 1", "on": true});
+        assert!(est_objet_io("api/core/io/65536"));
+        assert!(!est_objet_io("api/core/ana/262204"));
+        assert_eq!(extraire_nombre(&corps, "on"), Some(1.0));
     }
 
     #[test]

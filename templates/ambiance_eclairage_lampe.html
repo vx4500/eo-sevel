@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Ajouter une lampe — EO_Sevel{% endblock %}{% block content %}
+{{ onglets('eclairage') }}
+{% include "ambiance_eclairage_style.html" %}
+<style>
+.lp-etapes{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:0;list-style:none;counter-reset:e}
+.lp-etapes li{flex:1;min-width:180px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:.9rem}
+.lp-etapes li::before{counter-increment:e;content:counter(e);display:inline-grid;place-items:center;width:22px;height:22px;margin-right:8px;border-radius:50%;background:var(--vert);color:#fff;font-weight:800;font-size:.8rem}
+.lp-groupe h3{margin:18px 0 8px;font-size:1rem;color:var(--muted)}
+.lp-liste{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.lp-sortie{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;scroll-margin-top:90px}
+.lp-sortie.probable{border-color:#e9c46a;background:#fffbef}
+.lp-sortie:target{box-shadow:0 0 0 3px var(--accent)}
+.lp-sortie header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.lp-sortie header b{flex:1}
+.lp-sortie form{display:flex;flex-direction:column;gap:8px;margin:0}
+.lp-sortie .ecl-ligne button{padding:7px 8px}
+.lp-deja{font-size:.85rem;color:var(--muted)}
+</style>
+<div class="ecl">
+<p class="muted" style="margin:0"><a href="/ambiance/eclairage">← Éclairage</a></p>
+<h2 style="margin:4px 0 12px;font-size:1.5rem">💡 Ajouter une lampe</h2>
+
+{% if ok %}<div class="ecl-message ok">{{ ok }}</div>{% endif %}
+
+<ol class="lp-etapes">
+  <li>Repérez votre lampe dans la liste (les noms viennent de l'automate).</li>
+  <li>Appuyez sur <b>Allumer</b> : vérifiez que c'est bien la bonne lumière qui s'allume.</li>
+  <li>Donnez-lui un nom, choisissez la salle, et <b>Enregistrer</b>.</li>
+</ol>
+
+{% if hotes|length > 1 %}
+<form method="get" class="rust-actions" style="margin-bottom:12px"><label>Automate<select name="hote" onchange="this.form.submit()">{% for h in hotes %}<option value="{{ h }}"{% if h == hote %} selected{% endif %}>{{ h }}</option>{% endfor %}</select></label></form>
+{% endif %}
+
+{% if not hote %}
+<div class="ecl-message alerte">Aucun automate renseigné. Indiquez d'abord son adresse dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.</div>
+{% elif sorties is none %}
+<div class="ecl-message alerte"><b>L'automate {{ hote }} ne répond pas.</b> Vérifiez qu'il est allumé et que l'adresse et la clé sont justes dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>, puis <a href="">réessayez</a>.</div>
+{% elif not sorties %}
+<div class="ecl-message alerte">L'automate répond mais aucune sortie commandable n'a été trouvée. Vérifiez sur la <a href="/ambiance/ipx/carte">carte</a> que la section des relais est bien marquée « commandable ».</div>
+{% else %}
+{% set groupes = sorties|groupby('section') %}
+{% for g in groupes %}
+<div class="lp-groupe">
+  <h3>{{ g.grouper }}</h3>
+  <div class="lp-liste">
+  {% for s in g.list %}
+    <div class="lp-sortie{% if s.probable and not s.deja %} probable{% endif %}" id="sortie-{{ s.id }}">
+      <header>
+        <span class="ecl-ampoule {% if s.etat == true %}on{% elif s.etat == false %}off{% else %}inconnu{% endif %}" title="{% if s.etat == true %}allumée en ce moment{% elif s.etat == false %}éteinte en ce moment{% endif %}"></span>
+        <b>{{ s.nom_ipx or ('Sortie ' ~ s.id) }}</b>
+        {% if s.probable and not s.deja %}<span class="ecl-badge orange">éclairage ?</span>{% endif %}
+      </header>
+      {% if s.deja %}
+      <p class="lp-deja">{% if s.deja_lampe %}✅ Déjà déclarée comme lampe : « {{ s.deja }} »{% else %}Déjà utilisée : « {{ s.deja }} »{% endif %}</p>
+      {% endif %}
+      {% if not s.deja_lampe %}
+      <form method="post" action="/ambiance/eclairage/lampe/enregistrer" data-no-ajax>
+        <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+        <input type="hidden" name="hote" value="{{ hote }}">
+        <input type="hidden" name="chemin" value="{{ s.chemin }}">
+        <input type="hidden" name="retour" value="choix">
+        <div class="ecl-ligne">
+          <button name="etat" value="1" formaction="/ambiance/eclairage/lampe/tester" class="ghost">💡 Allumer</button>
+          <button name="etat" value="0" formaction="/ambiance/eclairage/lampe/tester" class="ghost">⚫ Éteindre</button>
+        </div>
+        <label>Nom de la lampe<input name="nom" value="{{ s.deja or s.nom_ipx }}" maxlength="80"></label>
+        <label>Salle<select name="salle_id"><option value="">—</option>{% for sa in salles %}<option value="{{ sa.id }}">{{ sa.nom }}</option>{% endfor %}</select></label>
+        <button>✔ Enregistrer cette lampe</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endfor %}
+<p class="muted" style="margin-top:16px">Seules les sorties des blocs marqués « commandable » sur la <a href="/ambiance/ipx/carte">carte</a> sont proposées : relais, collecteurs ouverts, bits virtuels. État affiché : celui lu à l'ouverture de la page.</p>
+{% endif %}
+</div>
+{% endblock %}
