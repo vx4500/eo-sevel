@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.24.1** —
+Version actuelle : **2.25.0** —
+
+### Version 2.25.0 — IPX800 et Zigbee dans Mes équipements
+
+Version Rust 2.25.0 : demande d'Emmanuel — « chaque appareil sa section ». Menu Mes équipements : entrées Automate IPX800 (/ambiance/automate) et Réseau Zigbee (/ambiance/zigbee). Page /equipements : deux cartes avec l'état lu en base (adresse et nombre de points de l'IPX ; pont Zigbee connecté et nombre d'appareils). Le Zigbee n'est plus un onglet de l'automate.
+
+—
 
 ### Version 2.24.1 — Noms de salles lisibles
 

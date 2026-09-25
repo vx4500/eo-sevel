@@ -890,10 +890,47 @@ async fn equipements(
     Extension(session): Extension<SessionData>,
 ) -> AppResult<Html<String>> {
     let mut contexte = context(&session);
+    // IPX800 et Zigbee : état lu en base, sans interroger les appareils.
+    let ipx_hote: Option<String> =
+        sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='ambiance_ipx_hote' AND trim(valeur)<>''")
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+    let ipx_points: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ipx_point WHERE actif=1 AND hote<>'zigbee'")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let zigbee: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT connecte, strftime('%s','now') - ts FROM zigbee_pont WHERE id=1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    let zigbee_appareils: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM zigbee_appareil WHERE present=1")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let zigbee_ok = zigbee.is_some_and(|(connecte, age)| connecte != 0 && age < 600);
+    let ipx = match &ipx_hote {
+        Some(hote) => json!({"nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
+        None => json!({"nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
+    };
+    let zigbee = json!({
+        "nom":"Réseau Zigbee",
+        "etat": if zigbee_ok { "actif" } else { "attente" },
+        "etat_texte": if zigbee_ok { format!("Connecté · {zigbee_appareils} appareils") } else if zigbee.is_some() { "Pont coupé".to_string() } else { "Pas encore démarré".to_string() },
+        "description":"Sondes sans fil, interrupteurs d’éclairage, variateurs de ventilation et compteurs électriques, via le SLZB-MR5U.",
+        "href":"/ambiance/zigbee",
+        "action":"Ouvrir le réseau Zigbee"
+    });
     contexte.insert(
         "equipements".into(),
         json!([
             {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
+            ipx,
+            zigbee,
             {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
             {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
             {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}

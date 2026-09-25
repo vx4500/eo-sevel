@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Zigbee — EO_Sevel{% endblock %}{% block content %}
-{{ onglets('zigbee') }}
+{% extends "base.html" %}{% block title %}Réseau Zigbee — EO_Sevel{% endblock %}{% block content %}
+<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px"><h1 style="margin:0">📡 Réseau Zigbee</h1><a class="muted" href="/equipements">← Mes équipements</a></div>
 <style>
 .zb-etat{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);margin-bottom:14px}
 .zb-etat.ko{background:#fbeae4;border-color:#efc1b1}

@@ -483,6 +483,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ipx800_et_zigbee_ont_leur_carte_dans_mes_equipements() -> anyhow::Result<()> {
+        use super::super::documents::tests::session;
+        let state = base().await?;
+        sqlx::raw_sql("INSERT INTO zigbee_pont(id,connecte,ts,messages) VALUES(1,1,strftime('%s','now'),10)")
+            .execute(&state.pool).await?;
+        let html = super::super::equipements(State(state.clone()), Extension(session())).await?.0;
+        assert!(html.contains("Automate IPX800") && html.contains("Adresse à renseigner"), "{html}");
+        assert!(html.contains("Réseau Zigbee") && html.contains("Connecté · 3 appareils"), "{html}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn rattacher_une_sonde_une_lampe_et_un_compteur() -> anyhow::Result<()> {
         use super::super::documents::tests::session;
         let state = base().await?;
