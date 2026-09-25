@@ -15,8 +15,9 @@
 .ecl-carte{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:80px}
 .ecl-carte:target{box-shadow:0 0 0 3px var(--accent)}
 .ecl-carte.en-pause{opacity:.72}
-.ecl-carte .tete{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
-.ecl-carte h2{margin:0;font-size:1.15rem}
+.ecl-carte{overflow:hidden}
+.ecl-carte .tete{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:-16px -18px 0;padding:12px 18px;background:linear-gradient(120deg,#6b4e00,#c28f0a)}
+.ecl-carte .tete h2{margin:0;font-size:1.15rem;font-weight:800;color:#fff!important;text-shadow:0 1px 2px rgba(0,0,0,.25)}
 .ecl-badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ecl-badge{font-size:.74rem;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .ecl-badge.vert{background:#e2f3e8;color:#1f6a43}.ecl-badge.orange{background:#fff0dc;color:#94561b}

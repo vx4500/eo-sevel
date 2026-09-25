@@ -4,7 +4,7 @@
 <p class="muted" style="margin-top:0">Tout ce que le logiciel sait de chaque salle : animaux, bande, ambiance, lumière, alertes. Cliquez sur une salle pour sa fiche complète. Les informations s'ajoutent d'elles-mêmes dès qu'un élément est relié à la salle.</p>
 <div class="sl-grille">
 {% for s in salles %}
-<a class="sl-carte" href="/salles/{{ s.id }}">
+<a class="sl-carte t-{{ (s.type or '')|lower|replace('_', '-') }}" href="/salles/{{ s.id }}">
   <div class="tete"><h2>{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></div>
   <div class="sl-badges">
     {% if s.bande %}<span class="sl-badge">Bande {{ s.bande.code }} · jour {{ s.bande.jour }}</span>{% endif %}

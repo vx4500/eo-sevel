@@ -10,8 +10,11 @@
 .zb-carte{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;scroll-margin-top:90px}
 .zb-carte:target{box-shadow:0 0 0 3px var(--accent)}
 .zb-carte.muet{border-color:#efc1b1}
-.zb-carte .tete{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.zb-carte .tete b{font-size:1.02rem}
+.zb-carte{overflow:hidden}
+.zb-carte .tete{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:-12px -14px 0;padding:10px 14px;background:linear-gradient(120deg,var(--vert),var(--vert2))}
+.zb-carte .tete b{font-size:1.05rem;color:#fff!important;text-shadow:0 1px 2px rgba(0,0,0,.25)}
+.zb-carte .tete .zb-modele{color:rgba(255,255,255,.8)}
+.zb-carte.muet .tete{background:linear-gradient(120deg,#7a2a14,#b0502f)}
 .zb-modele{font-size:.72rem;color:var(--muted)}
 .zb-valeur{font-size:1.5rem;font-weight:800}
 .zb-valeur small{font-size:.9rem;font-weight:600;color:var(--muted)}

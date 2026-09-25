@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.25.0** —
+Version actuelle : **2.25.1** —
+
+### Version 2.25.1 — Bandeaux de couleur
+
+Version Rust 2.25.1 : retour d’Emmanuel sur la 2.24.1 (« plus lisible mais moins sympa ») — bandeau dégradé remis volontairement sur les cartes, nom en blanc : Mes salles (une teinte par type de salle), Éclairage (ambre), Zigbee (vert ; rouge si l’appareil est muet).
+
+—
 
 ### Version 2.25.0 — IPX800 et Zigbee dans Mes équipements
 

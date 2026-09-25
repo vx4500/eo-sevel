@@ -2,8 +2,16 @@
 .sl-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .sl-carte{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;text-decoration:none;color:var(--ink)}
 a.sl-carte:hover{border-color:var(--accent2);box-shadow:0 4px 14px #0001}
-.sl-carte .tete{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.sl-carte h2{margin:0;font-size:1.15rem}
+/* Bandeau de couleur : nom en blanc, une teinte par type de salle. */
+.sl-carte{overflow:hidden}
+.sl-carte .tete{--sl-a:var(--vert);--sl-b:var(--vert2);display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin:-14px -16px 0;padding:12px 16px;background:linear-gradient(120deg,var(--sl-a),var(--sl-b))}
+.sl-carte .tete h2{margin:0;font-size:1.2rem;font-weight:800;color:#fff!important;text-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sl-carte .tete .sl-type{color:rgba(255,255,255,.85)}
+.sl-carte.t-maternite .tete{--sl-a:#8e3b5f;--sl-b:#c0668d}
+.sl-carte.t-gestante .tete{--sl-a:#5b3f8c;--sl-b:#8467b8}
+.sl-carte.t-verraterie .tete{--sl-a:#1f4e79;--sl-b:#3a7bb5}
+.sl-carte.t-post-sevrage .tete{--sl-a:#11676a;--sl-b:#2f9a8f}
+.sl-carte.t-engraissement .tete{--sl-a:#1e4d3a;--sl-b:#3f8a5c}
 .sl-type{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .sl-mesures{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .sl-mesures div{background:#f6f8f7;border-radius:9px;padding:6px 8px;text-align:center}
