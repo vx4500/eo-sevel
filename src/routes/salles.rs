@@ -401,6 +401,56 @@ pub(super) async fn fiche(
         })
     })
     .collect::<Vec<_>>();
+    // Ventilation : réglage réel de chaque sortie de ventilation de la salle,
+    // et consigne calculée par la régulation.
+    let ventil_etat: Option<(Option<f64>, String)> =
+        sqlx::query_as("SELECT ventil, mode FROM ambiance_etat WHERE salle_id=?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    let sorties_ventil: Vec<(String, String, String, Option<String>, f64, f64, Option<String>)> = sqlx::query_as(
+        "SELECT nom, hote, chemin, formule, coefficient, decalage, unite FROM ipx_point \
+         WHERE salle_id=? AND role='ventilation' AND actif=1 ORDER BY nom",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let mut ventilation = Vec::new();
+    for (nom, hote, chemin, formule, coefficient, decalage, unite) in sorties_ventil {
+        let valeur = super::ambiance::lire_point(pool, &hote, &chemin, formule.as_deref(), coefficient, decalage).await;
+        ventilation.push(json!({
+            "nom": nom,
+            "valeur": valeur.map(|v| (v * 10.0).round() / 10.0),
+            "unite": unite.unwrap_or_default(),
+            "zigbee": hote == super::zigbee::HOTE,
+        }));
+    }
+    let reglages = sqlx::query(
+        "SELECT actif, pilote, courbe_id, t_cible_fixe, plage, ventil_min, ventil_max, \
+                t_alerte_min, t_alerte_max, h_alerte_max FROM ambiance_salle WHERE salle_id=?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .map(|r| {
+        json!({
+            "actif": r.try_get::<i64, _>("actif").unwrap_or(0) != 0,
+            "pilote": r.try_get::<i64, _>("pilote").unwrap_or(0) != 0,
+            "courbe_id": r.try_get::<Option<i64>, _>("courbe_id").ok().flatten(),
+            "t_cible_fixe": r.try_get::<f64, _>("t_cible_fixe").ok(),
+            "plage": r.try_get::<f64, _>("plage").ok(),
+            "ventil_min": r.try_get::<f64, _>("ventil_min").ok(),
+            "ventil_max": r.try_get::<f64, _>("ventil_max").ok(),
+            "t_alerte_min": r.try_get::<Option<f64>, _>("t_alerte_min").ok().flatten(),
+            "t_alerte_max": r.try_get::<Option<f64>, _>("t_alerte_max").ok().flatten(),
+            "h_alerte_max": r.try_get::<Option<f64>, _>("h_alerte_max").ok().flatten(),
+        })
+    });
+    let courbes = generic_rows(pool, "SELECT id, nom FROM ambiance_courbe ORDER BY nom")
+        .await
+        .unwrap_or_default();
+
     let preconditionnement = generic_rows_bind(
         pool,
         "SELECT p.arrivee_prevue, p.heures_avant, b.code AS bande FROM ambiance_preconditionnement p \
@@ -440,6 +490,13 @@ pub(super) async fn fiche(
     contexte.insert("observations".into(), Value::Array(observations));
     contexte.insert("mouvements".into(), Value::Array(mouvements));
     contexte.insert("preconditionnement".into(), Value::Array(preconditionnement));
+    contexte.insert(
+        "ventil_etat".into(),
+        json!(ventil_etat.map(|(v, mode)| json!({"ventil": v, "mode": mode}))),
+    );
+    contexte.insert("ventilation".into(), Value::Array(ventilation));
+    contexte.insert("reglages".into(), json!(reglages));
+    contexte.insert("courbes".into(), Value::Array(courbes));
     contexte.insert("maj".into(), json!(ts));
     render(&state, "salle_fiche.html", Value::Object(contexte))
 }
@@ -452,6 +509,57 @@ fn nombre_court(valeur: f64) -> Value {
     } else {
         json!(arrondi)
     }
+}
+
+/// Réglages d'ambiance de la salle, depuis sa fiche : consigne, plage,
+/// ventilation mini/maxi et seuils d'alerte. Les autres réglages (sondes,
+/// sortie pilotée, mise en régulation) restent sur la page EO_Awel ; une
+/// salle sans réglage d'ambiance en reçoit un, inactif.
+pub(super) async fn reglages(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let existe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM salle WHERE id=?")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    if existe == 0 {
+        return Err(AppError::NotFound);
+    }
+    let ventil_min = form_f64(&form, "ventil_min").unwrap_or(20.0).clamp(0.0, 100.0);
+    let ventil_max = form_f64(&form, "ventil_max").unwrap_or(100.0).clamp(ventil_min, 100.0);
+    let t_alerte_min = form_f64(&form, "t_alerte_min");
+    let t_alerte_max = form_f64(&form, "t_alerte_max");
+    if let (Some(bas), Some(haut)) = (t_alerte_min, t_alerte_max) {
+        if bas >= haut {
+            return Err(AppError::Invalid(
+                "L'alerte basse doit être inférieure à l'alerte haute".into(),
+            ));
+        }
+    }
+    sqlx::query(
+        "INSERT INTO ambiance_salle(salle_id,courbe_id,t_cible_fixe,plage,ventil_min,ventil_max,\
+         t_alerte_min,t_alerte_max,h_alerte_max) VALUES(?,?,?,?,?,?,?,?,?) \
+         ON CONFLICT(salle_id) DO UPDATE SET courbe_id=excluded.courbe_id, t_cible_fixe=excluded.t_cible_fixe, \
+         plage=excluded.plage, ventil_min=excluded.ventil_min, ventil_max=excluded.ventil_max, \
+         t_alerte_min=excluded.t_alerte_min, t_alerte_max=excluded.t_alerte_max, h_alerte_max=excluded.h_alerte_max",
+    )
+    .bind(id)
+    .bind(form_i64(&form, "courbe_id"))
+    .bind(form_f64(&form, "t_cible_fixe").unwrap_or(22.0).clamp(5.0, 40.0))
+    .bind(form_f64(&form, "plage").unwrap_or(3.0).clamp(0.5, 10.0))
+    .bind(ventil_min)
+    .bind(ventil_max)
+    .bind(t_alerte_min)
+    .bind(t_alerte_max)
+    .bind(form_f64(&form, "h_alerte_max"))
+    .execute(&state.pool)
+    .await?;
+    Ok(Redirect::to(&format!("/salles/{id}#reglages")).into_response())
 }
 
 /// `generic_rows` avec un seul paramètre lié.
@@ -527,6 +635,18 @@ mod tests {
         assert!(fiche.contains("Néon verraterie"), "lampe reliée");
         assert!(fiche.contains("Extracteur") && fiche.contains("20"), "ventilateur et renouvellement (3000/150)");
         assert!(fiche.contains("150 m³"), "volume");
+
+        // Réglages depuis la fiche : créés pour une salle qui n'en avait pas.
+        let mut f: HashMap<String, String> = [("csrf_token", "test"), ("t_cible_fixe", "24"), ("ventil_min", "30"),
+            ("ventil_max", "90"), ("t_alerte_min", "18"), ("t_alerte_max", "32")]
+            .iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        reglages(State(state.clone()), Extension(session()), Path(1), Form(f.clone())).await?;
+        let (t, vmin, vmax): (f64, f64, f64) = sqlx::query_as("SELECT t_cible_fixe, ventil_min, ventil_max FROM ambiance_salle WHERE salle_id=1")
+            .fetch_one(&state.pool).await?;
+        assert_eq!((t, vmin, vmax), (24.0, 30.0, 90.0));
+        assert!(fiche_texte(&state).await?.contains("Enregistrer les réglages"));
+        f.insert("t_alerte_min".into(), "35".into());
+        assert!(reglages(State(state.clone()), Extension(session()), Path(1), Form(f)).await.is_err(), "seuils inversés refusés");
 
         // Retirer la lampe la fait disparaître de la fiche, sans autre réglage.
         sqlx::query("DELETE FROM ipx_point").execute(&state.pool).await?;

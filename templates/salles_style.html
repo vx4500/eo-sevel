@@ -40,4 +40,8 @@ a.sl-carte:hover{border-color:var(--accent2);box-shadow:0 4px 14px #0001}
 .sl-ampoule{display:inline-block;width:12px;height:12px;border-radius:50%;background:#c9cfcc;vertical-align:middle;margin-right:4px}
 .sl-ampoule.on{background:#f2b705;box-shadow:0 0 6px 2px #f2b70580}
 .sl-vide{color:var(--muted);font-style:italic}
+.sl-reglages{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sl-reglages label{min-width:0}
+.sl-reglages input,.sl-reglages select{width:100%;min-width:0;box-sizing:border-box}
+.sl-reglages label:first-of-type,.sl-reglages button{grid-column:1/-1}
 </style>

@@ -88,6 +88,10 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     )?;
     env.add_template("salles.html", include_str!("../templates/salles.html"))?;
     env.add_template(
+        "zigbee_electricite.html",
+        include_str!("../templates/zigbee_electricite.html"),
+    )?;
+    env.add_template(
         "ambiance_zigbee.html",
         include_str!("../templates/ambiance_zigbee.html"),
     )?;

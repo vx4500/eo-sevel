@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.25.1** —
+Version actuelle : **2.26.0** —
+
+### Version 2.26.0 — Surveillance électrique, ventilation et réglages dans la fiche de salle
+
+Version Rust 2.26.0 : (1) Surveillance électrique (`/ambiance/zigbee/electricite`, migration 0018) : pour chaque compteur Zigbee, marche/arrêt au-dessus d'un seuil de puissance, périodes de marche (`zigbee_marche`), temps de marche et démarrages du jour, kWh depuis le relevé de 6 h, phases (V, A), courbe 24 h (puissance historisée toutes les 2 min), alertes coupure de phase / surpuissance / marche trop longue / arrêt trop long, calculées par eo-regul. (2) Fiche de salle : vitesse de ventilation réelle (sorties rôle ventilation : IPX lu en direct, Zigbee en base) et consigne calculée ; formulaire consigne fixe ou courbe, plage, ventilation mini/maxi, seuils d'alerte (`/salles/{id}/reglages`, upsert `ambiance_salle`). Les seuils de la salle s'appliquent aussi aux sondes Zigbee sans seuils propres. (3) Champs d'alerte qui débordaient des cartes Zigbee : corrigé.
+
+—
 
 ### Version 2.25.1 — Bandeaux de couleur
 

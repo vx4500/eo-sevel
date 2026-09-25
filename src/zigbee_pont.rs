@@ -26,7 +26,16 @@ const BASE: &str = "zigbee2mqtt";
 /// « vu il y a » reste juste.
 const REECRITURE_S: i64 = 300;
 /// Grandeurs conservées dans l'historique.
-const HISTORISEES: &[&str] = &["temperature", "humidity", "battery", "illuminance", "illuminance_lux"];
+const HISTORISEES: &[&str] = &[
+    "temperature",
+    "humidity",
+    "battery",
+    "illuminance",
+    "illuminance_lux",
+    // Courbe de puissance des compteurs (surveillance électrique).
+    "power",
+    "total_power",
+];
 /// Intervalle minimal entre deux points d'historique d'une même grandeur.
 const HISTORIQUE_PAS_S: i64 = 120;
 const HISTORIQUE_JOURS: i64 = 90;
@@ -450,8 +459,12 @@ pub async fn alertes(pool: &SqlitePool) -> Result<()> {
     let ts = maintenant();
     let appareils: Vec<(String, String, String, Option<String>, Option<f64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>)> =
         sqlx::query_as(
-            "SELECT ieee, nom, categorie, alimentation, batterie, vu_le, disponible, t_min, t_max \
-             FROM zigbee_appareil WHERE present=1",
+            "SELECT z.ieee, z.nom, z.categorie, z.alimentation, z.batterie, z.vu_le, z.disponible, \
+                    COALESCE(z.t_min, a.t_alerte_min), COALESCE(z.t_max, a.t_alerte_max) \
+             FROM zigbee_appareil z \
+             LEFT JOIN ipx_point p ON p.hote='zigbee' AND p.chemin = z.ieee || '/temperature' \
+             LEFT JOIN ambiance_salle a ON a.salle_id = p.salle_id \
+             WHERE z.present=1",
         )
         .fetch_all(pool)
         .await?;
@@ -507,6 +520,177 @@ pub async fn alertes(pool: &SqlitePool) -> Result<()> {
             .await?;
         }
     }
+    surveillance_electrique(pool).await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Surveillance électrique (compteurs Zigbee : machine à soupe, général…)
+// ---------------------------------------------------------------------------
+
+/// Une mesure électrique plus vieille que ça n'est pas utilisée.
+const ELEC_FRAICHEUR_S: i64 = 600;
+
+/// Phase d'une grandeur de tension : `voltage` / `voltage_a` → A,
+/// `voltage_phase_b` / `voltage_b` → B…
+pub fn phase_de(cle: &str) -> Option<char> {
+    let reste = cle.strip_prefix("voltage")?;
+    match reste.trim_start_matches("_phase").trim_start_matches('_') {
+        "" | "a" => Some('A'),
+        "b" => Some('B'),
+        "c" => Some('C'),
+        _ => None,
+    }
+}
+
+/// Phases dont la tension est sous le seuil.
+pub fn phases_coupees(tensions: &[(String, f64)], seuil: f64) -> Vec<(char, f64)> {
+    let mut coupees: Vec<(char, f64)> = tensions
+        .iter()
+        .filter_map(|(cle, v)| phase_de(cle).map(|p| (p, *v)))
+        .filter(|(_, v)| *v < seuil)
+        .collect();
+    coupees.sort_by_key(|(p, _)| *p);
+    coupees.dedup_by_key(|(p, _)| *p);
+    coupees
+}
+
+pub async fn surveillance_electrique(pool: &SqlitePool) -> Result<()> {
+    let ts = maintenant();
+    // Tout compteur a des réglages par défaut, sans rien saisir.
+    sqlx::query(
+        "INSERT OR IGNORE INTO zigbee_surveillance(ieee) \
+         SELECT ieee FROM zigbee_appareil WHERE categorie='compteur' AND present=1",
+    )
+    .execute(pool)
+    .await?;
+    let lignes: Vec<(String, String, f64, Option<f64>, Option<i64>, Option<f64>, i64, f64, Option<i64>, Option<i64>)> =
+        sqlx::query_as(
+            "SELECT s.ieee, a.nom, s.seuil_marche_w, s.puissance_max_w, s.marche_max_min, s.arret_max_h, \
+                    s.phases, s.tension_min_v, s.en_marche, s.depuis \
+             FROM zigbee_surveillance s JOIN zigbee_appareil a ON a.ieee=s.ieee WHERE a.present=1",
+        )
+        .fetch_all(pool)
+        .await?;
+    for (ieee, nom, seuil, p_max, marche_max, arret_max, phases, tension_min, en_marche, depuis) in lignes {
+        let salle: Option<i64> = sqlx::query_scalar(
+            "SELECT salle_id FROM ipx_point WHERE hote='zigbee' AND chemin LIKE ? AND salle_id IS NOT NULL LIMIT 1",
+        )
+        .bind(format!("{ieee}/%"))
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+        let valeurs: Vec<(String, Option<f64>, i64)> =
+            sqlx::query_as("SELECT cle, valeur, ts FROM zigbee_valeur WHERE ieee=?")
+                .bind(&ieee)
+                .fetch_all(pool)
+                .await?;
+        let frais = |cle: &str| {
+            valeurs
+                .iter()
+                .find(|(c, v, t)| c == cle && v.is_some() && ts - t < ELEC_FRAICHEUR_S)
+                .and_then(|(_, v, _)| *v)
+        };
+        let puissance = frais("total_power").or_else(|| frais("power"));
+        let energie = frais("energy");
+
+        // Marche / arrêt, sur les fronts.
+        let mut en_marche = en_marche.map(|m| m != 0);
+        let mut depuis = depuis.unwrap_or(ts);
+        if let Some(p) = puissance {
+            let maintenant_marche = p > seuil;
+            if en_marche != Some(maintenant_marche) {
+                if en_marche.is_some() {
+                    if maintenant_marche {
+                        sqlx::query("INSERT INTO zigbee_marche(ieee,debut,energie_debut) VALUES(?,?,?)")
+                            .bind(&ieee)
+                            .bind(ts)
+                            .bind(energie)
+                            .execute(pool)
+                            .await?;
+                    } else {
+                        sqlx::query(
+                            "UPDATE zigbee_marche SET fin=?, energie_fin=? WHERE ieee=? AND fin IS NULL",
+                        )
+                        .bind(ts)
+                        .bind(energie)
+                        .bind(&ieee)
+                        .execute(pool)
+                        .await?;
+                    }
+                } else if maintenant_marche {
+                    // Premier passage : déjà en marche, période ouverte.
+                    sqlx::query("INSERT INTO zigbee_marche(ieee,debut,energie_debut) VALUES(?,?,?)")
+                        .bind(&ieee)
+                        .bind(ts)
+                        .bind(energie)
+                        .execute(pool)
+                        .await?;
+                }
+                en_marche = Some(maintenant_marche);
+                depuis = ts;
+                sqlx::query("UPDATE zigbee_surveillance SET en_marche=?, depuis=? WHERE ieee=?")
+                    .bind(i64::from(maintenant_marche))
+                    .bind(ts)
+                    .bind(&ieee)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+
+        // Coupure de phase.
+        let tensions: Vec<(String, f64)> = valeurs
+            .iter()
+            .filter(|(c, v, t)| c.starts_with("voltage") && v.is_some() && ts - t < ELEC_FRAICHEUR_S)
+            .map(|(c, v, _)| (c.clone(), v.unwrap_or(0.0)))
+            .collect();
+        let coupees = if phases != 0 { phases_coupees(&tensions, tension_min) } else { Vec::new() };
+        signaler(
+            pool,
+            salle,
+            &format!("zigbee_phase:{ieee}"),
+            !coupees.is_empty(),
+            "critique",
+            &format!(
+                "{nom} : coupure de phase {}",
+                coupees.iter().map(|(p, v)| format!("{p} ({v:.0} V)")).collect::<Vec<_>>().join(", ")
+            ),
+        )
+        .await?;
+
+        let trop = matches!((puissance, p_max), (Some(p), Some(m)) if p > m);
+        signaler(
+            pool,
+            salle,
+            &format!("zigbee_surpuissance:{ieee}"),
+            trop,
+            "alerte",
+            &format!("{nom} : {:.0} W, au-dessus de {:.0} W", puissance.unwrap_or(0.0), p_max.unwrap_or(0.0)),
+        )
+        .await?;
+
+        let duree = ts - depuis;
+        let longue = en_marche == Some(true) && marche_max.is_some_and(|m| duree > m * 60);
+        signaler(
+            pool,
+            salle,
+            &format!("zigbee_marche_longue:{ieee}"),
+            longue,
+            "alerte",
+            &format!("{nom} tourne depuis {} min sans s'arrêter", duree / 60),
+        )
+        .await?;
+        let arret = en_marche == Some(false) && arret_max.is_some_and(|h| duree as f64 > h * 3600.0);
+        signaler(
+            pool,
+            salle,
+            &format!("zigbee_arret_long:{ieee}"),
+            arret,
+            "alerte",
+            &format!("{nom} n'a pas tourné depuis {} h", duree / 3600),
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -556,6 +740,22 @@ mod tests {
 
     fn g(liste: &[&str]) -> Vec<String> {
         liste.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn les_phases_se_lisent_quel_que_soit_le_nommage() {
+        assert_eq!(phase_de("voltage"), Some('A'));
+        assert_eq!(phase_de("voltage_a"), Some('A'));
+        assert_eq!(phase_de("voltage_phase_b"), Some('B'));
+        assert_eq!(phase_de("voltage_c"), Some('C'));
+        assert_eq!(phase_de("voltage_x"), None);
+        let t = |c: &str, v: f64| (c.to_string(), v);
+        // Compteur général : phase B coupée.
+        assert_eq!(
+            phases_coupees(&[t("voltage", 229.0), t("voltage_phase_b", 0.0), t("voltage_phase_c", 237.0)], 190.0),
+            vec![('B', 0.0)]
+        );
+        assert!(phases_coupees(&[t("voltage_a", 237.0), t("voltage_b", 233.0), t("voltage_c", 228.0)], 190.0).is_empty());
     }
 
     #[test]

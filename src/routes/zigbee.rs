@@ -420,6 +420,220 @@ pub(super) async fn deposer_commande(pool: &SqlitePool, chemin: &str, valeur: f6
     Ok("transmise au Zigbee".into())
 }
 
+// ---------------------------------------------------------------------------
+// Surveillance électrique (/ambiance/zigbee/electricite)
+// ---------------------------------------------------------------------------
+
+/// Phase d'une grandeur `voltage…` ou `current…` : A, B ou C.
+fn phase(prefixe: &str, cle: &str) -> Option<char> {
+    let reste = cle.strip_prefix(prefixe)?;
+    match reste.trim_start_matches("_phase").trim_start_matches('_') {
+        "" | "a" => Some('A'),
+        "b" => Some('B'),
+        "c" => Some('C'),
+        _ => None,
+    }
+}
+
+/// Courbe de puissance des dernières 24 h, en moyennes par quart d'heure,
+/// prête pour un tracé SVG de 600 × 120.
+fn courbe(mesures: &[(i64, f64)], debut: i64, fin: i64) -> (String, f64) {
+    const PAS: i64 = 900;
+    let mut seaux: Vec<(i64, f64, u32)> = Vec::new();
+    for (ts, v) in mesures {
+        let seau = (ts - debut) / PAS;
+        match seaux.last_mut() {
+            Some((s, somme, n)) if *s == seau => {
+                *somme += v;
+                *n += 1;
+            }
+            _ => seaux.push((seau, *v, 1)),
+        }
+    }
+    let max = seaux.iter().map(|(_, s, n)| s / f64::from(*n)).fold(0.0_f64, f64::max).max(1.0);
+    let largeur = (fin - debut) as f64;
+    let points = seaux
+        .iter()
+        .map(|(s, somme, n)| {
+            let x = ((*s * PAS + PAS / 2) as f64 / largeur * 600.0).clamp(0.0, 600.0);
+            let y = 118.0 - (somme / f64::from(*n)) / max * 110.0;
+            format!("{x:.1},{y:.1}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    (points, max)
+}
+
+fn duree_lisible(secondes: i64) -> String {
+    let minutes = secondes / 60;
+    if minutes < 60 {
+        format!("{minutes} min")
+    } else {
+        format!("{} h {:02}", minutes / 60, minutes % 60)
+    }
+}
+
+pub(super) async fn electricite(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Query(parametres): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    let pool = &state.pool;
+    let ts = maintenant();
+    let minuit = Local::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .and_then(|d| d.and_local_timezone(Local).single())
+        .map(|d| d.timestamp())
+        .unwrap_or(ts - 86400);
+    let appareils: Vec<(String, String)> = sqlx::query_as(
+        "SELECT ieee, nom FROM zigbee_appareil WHERE categorie='compteur' AND present=1 ORDER BY nom COLLATE NOCASE",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut cartes = Vec::new();
+    for (ieee, nom) in appareils {
+        let valeurs: Vec<(String, Option<f64>, i64)> =
+            sqlx::query_as("SELECT cle, valeur, ts FROM zigbee_valeur WHERE ieee=?")
+                .bind(&ieee)
+                .fetch_all(pool)
+                .await?;
+        let v = |cle: &str| valeurs.iter().find(|(c, ..)| c == cle).and_then(|(_, v, _)| *v);
+        let vu = valeurs.iter().map(|(.., t)| *t).max();
+        let puissance = v("total_power").or_else(|| v("power"));
+        let energie = v("energy");
+        let mut phases: Vec<Value> = Vec::new();
+        for p in ['A', 'B', 'C'] {
+            let tension = valeurs.iter().find(|(c, ..)| phase("voltage", c) == Some(p)).and_then(|(_, v, _)| *v);
+            let courant = valeurs.iter().find(|(c, ..)| phase("current", c) == Some(p)).and_then(|(_, v, _)| *v);
+            if tension.is_some() || courant.is_some() {
+                phases.push(json!({"phase": p.to_string(), "tension": tension, "courant": courant}));
+            }
+        }
+        let reglage: Option<(f64, Option<f64>, Option<i64>, Option<f64>, i64, f64, Option<i64>, Option<i64>)> = sqlx::query_as(
+            "SELECT seuil_marche_w, puissance_max_w, marche_max_min, arret_max_h, phases, tension_min_v, en_marche, depuis \
+             FROM zigbee_surveillance WHERE ieee=?",
+        )
+        .bind(&ieee)
+        .fetch_optional(pool)
+        .await?;
+        let (seuil, p_max, marche_max, arret_max, surveiller_phases, tension_min, en_marche, depuis) =
+            reglage.unwrap_or((20.0, None, None, None, 1, 190.0, None, None));
+
+        // Aujourd'hui : temps de marche et démarrages.
+        let periodes: Vec<(i64, Option<i64>)> = sqlx::query_as(
+            "SELECT debut, fin FROM zigbee_marche WHERE ieee=? AND COALESCE(fin, ?) >= ? ORDER BY debut",
+        )
+        .bind(&ieee)
+        .bind(ts)
+        .bind(minuit)
+        .fetch_all(pool)
+        .await?;
+        let marche_s: i64 = periodes
+            .iter()
+            .map(|(d, f)| (f.unwrap_or(ts) - (*d).max(minuit)).max(0))
+            .sum();
+        let demarrages = periodes.iter().filter(|(d, _)| *d >= minuit).count();
+
+        // kWh depuis le relevé du jour (6 h).
+        let releve: Option<f64> = sqlx::query_scalar(
+            "SELECT r.valeur_index FROM releve_compteur r JOIN ipx_point p ON p.compteur_id=r.compteur_id \
+             WHERE p.hote='zigbee' AND p.chemin=? AND r.date_releve=date('now','localtime')",
+        )
+        .bind(format!("{ieee}/energy"))
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        let depuis_releve = energie.zip(releve).map(|(e, r)| ((e - r) * 100.0).round() / 100.0);
+
+        let cle_courbe = if v("total_power").is_some() { "total_power" } else { "power" };
+        let mesures: Vec<(i64, f64)> = sqlx::query_as(
+            "SELECT ts, valeur FROM zigbee_mesure WHERE ieee=? AND cle=? AND ts>=? ORDER BY ts",
+        )
+        .bind(&ieee)
+        .bind(cle_courbe)
+        .bind(ts - 86400)
+        .fetch_all(pool)
+        .await?;
+        let (trace, max) = courbe(&mesures, ts - 86400, ts);
+        let y_seuil = |w: f64| 118.0 - (w / max * 110.0).min(118.0);
+
+        let alertes = generic_rows(
+            pool,
+            &format!(
+                "SELECT debut, message, gravite FROM ambiance_alerte WHERE fin IS NULL AND type LIKE 'zigbee_%:{}'",
+                ieee.replace('\'', "")
+            ),
+        )
+        .await?;
+        cartes.push(json!({
+            "ieee": ieee,
+            "nom": nom,
+            "puissance": puissance,
+            "energie": energie,
+            "vu": vu.map(|t| il_y_a(ts - t)),
+            "phases": phases,
+            "en_marche": en_marche.map(|m| m != 0),
+            "depuis": depuis.map(|d| duree_lisible(ts - d)),
+            "marche_aujourdhui": duree_lisible(marche_s),
+            "demarrages": demarrages,
+            "depuis_releve": depuis_releve,
+            "trace": trace,
+            "echelle_max": max.round(),
+            "y_seuil": y_seuil(seuil),
+            "y_max": p_max.map(y_seuil),
+            "seuil": seuil,
+            "p_max": p_max,
+            "marche_max": marche_max,
+            "arret_max": arret_max,
+            "surveiller_phases": surveiller_phases != 0,
+            "tension_min": tension_min,
+            "alertes": alertes,
+        }));
+    }
+    let mut contexte = context(&session);
+    contexte.insert("appareils".into(), Value::Array(cartes));
+    contexte.insert("ok".into(), json!(parametres.get("ok")));
+    render(&state, "zigbee_electricite.html", Value::Object(contexte))
+}
+
+pub(super) async fn electricite_reglages(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let ieee = form_text(&form, "ieee").unwrap_or_default();
+    let nom: String = sqlx::query_scalar("SELECT nom FROM zigbee_appareil WHERE ieee=? AND categorie='compteur'")
+        .bind(&ieee)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let positif = |cle: &str| form_f64(&form, cle).filter(|v| *v > 0.0);
+    sqlx::query(
+        "INSERT INTO zigbee_surveillance(ieee,seuil_marche_w,puissance_max_w,marche_max_min,arret_max_h,phases,tension_min_v) \
+         VALUES(?,?,?,?,?,?,?) ON CONFLICT(ieee) DO UPDATE SET seuil_marche_w=excluded.seuil_marche_w, \
+         puissance_max_w=excluded.puissance_max_w, marche_max_min=excluded.marche_max_min, \
+         arret_max_h=excluded.arret_max_h, phases=excluded.phases, tension_min_v=excluded.tension_min_v",
+    )
+    .bind(&ieee)
+    .bind(form_f64(&form, "seuil_marche_w").filter(|v| *v >= 0.0).unwrap_or(20.0))
+    .bind(positif("puissance_max_w"))
+    .bind(positif("marche_max_min").map(|v| v.round() as i64))
+    .bind(positif("arret_max_h"))
+    .bind(i64::from(form.contains_key("phases")))
+    .bind(form_f64(&form, "tension_min_v").filter(|v| *v > 0.0).unwrap_or(190.0))
+    .execute(&state.pool)
+    .await?;
+    Ok(Redirect::to(&format!(
+        "/ambiance/zigbee/electricite?ok={}#el-{ieee}",
+        encode_query(&format!("Surveillance de « {nom} » enregistrée"))
+    ))
+    .into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,6 +693,30 @@ mod tests {
         let debut = fiche.find("Ambiance").unwrap_or(0);
         println!("fiche post-sevrage : bloc ambiance présent : {}", fiche.contains("🌡️ Ambiance"));
         println!("{}", fiche[debut..(debut + 600).min(fiche.len())].split_whitespace().collect::<Vec<_>>().join(" "));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn la_surveillance_electrique_s_affiche_et_se_regle() -> anyhow::Result<()> {
+        use super::super::documents::tests::session;
+        let state = base().await?;
+        sqlx::raw_sql(include_str!("../../migrations/0018_surveillance_electrique.sql")).execute(&state.pool).await?;
+        sqlx::raw_sql(
+            "INSERT INTO zigbee_valeur(ieee,cle,valeur,texte,ts) VALUES \
+               ('0xc3','power',4775,NULL,strftime('%s','now')),('0xc3','voltage',229,NULL,strftime('%s','now')), \
+               ('0xc3','voltage_phase_b',0,NULL,strftime('%s','now')),('0xc3','current_phase_b',12.4,NULL,strftime('%s','now')); \
+             INSERT INTO zigbee_mesure(ieee,cle,ts,valeur) VALUES('0xc3','power',strftime('%s','now')-3600,4000),('0xc3','power',strftime('%s','now')-60,4775);",
+        )
+        .execute(&state.pool)
+        .await?;
+        let html = electricite(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("tri") && html.contains("4775") && html.contains("polyline"), "{html}");
+        assert!(html.contains("class=\"coupee\">0 V"), "phase B coupée signalée");
+        electricite_reglages(State(state.clone()), Extension(session()),
+            Form(f(&[("ieee", "0xc3"), ("seuil_marche_w", "50"), ("puissance_max_w", "9000"), ("phases", "1"), ("tension_min_v", "200")]))).await?;
+        let (seuil, max): (f64, Option<f64>) = sqlx::query_as("SELECT seuil_marche_w, puissance_max_w FROM zigbee_surveillance WHERE ieee='0xc3'")
+            .fetch_one(&state.pool).await?;
+        assert_eq!((seuil, max), (50.0, Some(9000.0)));
         Ok(())
     }
 

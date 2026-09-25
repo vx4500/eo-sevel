@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block title %}Réseau Zigbee — EO_Sevel{% endblock %}{% block content %}
-<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px"><h1 style="margin:0">📡 Réseau Zigbee</h1><a class="muted" href="/equipements">← Mes équipements</a></div>
+<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px"><h1 style="margin:0">📡 Réseau Zigbee</h1><a class="muted" href="/equipements">← Mes équipements</a><a class="button" href="/ambiance/zigbee/electricite" style="margin-left:auto">⚡ Surveillance électrique</a></div>
 <style>
 .zb-etat{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);margin-bottom:14px}
 .zb-etat.ko{background:#fbeae4;border-color:#efc1b1}
@@ -26,7 +26,8 @@
 .zb-lien.rattache{color:#1f6a43;font-weight:700}
 .zb-carte details summary{cursor:pointer;font-size:.85rem;color:var(--vert2);font-weight:700}
 .zb-carte form{display:flex;flex-direction:column;gap:6px;margin:8px 0 0}
-.zb-ligne{display:flex;gap:6px}.zb-ligne>*{flex:1}
+.zb-ligne{display:flex;gap:6px}.zb-ligne>*{flex:1;min-width:0}
+.zb-carte input,.zb-carte select{width:100%;min-width:0;box-sizing:border-box}
 .zb-etat-on{color:#b78600}
 </style>
 

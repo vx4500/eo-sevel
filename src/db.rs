@@ -346,6 +346,10 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0017_zigbee.sql"))
         .execute(pool)
         .await?;
+    // Surveillance électrique des appareils (compteurs Zigbee).
+    sqlx::raw_sql(include_str!("../migrations/0018_surveillance_electrique.sql"))
+        .execute(pool)
+        .await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))

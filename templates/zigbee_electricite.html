@@ -1,0 +1,81 @@
+{% extends "base.html" %}{% block title %}Surveillance électrique — EO_Sevel{% endblock %}{% block content %}
+<style>
+.el-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
+.el-carte{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;scroll-margin-top:90px}
+.el-carte:target{box-shadow:0 0 0 3px var(--accent)}
+.el-carte .tete{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:-14px -16px 0;padding:12px 16px;background:linear-gradient(120deg,#5a3d0a,#b7791f)}
+.el-carte .tete h2{margin:0;font-size:1.2rem;font-weight:800;color:#fff!important}
+.el-etat{font-size:.78rem;font-weight:800;padding:3px 10px;border-radius:999px;background:#fff;color:#5a3d0a}
+.el-etat.marche{background:#e2f3e8;color:#1f6a43}
+.el-chiffres{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.el-chiffres div{background:#f6f8f7;border-radius:9px;padding:6px 8px;text-align:center}
+.el-chiffres b{display:block;font-size:1.15rem}
+.el-chiffres small{color:var(--muted);font-size:.7rem}
+.el-phases{width:100%;border-collapse:collapse;font-size:.85rem}
+.el-phases td,.el-phases th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+.el-phases .coupee{color:#a3361a;font-weight:800}
+.el-courbe{width:100%;height:auto;background:#f6f8f7;border-radius:10px}
+.el-alerte{padding:8px 10px;border-radius:9px;background:#fbeae4;color:#6b2412;font-size:.88rem}
+.el-carte form{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.el-carte form label{min-width:0}
+.el-carte form input{width:100%;min-width:0;box-sizing:border-box}
+.el-carte form .plein{grid-column:1/-1}
+@media(max-width:520px){.el-grille{grid-template-columns:1fr}.el-chiffres{grid-template-columns:1fr 1fr}}
+</style>
+<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px"><h1 style="margin:0">⚡ Surveillance électrique</h1><a class="muted" href="/ambiance/zigbee">← Réseau Zigbee</a></div>
+<p class="muted" style="margin-top:0">Marche et arrêt, temps de fonctionnement, phases et puissance des appareils suivis par un compteur Zigbee. Les alertes (coupure de phase, puissance trop forte, marche ou arrêt trop long) s'affichent aussi dans la cloche et sur EO_Awel.</p>
+{% if ok %}<div class="card"><p style="margin:0"><b>{{ ok }}</b></p></div>{% endif %}
+
+{% if not appareils %}<div class="card"><p class="rust-empty">Aucun compteur Zigbee. Un compteur électrique appairé dans Zigbee2MQTT apparaît ici automatiquement.</p></div>{% endif %}
+
+<div class="el-grille">
+{% for a in appareils %}
+<section class="el-carte" id="el-{{ a.ieee }}">
+  <div class="tete"><h2>{{ a.nom }}</h2>
+    <span class="el-etat{% if a.en_marche %} marche{% endif %}">{% if a.en_marche == true %}⚙️ En marche{% elif a.en_marche == false %}⏸ À l'arrêt{% else %}état inconnu{% endif %}{% if a.depuis %} depuis {{ a.depuis }}{% endif %}</span>
+  </div>
+
+  {% for al in a.alertes %}<div class="el-alerte">⚠ {{ al.message }}</div>{% endfor %}
+
+  <div class="el-chiffres">
+    <div><b>{% if a.puissance is not none %}{{ a.puissance|round|int }}{% else %}—{% endif %}</b><small>watts</small></div>
+    <div><b>{{ a.marche_aujourdhui }}</b><small>en marche aujourd'hui</small></div>
+    <div><b>{{ a.demarrages }}</b><small>démarrage{% if a.demarrages != 1 %}s{% endif %} aujourd'hui</small></div>
+    <div><b>{% if a.depuis_releve is not none %}{{ a.depuis_releve }}{% else %}—{% endif %}</b><small>kWh depuis 6 h</small></div>
+  </div>
+
+  {% if a.phases %}
+  <table class="el-phases">
+    <tr><th>Phase</th><th>Tension</th><th>Courant</th></tr>
+    {% for p in a.phases %}<tr><td>{{ p.phase }}</td><td{% if a.surveiller_phases and p.tension is not none and p.tension < a.tension_min %} class="coupee"{% endif %}>{% if p.tension is not none %}{{ p.tension|round|int }} V{% else %}—{% endif %}</td><td>{% if p.courant is not none %}{{ p.courant|round(2) }} A{% else %}—{% endif %}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+
+  <div>
+    <small class="muted">Puissance sur 24 h (échelle 0 – {{ a.echelle_max|int }} W) · pointillé vert : seuil de marche{% if a.p_max %} · rouge : maximum{% endif %}</small>
+    <svg class="el-courbe" viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance">
+      <line x1="0" x2="600" y1="{{ a.y_seuil|round(1) }}" y2="{{ a.y_seuil|round(1) }}" stroke="#2d6a4f" stroke-dasharray="4 4" stroke-width="1"/>
+      {% if a.y_max is not none %}<line x1="0" x2="600" y1="{{ a.y_max|round(1) }}" y2="{{ a.y_max|round(1) }}" stroke="#a3361a" stroke-dasharray="4 4" stroke-width="1"/>{% endif %}
+      {% if a.trace %}<polyline points="{{ a.trace }}" fill="none" stroke="#b7791f" stroke-width="2"/>{% else %}<text x="300" y="64" text-anchor="middle" fill="#8a948f" font-size="13">La courbe se remplit au fil des mesures</text>{% endif %}
+    </svg>
+    <small class="muted">il y a 24 h ← → maintenant · index {% if a.energie is not none %}{{ a.energie }} kWh{% else %}—{% endif %} · mesure {{ a.vu or 'jamais reçue' }}</small>
+  </div>
+
+  {% if session.peut_modifier %}
+  <details>
+    <summary style="cursor:pointer;font-weight:700;color:var(--vert2)">Réglages et alertes</summary>
+    <form method="post" action="/ambiance/zigbee/electricite/reglages" data-no-ajax style="margin-top:10px">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ieee" value="{{ a.ieee }}">
+      <label>En marche au-dessus de (W)<input name="seuil_marche_w" inputmode="decimal" value="{{ a.seuil }}"></label>
+      <label>Alerte au-dessus de (W)<input name="puissance_max_w" inputmode="decimal" value="{{ a.p_max if a.p_max is not none else '' }}" placeholder="aucune"></label>
+      <label>Alerte si en marche plus de (min)<input name="marche_max_min" inputmode="numeric" value="{{ a.marche_max if a.marche_max is not none else '' }}" placeholder="aucune"></label>
+      <label>Alerte si à l'arrêt plus de (h)<input name="arret_max_h" inputmode="decimal" value="{{ a.arret_max if a.arret_max is not none else '' }}" placeholder="aucune"></label>
+      <label class="plein" style="display:flex;flex-direction:row;gap:8px;align-items:center"><input type="checkbox" name="phases" value="1" style="width:auto"{% if a.surveiller_phases %} checked{% endif %}> Alerte de coupure de phase, sous <input name="tension_min_v" inputmode="decimal" value="{{ a.tension_min }}" style="width:70px"> V</label>
+      <button class="plein">Enregistrer</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1203,6 +1203,29 @@ pub(super) async fn ipx_points_json(
 /// décalage quand elle est renseignée. Une formule mal formée ne se rabat
 /// jamais silencieusement sur une autre conversion : elle renvoie l'absence
 /// de valeur, comme partout ailleurs dans l'application.
+/// Valeur actuelle d'un point, convertie dans son unité : lue en base pour
+/// un point Zigbee, interrogée sur l'automate (2 s au plus) sinon.
+pub(super) async fn lire_point(
+    pool: &SqlitePool,
+    hote: &str,
+    chemin: &str,
+    formule: Option<&str>,
+    coefficient: f64,
+    decalage: f64,
+) -> Option<f64> {
+    let brut = if hote == super::zigbee::HOTE {
+        super::zigbee::valeur_point(pool, chemin).await
+    } else {
+        let acces = acces_lecture(pool).await;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .ok()?;
+        lire_valeur(&client, &acces, hote, chemin).await
+    };
+    brut.and_then(|v| convertir(v, formule, coefficient, decalage))
+}
+
 fn convertir(brut: f64, formule: Option<&str>, coefficient: f64, decalage: f64) -> Option<f64> {
     match formule.filter(|f| !f.trim().is_empty()) {
         Some(formule) => crate::formule::evaluer(formule, brut),

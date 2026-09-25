@@ -166,6 +166,11 @@ pub fn router(state: AppState) -> Router {
         .route("/ambiance/zigbee", get(zigbee::page))
         .route("/ambiance/zigbee/rattacher", post(zigbee::rattacher))
         .route("/ambiance/zigbee/commander", post(zigbee::commander))
+        .route("/ambiance/zigbee/electricite", get(zigbee::electricite))
+        .route(
+            "/ambiance/zigbee/electricite/reglages",
+            post(zigbee::electricite_reglages),
+        )
         .route("/ambiance/ipx", get(ambiance::ipx_page))
         .route("/ambiance/ipx/explorateur", get(ambiance::ipx_explorateur))
         .route("/ambiance/ipx/acces", get(ambiance::ipx_acces))
@@ -590,6 +595,7 @@ pub fn router(state: AppState) -> Router {
         .route("/structure", get(structure))
         .route("/salles", get(salles::liste))
         .route("/salles/{id}", get(salles::fiche))
+        .route("/salles/{id}/reglages", post(salles::reglages))
         .route("/structure/site", post(structure_site))
         .route(
             "/structure/site/{id}/modifier",

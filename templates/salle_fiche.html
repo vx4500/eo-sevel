@@ -36,6 +36,31 @@
 </section>
 {% endif %}
 
+<section class="card" id="reglages">
+  <h2>🌀 Ventilation et consignes {% if reglages and reglages.pilote %}<span class="sl-badge">régulation automatique</span>{% endif %}</h2>
+  {% if ventilation or (ventil_etat and ventil_etat.ventil is not none) %}
+  <div class="sl-mesures" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr));margin-bottom:10px">
+    {% for v in ventilation %}<div><b>{% if v.valeur is not none %}{{ v.valeur|round|int }}{{ ' %' if (v.unite == '%' or not v.unite) else ' ' ~ v.unite }}{% else %}—{% endif %}</b><small>{{ v.nom }}</small></div>{% endfor %}
+    {% if ventil_etat and ventil_etat.ventil is not none %}<div><b>{{ ventil_etat.ventil|round|int }} %</b><small>consigne calculée{% if ventil_etat.mode == 'securite' %} (repli){% endif %}</small></div>{% endif %}
+  </div>
+  {% else %}<p class="sl-vide" style="margin-top:0">Aucune sortie de ventilation rattachée à cette salle.</p>{% endif %}
+  {% if session.peut_modifier %}
+  <form method="post" action="/salles/{{ salle.id }}/reglages" data-no-ajax class="sl-reglages">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <label>Consigne de température<select name="courbe_id"><option value="">Fixe (ci-contre)</option>{% for c in courbes %}<option value="{{ c.id }}"{% if reglages and reglages.courbe_id == c.id %} selected{% endif %}>Courbe « {{ c.nom }} » (selon l'âge de la bande)</option>{% endfor %}</select></label>
+    <label>Température fixe (°C)<input name="t_cible_fixe" inputmode="decimal" value="{{ reglages.t_cible_fixe if reglages and reglages.t_cible_fixe is not none else 22 }}"></label>
+    <label>Plage (°C)<input name="plage" inputmode="decimal" value="{{ reglages.plage if reglages and reglages.plage is not none else 3 }}"></label>
+    <label>Ventilation mini (%)<input name="ventil_min" inputmode="decimal" value="{{ reglages.ventil_min if reglages and reglages.ventil_min is not none else 20 }}"></label>
+    <label>Ventilation maxi (%)<input name="ventil_max" inputmode="decimal" value="{{ reglages.ventil_max if reglages and reglages.ventil_max is not none else 100 }}"></label>
+    <label>Alerte sous (°C)<input name="t_alerte_min" inputmode="decimal" value="{{ reglages.t_alerte_min if reglages and reglages.t_alerte_min is not none else '' }}" placeholder="aucune"></label>
+    <label>Alerte au-dessus (°C)<input name="t_alerte_max" inputmode="decimal" value="{{ reglages.t_alerte_max if reglages and reglages.t_alerte_max is not none else '' }}" placeholder="aucune"></label>
+    <label>Alerte humidité au-dessus (%)<input name="h_alerte_max" inputmode="decimal" value="{{ reglages.h_alerte_max if reglages and reglages.h_alerte_max is not none else '' }}" placeholder="aucune"></label>
+    <button>Enregistrer les réglages</button>
+  </form>
+  <p class="muted" style="margin:8px 0 0;font-size:.82rem">La plage est l'écart de température sur lequel la ventilation passe du mini au maxi. Les alertes s'appliquent aussi aux sondes Zigbee de la salle. Sondes raccordées et mise en régulation : <a href="/ambiance#salle-{{ salle.id }}">EO_Awel</a>.</p>
+  {% endif %}
+</section>
+
 <section class="card">
   <h2>🐖 Animaux {% if salle.places %}<span class="sl-badge">{{ salle.porcs }} / {{ salle.places }} places</span>{% endif %}</h2>
   {% if cases_detail %}
