@@ -43,6 +43,9 @@ mod eclairage_core;
 #[allow(dead_code)]
 mod formule;
 
+#[path = "../zigbee_pont.rs"]
+mod zigbee_pont;
+
 use regul_core::{
     calculer, consigne_courbe, depuis_dixiemes, doit_ecrire, doit_enregistrer, en_dixiemes,
     Decision, Lecture, Mode, PointCourbe, Reglages,
@@ -52,6 +55,9 @@ use regul_core::{
 /// qu'en dur : l'API de l'IPX800 évolue avec son firmware, et on ne veut pas
 /// recompiler le démon le jour où un chemin change.
 struct AccesIpx {
+    /// Base : les points Zigbee (hote « zigbee ») se lisent et se commandent
+    /// par elle, via le pont MQTT.
+    pool: SqlitePool,
     gabarit_lecture: String,
     gabarit_ecriture: String,
     champ_valeur: String,
@@ -180,6 +186,17 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Pont Zigbee : tâche à part, qui ne bloque jamais la régulation.
+    // EO_ZIGBEE_MQTT=off le désactive ; sinon hôte:port du Mosquitto local.
+    let mqtt = std::env::var("EO_ZIGBEE_MQTT").unwrap_or_else(|_| "127.0.0.1:1883".into());
+    if mqtt != "off" {
+        let (hote, port) = mqtt
+            .rsplit_once(':')
+            .and_then(|(h, p)| p.parse::<u16>().ok().map(|p| (h.to_string(), p)))
+            .unwrap_or_else(|| ("127.0.0.1".into(), 1883));
+        tokio::spawn(zigbee_pont::lancer(pool.clone(), hote, port));
+    }
+
     let mut memoire: HashMap<i64, Memoire> = HashMap::new();
     let mut cycles: i64 = 0;
     let mut erreurs: i64 = 0;
@@ -242,6 +259,7 @@ async fn parametre(pool: &SqlitePool, cle: &str, defaut: &str) -> String {
 
 async fn acces_ipx(pool: &SqlitePool, simulation: bool) -> AccesIpx {
     AccesIpx {
+        pool: pool.clone(),
         gabarit_lecture: parametre(pool, "ambiance_ipx_url_lecture", GABARIT_LECTURE_DEFAUT).await,
         gabarit_ecriture: parametre(pool, "ambiance_ipx_url_ecriture", GABARIT_ECRITURE_DEFAUT)
             .await,
@@ -293,6 +311,9 @@ async fn cycle(
         Ok(Ok(())) => {}
         Ok(Err(error)) => tracing::error!(error = %error, "programmes d'éclairage non appliqués"),
         Err(_) => tracing::warn!("passe d'éclairage interrompue : automate trop lent"),
+    }
+    if let Err(error) = zigbee_pont::alertes(pool).await {
+        tracing::debug!(error = %error, "alertes Zigbee non évaluées");
     }
     Ok(traitees)
 }
@@ -1033,6 +1054,17 @@ async fn lire(client: &reqwest::Client, acces: &AccesIpx, hote: &str, id: Option
     if hote.trim().is_empty() {
         return Lecture::absente();
     }
+    if hote.trim() == "zigbee" {
+        // Dernière valeur rangée par le pont, avec son âge réel : une sonde
+        // muette depuis longtemps est vue comme telle par la régulation.
+        return match zigbee_pont::lire(&acces.pool, id).await {
+            Some((valeur, age_s)) => Lecture {
+                valeur: Some(valeur),
+                age_s,
+            },
+            None => Lecture::absente(),
+        };
+    }
     let adresse = url(&acces.gabarit_lecture, hote, id.trim(), &acces.cle);
     let reponse = match client.get(&adresse).send().await {
         Ok(reponse) => reponse,
@@ -1107,6 +1139,9 @@ async fn ecrire(
     id: &str,
     valeur: f64,
 ) -> Result<()> {
+    if hote.trim() == "zigbee" {
+        return zigbee_pont::commander(&acces.pool, id, valeur).await;
+    }
     let adresse = url(&acces.gabarit_ecriture, hote, id.trim(), &acces.cle);
     let mut objet = serde_json::Map::new();
     if est_objet_io(id) {

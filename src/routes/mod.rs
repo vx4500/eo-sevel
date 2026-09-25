@@ -42,6 +42,7 @@ mod parity;
 mod plans_aliment;
 mod rapport;
 mod salles;
+mod zigbee;
 #[cfg(test)]
 mod regression_tests;
 mod scan;
@@ -162,6 +163,9 @@ pub fn router(state: AppState) -> Router {
             post(eclairage::supprimer),
         )
         .route("/ambiance/automate", get(automate::page))
+        .route("/ambiance/zigbee", get(zigbee::page))
+        .route("/ambiance/zigbee/rattacher", post(zigbee::rattacher))
+        .route("/ambiance/zigbee/commander", post(zigbee::commander))
         .route("/ambiance/ipx", get(ambiance::ipx_page))
         .route("/ambiance/ipx/explorateur", get(ambiance::ipx_explorateur))
         .route("/ambiance/ipx/acces", get(ambiance::ipx_acces))

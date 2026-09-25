@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.23.0** — Dernière mise à jour de ce document : 24 septembre 2026.
+Version actuelle : **2.24.0** — Dernière mise à jour de ce document : 25 septembre 2026.
+
+### Version 2.24.0 — Zigbee
+
+Version Rust 2.24.0 : le réseau Zigbee d'Emmanuel (SLZB-MR5U, 25 appareils) quitte Home Assistant pour Zigbee2MQTT + Mosquitto sur ce serveur (voir mémoire serveur). `eo-regul` embarque un pont MQTT (src/zigbee_pont.rs, crate rumqttc, EO_ZIGBEE_MQTT=hôte:port ou off) : appareils, dernières valeurs (écriture bornée), historique 90 j des grandeurs lentes, file de commandes `zigbee_commande`, alertes pile/muet/seuils de température (migration 0017). Onglet Automate → Zigbee (`/ambiance/zigbee`, src/routes/zigbee.rs) : appareils par type, valeurs, pile, signal ; rattacher à une salle crée des points `ipx_point` hote='zigbee', chemin '<ieee>/<grandeur>' — lus/commandés par le pont dans `lire`/`ecrire` du démon et `envoyer_commande` de l'application. Donc : sondes dans Mes salles (valeurs + frise 14 j si pas de sonde IPX), interrupteurs comme lampes des programmes d'éclairage, compteurs relevés chaque jour dans Eau et électricité.
 
 ### Version 2.23.0 — Mes salles
 

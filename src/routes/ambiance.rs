@@ -1171,7 +1171,11 @@ pub(super) async fn ipx_points_json(
 
         let mut enrichi = point.clone();
         if actif {
-            let brut = lire_valeur(&client, &acces, &hote, &chemin).await;
+            let brut = if hote == super::zigbee::HOTE {
+                super::zigbee::valeur_point(&state.pool, &chemin).await
+            } else {
+                lire_valeur(&client, &acces, &hote, &chemin).await
+            };
             if let Some(objet) = enrichi.as_object_mut() {
                 objet.insert("brut".into(), json!(brut));
                 objet.insert(
@@ -1276,6 +1280,9 @@ pub(super) async fn envoyer_commande(
     chemin_ecriture: &str,
     valeur: f64,
 ) -> AppResult<String> {
+    if hote.trim() == super::zigbee::HOTE {
+        return super::zigbee::deposer_commande(pool, chemin_ecriture, valeur).await;
+    }
     let acces = acces_lecture(pool).await;
     let adresse = acces
         .gabarit_ecriture

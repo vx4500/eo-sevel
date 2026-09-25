@@ -76,6 +76,30 @@ async fn resume(pool: &SqlitePool, ligne: &sqlx::sqlite::SqliteRow) -> AppResult
             .bind(id)
             .fetch_optional(pool)
             .await?;
+    // Sans état de régulation (salle sans sonde IPX), les sondes Zigbee
+    // rattachées à la salle donnent la température et l'humidité (moyenne
+    // des sondes de la salle).
+    let etat = match etat {
+        Some(etat) => Some(etat),
+        None => sqlx::query_as::<_, (Option<i64>, Option<f64>, Option<f64>, Option<f64>)>(
+            "SELECT MAX(v.ts), \
+                    AVG(CASE WHEN p.role='temperature' THEN v.valeur * p.coefficient + p.decalage END), \
+                    AVG(CASE WHEN p.role='humidite' THEN v.valeur * p.coefficient + p.decalage END), \
+                    AVG(CASE WHEN p.role='luminosite' THEN v.valeur * p.coefficient + p.decalage END) \
+             FROM ipx_point p JOIN zigbee_valeur v ON p.chemin = v.ieee || '/' || v.cle \
+             WHERE p.hote='zigbee' AND p.actif=1 AND p.salle_id=? \
+               AND p.role IN ('temperature','humidite','luminosite')",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|(t_ts, t, h, lux)| {
+            t_ts.filter(|_| t.is_some() || h.is_some())
+                .map(|t_ts| (t_ts, t, h, lux, None, 1))
+        }),
+    };
     let alertes: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM ambiance_alerte WHERE salle_id=? AND fin IS NULL",
     )
@@ -217,6 +241,26 @@ pub(super) async fn fiche(
     .bind(id)
     .fetch_all(pool)
     .await?;
+    // Salle suivie seulement par des sondes Zigbee : même frise, calculée
+    // sur leur historique (en dixièmes, comme les agrégats d'ambiance).
+    let jours = if jours.is_empty() {
+        sqlx::query_as::<_, (String, String, Option<i64>, Option<i64>, Option<i64>)>(
+            "SELECT date(m.ts,'unixepoch','localtime') AS jour, \
+                    CASE p.role WHEN 'temperature' THEN 't' WHEN 'humidite' THEN 'h' ELSE 'lux' END, \
+                    CAST(ROUND(AVG(m.valeur) * 10) AS INTEGER), CAST(ROUND(MIN(m.valeur) * 10) AS INTEGER), \
+                    CAST(ROUND(MAX(m.valeur) * 10) AS INTEGER) \
+             FROM ipx_point p JOIN zigbee_mesure m ON p.chemin = m.ieee || '/' || m.cle \
+             WHERE p.hote='zigbee' AND p.salle_id=? AND p.role IN ('temperature','humidite','luminosite') \
+               AND m.ts >= strftime('%s','now','-13 day','start of day') \
+             GROUP BY 1, 2 ORDER BY 1",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+    } else {
+        jours
+    };
     let mut historique: Vec<Value> = Vec::new();
     for (jour, grandeur, moy, mini, maxi) in jours {
         let position = match historique.iter().position(|j| j.get("jour").and_then(Value::as_str) == Some(jour.as_str())) {
@@ -433,6 +477,11 @@ fn ligne_en_json(ligne: &sqlx::sqlite::SqliteRow) -> Value {
         objet.insert(colonne.name().to_string(), valeur);
     }
     Value::Object(objet)
+}
+
+#[cfg(test)]
+pub(super) async fn fiche_pour_test(state: &AppState, id: i64) -> AppResult<String> {
+    Ok(fiche(State(state.clone()), Extension(super::documents::tests::session()), Path(id)).await?.0)
 }
 
 #[cfg(test)]
