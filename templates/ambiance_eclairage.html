@@ -67,7 +67,7 @@
 <div class="ecl-grille">
 {% for p in programmes %}
 <section class="ecl-carte{% if not p.actif %} en-pause{% endif %}" id="programme-{{ p.id }}" data-programme="{{ p.id }}">
-  <header>
+  <div class="tete">
     <h2>{{ p.nom }}</h2>
     <div class="ecl-badges">
       {% if not p.actif %}<span class="ecl-badge gris">En pause</span>
@@ -78,7 +78,7 @@
       {% if p.lux_actif %}<span class="ecl-puce" title="Luminosité : {{ p.lux_nom or 'capteur' }}">☀️</span>{% endif %}
       {% if p.minuterie_actif %}<span class="ecl-puce" title="Minuterie">⏱️</span>{% endif %}
     </div>
-  </header>
+  </div>
 
   <div class="ecl-resume">{% for phrase in p.resume %}<p>{{ phrase }}</p>{% endfor %}</div>
 

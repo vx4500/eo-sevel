@@ -15,7 +15,7 @@
 
   <!-- 1. Nom et lampes -->
   <section class="ecl-etape">
-    <header><span class="ecl-num">1</span><h2>Nom et lampes</h2></header>
+    <div class="tete"><span class="ecl-num">1</span><h2>Nom et lampes</h2></div>
     <label style="max-width:420px;margin-bottom:12px">Nom du programme
       <input name="nom" value="{{ programme.nom }}" required maxlength="80" placeholder="ex. Maternité — jour">
     </label>
@@ -39,9 +39,9 @@
 
   <!-- 2. Horaires -->
   <section class="ecl-etape{% if not programme.horaires_actif %} eteinte{% endif %}" data-section="horaires">
-    <header><span class="ecl-num">2</span><h2>🕒 Horaires</h2>
+    <div class="tete"><span class="ecl-num">2</span><h2>🕒 Horaires</h2>
       <label class="ecl-inter"><input type="checkbox" name="horaires_actif" value="1"{% if programme.horaires_actif %} checked{% endif %} data-bascule><i></i><span>Allumer selon des horaires</span></label>
-    </header>
+    </div>
     <div class="ecl-corps">
       <p class="aide">La lumière est allumée pendant chaque plage. Une fin plus tôt que le début passe minuit (22:00 → 06:00). Début égal à la fin : toute la journée.</p>
       <div id="ecl-plages">
@@ -60,9 +60,9 @@
 
   <!-- 3. Luminosité -->
   <section class="ecl-etape{% if not programme.lux_actif %} eteinte{% endif %}" data-section="lux">
-    <header><span class="ecl-num">3</span><h2>☀️ Luminosité</h2>
+    <div class="tete"><span class="ecl-num">3</span><h2>☀️ Luminosité</h2>
       <label class="ecl-inter"><input type="checkbox" name="lux_actif" value="1"{% if programme.lux_actif %} checked{% endif %} data-bascule><i></i><span>Tenir compte de la lumière du jour</span></label>
-    </header>
+    </div>
     <div class="ecl-corps">
       {% if capteurs %}
       <p class="aide">Avec des horaires : n'allume pendant la plage que s'il fait sombre. Sans horaires : allume dès qu'il fait sombre, à toute heure.</p>
@@ -89,9 +89,9 @@
 
   <!-- 4. Minuterie -->
   <section class="ecl-etape{% if not programme.minuterie_actif %} eteinte{% endif %}" data-section="minuterie">
-    <header><span class="ecl-num">4</span><h2>⏱️ Minuterie</h2>
+    <div class="tete"><span class="ecl-num">4</span><h2>⏱️ Minuterie</h2>
       <label class="ecl-inter"><input type="checkbox" name="minuterie_actif" value="1"{% if programme.minuterie_actif %} checked{% endif %} data-bascule><i></i><span>Éteindre après un temps</span></label>
-    </header>
+    </div>
     <div class="ecl-corps">
       <label class="ecl-phrase">Éteindre automatiquement <input name="minuterie_min" type="number" min="1" max="1440" value="{{ programme.minuterie_min if programme.minuterie_min is not none else 30 }}"> min après l'allumage</label>
       <label class="ecl-phrase"><input type="checkbox" name="minuterie_manuel" value="1" style="width:auto"{% if programme.minuterie_manuel %} checked{% endif %}> même quand la lumière a été allumée à la main (interrupteur, application)</label>
@@ -101,7 +101,7 @@
 
   <!-- 5. Mise en service -->
   <section class="ecl-etape">
-    <header><span class="ecl-num">5</span><h2>Mise en service</h2></header>
+    <div class="tete"><span class="ecl-num">5</span><h2>Mise en service</h2></div>
     <div class="ecl-radios">
       <label><input type="checkbox" name="actif" value="1"{% if programme.actif %} checked{% endif %}> <b>Programme actif</b> — décoché, il est mis en pause et ne touche plus aux lampes.</label>
       <label><input type="checkbox" name="essai" value="1" id="ecl-essai"{% if programme.essai %} checked{% endif %}> <b>Mode essai</b> — tout est calculé et noté au journal, rien n'est envoyé aux lampes. Conseillé la première journée.</label>
@@ -119,7 +119,7 @@
 <!-- Aperçu en direct -->
 <aside class="ecl-apercu">
   <section class="ecl-etape">
-    <header><h2>En résumé</h2></header>
+    <div class="tete"><h2>En résumé</h2></div>
     <ul id="ecl-resume"><li class="muted">…</li></ul>
     <div class="ecl-semaine" id="ecl-frise"></div>
   </section>

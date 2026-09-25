@@ -5,7 +5,7 @@
 <div class="sl-grille">
 {% for s in salles %}
 <a class="sl-carte" href="/salles/{{ s.id }}">
-  <header><h2>{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></header>
+  <div class="tete"><h2>{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></div>
   <div class="sl-badges">
     {% if s.bande %}<span class="sl-badge">Bande {{ s.bande.code }} · jour {{ s.bande.jour }}</span>{% endif %}
     {% if s.alertes %}<span class="sl-badge rouge">⚠ {{ s.alertes }} alerte{% if s.alertes > 1 %}s{% endif %}</span>{% endif %}

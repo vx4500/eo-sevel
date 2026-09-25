@@ -10,8 +10,8 @@
 .lp-sortie{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;scroll-margin-top:90px}
 .lp-sortie.probable{border-color:#e9c46a;background:#fffbef}
 .lp-sortie:target{box-shadow:0 0 0 3px var(--accent)}
-.lp-sortie header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.lp-sortie header b{flex:1}
+.lp-sortie .tete{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.lp-sortie .tete b{flex:1}
 .lp-sortie form{display:flex;flex-direction:column;gap:8px;margin:0}
 .lp-sortie .ecl-ligne button{padding:7px 8px}
 .lp-deja{font-size:.85rem;color:var(--muted)}
@@ -46,11 +46,11 @@
   <div class="lp-liste">
   {% for s in g.list %}
     <div class="lp-sortie{% if s.probable and not s.deja %} probable{% endif %}" id="sortie-{{ s.id }}">
-      <header>
+      <div class="tete">
         <span class="ecl-ampoule {% if s.etat == true %}on{% elif s.etat == false %}off{% else %}inconnu{% endif %}" title="{% if s.etat == true %}allumée en ce moment{% elif s.etat == false %}éteinte en ce moment{% endif %}"></span>
         <b>{{ s.nom_ipx or ('Sortie ' ~ s.id) }}</b>
         {% if s.probable and not s.deja %}<span class="ecl-badge orange">éclairage ?</span>{% endif %}
-      </header>
+      </div>
       {% if s.deja %}
       <p class="lp-deja">{% if s.deja_lampe %}✅ Déjà déclarée comme lampe : « {{ s.deja }} »{% else %}Déjà utilisée : « {{ s.deja }} »{% endif %}</p>
       {% endif %}

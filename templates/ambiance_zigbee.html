@@ -10,8 +10,8 @@
 .zb-carte{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;scroll-margin-top:90px}
 .zb-carte:target{box-shadow:0 0 0 3px var(--accent)}
 .zb-carte.muet{border-color:#efc1b1}
-.zb-carte header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.zb-carte header b{font-size:1.02rem}
+.zb-carte .tete{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.zb-carte .tete b{font-size:1.02rem}
 .zb-modele{font-size:.72rem;color:var(--muted)}
 .zb-valeur{font-size:1.5rem;font-weight:800}
 .zb-valeur small{font-size:.9rem;font-weight:600;color:var(--muted)}
@@ -52,7 +52,7 @@
   <div class="zb-grille">
   {% for a in g.appareils %}
     <div class="zb-carte{% if a.vieux or a.disponible == false %} muet{% endif %}" id="zb-{{ a.ieee }}">
-      <header><b>{{ a.nom }}</b><span class="zb-modele">{{ a.fabricant or '' }} {{ a.modele or '' }}</span></header>
+      <div class="tete"><b>{{ a.nom }}</b><span class="zb-modele">{{ a.fabricant or '' }} {{ a.modele or '' }}</span></div>
 
       <div class="zb-valeur">
         {% if a.categorie == 'sonde' %}{% if a.temperature is not none %}{{ a.temperature|round(1) }}<small> °C</small>{% else %}—{% endif %}{% if a.humidite is not none %} · {{ a.humidite|round|int }}<small> %</small>{% endif %}

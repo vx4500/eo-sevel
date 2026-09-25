@@ -15,7 +15,7 @@
 .ecl-carte{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:80px}
 .ecl-carte:target{box-shadow:0 0 0 3px var(--accent)}
 .ecl-carte.en-pause{opacity:.72}
-.ecl-carte header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.ecl-carte .tete{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .ecl-carte h2{margin:0;font-size:1.15rem}
 .ecl-badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ecl-badge{font-size:.74rem;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
@@ -57,9 +57,9 @@
 /* Formulaire */
 .ecl-form{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
 .ecl-etape{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
-.ecl-etape>header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-.ecl-etape>header h2{margin:0;font-size:1.05rem;flex:1}
-.ecl-etape>header .ecl-num{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--vert);color:#fff;font-weight:800}
+.ecl-etape>.tete{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ecl-etape>.tete h2{margin:0;font-size:1.05rem;flex:1}
+.ecl-etape>.tete .ecl-num{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--vert);color:#fff;font-weight:800}
 .ecl-etape.eteinte>.ecl-corps{display:none}
 .ecl-etape.eteinte{background:#f7f9f8}
 .ecl-etape p.aide{margin:0 0 10px;color:var(--muted);font-size:.88rem}

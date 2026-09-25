@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.24.0** — Dernière mise à jour de ce document : 25 septembre 2026.
+Version actuelle : **2.24.1** —
+
+### Version 2.24.1 — Noms de salles lisibles
+
+Version Rust 2.24.1 : les cartes (Mes salles, Éclairage, Zigbee, Ajouter une lampe, étapes du formulaire) utilisaient `<header>`, que style.css peint en bandeau vert foncé avec texte blanc (règle globale de l'en-tête du site) : noms illisibles. Remplacé par `<div class="tete">`. Ne jamais utiliser `<header>` dans le contenu des pages.
+
+— Dernière mise à jour de ce document : 25 septembre 2026.
 
 ### Version 2.24.0 — Zigbee
 
