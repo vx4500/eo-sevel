@@ -189,7 +189,53 @@ async fn resume(pool: &SqlitePool, ligne: &sqlx::sqlite::SqliteRow) -> AppResult
     }))
 }
 
-const SALLES_SQL: &str = "SELECT s.id, s.nom, COALESCE(s.type,'') AS type, s.dernier_lavage, \
+/// Stade d'une salle, dans l'ordre du parcours des animaux : rang et titre.
+/// Le type de la salle décide ; le nom départage (une « Post-Engraissement »
+/// notée de type engraissement reste à part).
+pub(super) fn stade(type_salle: &str, nom: &str) -> (u8, &'static str) {
+    let t = format!("{type_salle} {nom}")
+        .to_lowercase()
+        .replace(['_', '-'], " ")
+        .replace('é', "e")
+        .replace('è', "e");
+    if t.contains("verrat") {
+        (1, "Verraterie")
+    } else if t.contains("gestant") || t.contains("gestation") {
+        (2, "Gestante")
+    } else if t.contains("mater") {
+        (3, "Maternité")
+    } else if t.contains("post engr") {
+        (5, "Post-engraissement")
+    } else if t.contains("post sevr") || t.contains("sevrage") {
+        (4, "Post-sevrage")
+    } else if t.contains("engr") {
+        (6, "Engraissement")
+    } else {
+        (7, "Autres")
+    }
+}
+
+/// Tri « naturel » : Engraissement 2 avant Engraissement 10.
+fn cle_naturelle(nom: &str) -> Vec<(String, u64)> {
+    let mut sortie = Vec::new();
+    let mut texte = String::new();
+    let mut nombre = String::new();
+    for c in nom.to_lowercase().chars() {
+        if c.is_ascii_digit() {
+            nombre.push(c);
+        } else {
+            if !nombre.is_empty() {
+                sortie.push((std::mem::take(&mut texte), nombre.parse().unwrap_or(0)));
+                nombre.clear();
+            }
+            texte.push(c);
+        }
+    }
+    sortie.push((texte, nombre.parse().unwrap_or(0)));
+    sortie
+}
+
+const SALLES_SQL: &str = "SELECT s.id, s.nom, COALESCE(s.type,'') AS type, s.dernier_lavage, s.ordre, \
      s.longueur, s.largeur, s.hauteur, s.mode_chauffage, si.nom AS site \
      FROM salle s LEFT JOIN site si ON si.id=s.site_id";
 
@@ -202,8 +248,22 @@ pub(super) async fn liste(
         .await?;
     let mut salles = Vec::with_capacity(lignes.len());
     for ligne in &lignes {
-        salles.push(resume(&state.pool, ligne).await?);
+        let mut salle = resume(&state.pool, ligne).await?;
+        let type_salle = salle.get("type").and_then(Value::as_str).unwrap_or("").to_string();
+        let nom = salle.get("nom").and_then(Value::as_str).unwrap_or("").to_string();
+        let (rang, titre) = stade(&type_salle, &nom);
+        let ordre: i64 = ligne.try_get("ordre").unwrap_or(0);
+        if let Some(objet) = salle.as_object_mut() {
+            objet.insert("stade".into(), json!(titre));
+        }
+        // Dans un stade : site par site, puis l'ordre de Structure et le nom.
+        let site = salle.get("site").and_then(Value::as_str).unwrap_or("").to_lowercase();
+        salles.push(((rang, site, ordre, cle_naturelle(&nom)), salle));
     }
+    // Toujours le même ordre : le parcours des animaux, de la verraterie à
+    // l'engraissement ; dans un stade, par site, ordre de Structure puis nom.
+    salles.sort_by(|a, b| a.0.cmp(&b.0));
+    let salles: Vec<Value> = salles.into_iter().map(|(_, s)| s).collect();
     let mut contexte = context(&session);
     contexte.insert("salles".into(), Value::Array(salles));
     render(&state, "salles.html", Value::Object(contexte))
@@ -728,6 +788,19 @@ mod tests {
         }
         println!("liste : {} octets", liste_html.len());
         Ok(())
+    }
+
+    #[test]
+    fn les_salles_se_rangent_dans_l_ordre_du_parcours() {
+        assert_eq!(stade("verraterie", "Verraterie").0, 1);
+        assert_eq!(stade("gestante", "Gestante").0, 2);
+        assert_eq!(stade("maternite", "Mater 3").0, 3);
+        assert_eq!(stade("Post-sevrage", "Post-sevrage 2").0, 4);
+        assert_eq!(stade("post_sevrage", "Post-sevrage 1").0, 4);
+        assert_eq!(stade("engraissement", "Post-Engraissement").0, 5);
+        assert_eq!(stade("Engraissement", "Engraissement 4").0, 6);
+        assert_eq!(stade("", "Quai").0, 7);
+        assert!(cle_naturelle("Engraissement 2") < cle_naturelle("Engraissement 10"));
     }
 
     #[tokio::test]

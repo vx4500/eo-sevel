@@ -2,8 +2,10 @@
 {% include "salles_style.html" %}
 <h1 style="margin-bottom:4px">🏠 Mes salles</h1>
 <p class="muted" style="margin-top:0">Tout ce que le logiciel sait de chaque salle : animaux, bande, ambiance, lumière, alertes. Cliquez sur une salle pour sa fiche complète. Les informations s'ajoutent d'elles-mêmes dès qu'un élément est relié à la salle.</p>
-<div class="sl-grille">
 {% for s in salles %}
+{% if loop.first or s.stade != loop.previtem.stade %}{% if not loop.first %}</div>{% endif %}
+<h2 class="sl-stade">{{ s.stade }}</h2>
+<div class="sl-grille">{% endif %}
 <a class="sl-carte t-{{ (s.type or '')|lower|replace('_', '-') }}" href="/salles/{{ s.id }}">
   <div class="tete"><h2>{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></div>
   <div class="sl-badges">
@@ -28,8 +30,8 @@
     {% if s.lavage %}<div>🧽 Lavée le {{ s.lavage }} <span>({{ s.jours_lavage }} j)</span></div>{% endif %}
   </div>
 </a>
+{% if loop.last %}</div>{% endif %}
 {% else %}
 <p class="rust-empty">Aucune salle. Créez-les dans <a href="/structure">Structure</a>.</p>
 {% endfor %}
-</div>
 {% endblock %}

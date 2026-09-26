@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.26.2** —
+Version actuelle : **2.26.3** —
+
+### Version 2.26.3 — Mes salles rangées par stade
+
+Version Rust 2.26.3 : Mes salles suit le parcours des animaux, avec un titre par stade : verraterie, gestante, maternité, post-sevrage, post-engraissement, engraissement, autres (`salles::stade`, type puis nom ; tri naturel des numéros).
+
+—
 
 ### Version 2.26.2 — Bande suivie dans les transferts de case à case
 
