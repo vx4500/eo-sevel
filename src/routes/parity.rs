@@ -390,7 +390,8 @@ pub(super) async fn bande_engraisseur(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    sqlx::query("UPDATE bande SET engraisseur_id=?,poids_cible=?,instructions=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(form_i64(&form,"engraisseur_id")).bind(form_f64(&form,"poids_cible")).bind(form_text(&form,"instructions")).bind(id).execute(&state.pool).await?;
+    super::prestataire::confier_bande(&state.pool, id, form_i64(&form, "engraisseur_id"), &form_date_or_today(&form, "date")?).await?;
+    sqlx::query("UPDATE bande SET poids_cible=?,instructions=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(form_f64(&form,"poids_cible")).bind(form_text(&form,"instructions")).bind(id).execute(&state.pool).await?;
     Ok(Redirect::to(&format!("/bande/{id}")).into_response())
 }
 

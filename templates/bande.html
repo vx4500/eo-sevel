@@ -9,6 +9,17 @@
   <a href="/bande/{{ bande.id }}/fiche-mise-bas">Fiche de mise-bas (A4)</a>
   <a href="/export/mise-bas/{{ bande.id }}">Exporter la liste (CSV)</a>
 </div></details>
+<section class="card" id="prestataire"><h2>Prestataire</h2>
+{% set pb = presta_bande %}
+{% if pb and pb.engraisseur_id %}<p>Confiée à <b>{% for p in prestataires %}{% if p.id == pb.engraisseur_id %}{{ p.identifiant }}{% endif %}{% endfor %}</b>{% if pb.aliment_kg %} · {{ pb.aliment_kg|decimal1 }} kg d'aliment saisis{% endif %}{% if pb.dernier_poids %} · dernière pesée {{ pb.dernier_poids }} kg le {{ pb.date_pesee|date_fr }}{% endif %}.</p>{% else %}<p class="muted">Bande conduite par l'élevage (aucun prestataire).</p>{% endif %}
+{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/bande/{{ bande.id }}/engraisseur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label>Prestataire<select name="engraisseur_id"><option value="">Aucun (élevage)</option>{% for p in prestataires %}<option value="{{ p.id }}" {% if pb and pb.engraisseur_id == p.id %}selected{% endif %}>{{ p.identifiant }}{% if p.prenom or p.nom %} — {{ p.prenom or '' }} {{ p.nom or '' }}{% endif %}</option>{% endfor %}</select></label>
+<label>À partir du<input type="date" name="date" value="{{ today }}"></label>
+<label>Poids cible (kg)<input name="poids_cible" inputmode="decimal" value="{{ pb.poids_cible if pb and pb.poids_cible else '' }}"></label>
+<label>Consignes<input name="instructions" value="{{ pb.instructions if pb and pb.instructions else '' }}"></label>
+<button>Enregistrer</button></form>{% endif %}
+{% if historique_presta %}<p class="muted">Historique : {% for h in historique_presta %}{{ h.identifiant }} du {{ h.date_debut|date_fr }}{% if h.date_fin %} au {{ h.date_fin|date_fr }}{% else %} à aujourd'hui{% endif %}{% if not loop.last %} ; {% endif %}{% endfor %}.</p>{% endif %}
+</section>
 <section class="card"><h2>Flux de la bande</h2><div class="band-flow-detail"><div><b>{{ flux.truies_cycle }}</b><span>truies suivies dans le cycle</span></div><div><b>{{ flux.verraterie }}</b><span>vers la verraterie</span></div><div><b>{{ flux.attente }}</b><span>en attente d’une nouvelle bande</span></div><div><b>{{ flux.reformees }}</b><span>réformées</span></div><div><b>{{ flux.sevres }}</b><span>porcelets sevrés</span></div><div><b>{{ flux.vendus }}</b><span>porcs vendus</span></div></div>{% if flux.ventes %}<h3>Sorties et ventes</h3><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Porcs vendus</th></tr></thead><tbody>{% for vente in flux.ventes %}<tr><td>{{ vente.date|date_fr }}</td><td>{{ vente.nombre }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">Aucune vente enregistrée pour cette bande.</p>{% endif %}</section>
 <section class="card"><h2>Coût économique de la bande</h2><p>Une facture affectée à plusieurs bandes est répartie à parts égales, comme dans le tableau "Résultat par bande" d'Économie.</p><div class="band-flow-detail">{% for c in couts_bande %}<div><b>{{ c.montant|euro }}</b><span>{{ c.categorie }}</span></div>{% endfor %}</div>
 <details id="depenses-detail"><summary><b>Détail des dépenses</b> ({{ lignes_depenses|length }} ligne{% if lignes_depenses|length > 1 %}s{% endif %})</summary>

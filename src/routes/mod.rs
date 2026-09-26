@@ -40,6 +40,7 @@ mod import_historique;
 mod maternite_suivi;
 mod parity;
 mod plans_aliment;
+mod prestataire;
 mod rapport;
 mod salles;
 mod zigbee;
@@ -589,6 +590,7 @@ pub fn router(state: AppState) -> Router {
         .route("/utilisateurs/creer", post(utilisateur_creer))
         .route("/utilisateurs/{id}/actif", post(utilisateur_actif))
         .route("/utilisateurs/{id}/sections", post(utilisateur_sections))
+        .route("/utilisateurs/{id}/prestataire", post(prestataire::utilisateur_reglages))
         .route("/utilisateurs/{id}/mdp", post(utilisateur_mdp))
         .route("/sauvegarde", get(sauvegarde))
         .route("/sauvegarde/telecharger", get(sauvegarde_telecharger))
@@ -669,7 +671,12 @@ pub fn router(state: AppState) -> Router {
         .route("/entretien", get(entretien).post(entretien_ajouter))
         .route("/entretien/{id}/date", post(entretien_date))
         .route("/entretien/{id}/supprimer", post(entretien_supprimer))
-        .route("/engraissement", get(engraissement))
+        .route("/engraissement", get(prestataire::page))
+        .route("/engraissement/inventaire", post(prestataire::inventaire))
+        .route("/engraissement/aliment", post(prestataire::aliment))
+        .route("/engraissement/aliment/{id}/supprimer", post(prestataire::aliment_supprimer))
+        .route("/engraissement/pesee", post(prestataire::pesee))
+        .route("/engraissement/pesee/{id}/supprimer", post(prestataire::pesee_supprimer))
         .route("/declaration", post(declaration_ajouter))
         .route("/declaration/{id}/supprimer", post(declaration_supprimer))
         .route("/reception", get(reception).post(reception_ajouter))
@@ -3245,6 +3252,23 @@ async fn bande_detail(
             "montant_net": ((apports_bande.0 - apports_bande.1) * 100.0).round() / 100.0,
             "porcs": apports_bande.2,
         }),
+    );
+    ctx.insert(
+        "prestataires".into(),
+        Value::Array(generic_rows(&state.pool, "SELECT id,identifiant,prenom,nom FROM utilisateur WHERE role='engraisseur' AND actif=1 ORDER BY identifiant").await?),
+    );
+    ctx.insert(
+        "presta_bande".into(),
+        json!(generic_rows(&state.pool, &format!(
+            "SELECT b.engraisseur_id,b.poids_cible,b.instructions,\
+             (SELECT COALESCE(SUM(quantite_kg),0) FROM consoaliment_bande WHERE bande_code=b.code) AS aliment_kg,\
+             (SELECT poids_moyen FROM pesee_bande WHERE bande_code=b.code ORDER BY date DESC,id DESC LIMIT 1) AS dernier_poids,\
+             (SELECT date FROM pesee_bande WHERE bande_code=b.code ORDER BY date DESC,id DESC LIMIT 1) AS date_pesee \
+             FROM bande b WHERE b.id={}", band.id)).await?.into_iter().next()),
+    );
+    ctx.insert(
+        "historique_presta".into(),
+        Value::Array(generic_rows(&state.pool, &format!("SELECT h.date_debut,h.date_fin,u.identifiant FROM bande_prestataire h JOIN utilisateur u ON u.id=h.utilisateur_id WHERE h.bande_id={} ORDER BY h.date_debut", band.id)).await?),
     );
     render(&state, "bande.html", Value::Object(ctx))
 }
@@ -10907,6 +10931,10 @@ async fn utilisateurs(
     let mut ctx = context(&session);
     ctx.insert("utilisateurs".into(), json!(users));
     ctx.insert("pages_acces".into(), json!(auth::ACCESS_PAGES));
+    let (bandes_actives, options) = prestataire::contexte_utilisateurs(&state.pool).await?;
+    ctx.insert("bandes_actives".into(), Value::Array(bandes_actives));
+    ctx.insert("options_prestataires".into(), Value::Array(options));
+    ctx.insert("today".into(), json!(today_iso()));
     render(&state, "utilisateurs.html", Value::Object(ctx))
 }
 async fn utilisateur_creer(
@@ -12353,67 +12381,6 @@ async fn mortalites_suspectes_recurrentes(pool: &SqlitePool) -> AppResult<Vec<Va
     Ok(resultats)
 }
 
-async fn engraissement(
-    State(state): State<AppState>,
-    Extension(session): Extension<SessionData>,
-) -> AppResult<Html<String>> {
-    if !session.module_prestataires {
-        return Err(AppError::Forbidden);
-    }
-    let sql = if session.role == "engraisseur" {
-        format!(
-            "SELECT d.id,d.horodatage,d.bande_code,d.date,d.stade,d.cause,d.poids,d.nombre,d.declare_par,d.note FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE b.engraisseur_id={} ORDER BY d.horodatage DESC LIMIT 250",
-            session.uid
-        )
-    } else {
-        "SELECT id,horodatage,bande_code,date,stade,cause,poids,nombre,declare_par,note FROM declarationmort ORDER BY horodatage DESC LIMIT 250".to_string()
-    };
-    let declarations = generic_rows(&state.pool, &sql).await?;
-    let band_sql = if session.role == "engraisseur" {
-        format!(
-            "SELECT id,code,instructions,poids_cible FROM bande WHERE active=1 AND engraisseur_id={} ORDER BY date_mb DESC,code",
-            session.uid
-        )
-    } else {
-        "SELECT id,code,instructions,poids_cible FROM bande WHERE active=1 ORDER BY date_mb DESC,code"
-            .to_string()
-    };
-    let bands = generic_rows(&state.pool, &band_sql).await?;
-    // Effectif réel par bande (au lieu d'un total générique d'engraissement
-    // toutes bandes confondues) : même calcul que la fiche bande
-    // (`total_band_pigs`), pour que le prestataire/engraisseur sache combien
-    // de porcs sont réellement présents pour chaque bande qui lui est
-    // confiée.
-    let mut effectifs_bandes = Vec::new();
-    for band in &bands {
-        let (Some(id), Some(code)) = (
-            band.get("id").and_then(Value::as_i64),
-            band.get("code").and_then(Value::as_str),
-        ) else {
-            continue;
-        };
-        let effectif = total_band_pigs(&state.pool, id, code).await?;
-        effectifs_bandes.push(json!({"code": code, "effectif": effectif}));
-    }
-    let cases = generic_rows(
-        &state.pool,
-        "SELECT c.id,COALESCE(si.nom,si.code)||' · '||s.nom||' · '||c.nom AS nom FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.nom,s.ordre,c.nom",
-    )
-    .await?;
-    let recurrences = mortalites_suspectes_recurrentes(&state.pool).await?;
-    let mut ctx = context(&session);
-    ctx.insert("declarations".into(), Value::Array(declarations));
-    ctx.insert("bandes".into(), Value::Array(bands));
-    ctx.insert("effectifs_bandes".into(), Value::Array(effectifs_bandes));
-    ctx.insert("cases".into(), Value::Array(cases));
-    ctx.insert("recurrences".into(), Value::Array(recurrences));
-    ctx.insert(
-        "today".into(),
-        json!(Local::now().date_naive().format("%Y-%m-%d").to_string()),
-    );
-    render(&state, "prestataire.html", Value::Object(ctx))
-}
-
 async fn declaration_ajouter(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -12455,6 +12422,12 @@ async fn declaration_ajouter(
         }
     }
     let stade = stade.map(|s| normalize_death_stage(&s));
+    let num_equarrissage = form_text(&form, "num_equarrissage");
+    if num_equarrissage.is_none() && prestataire::equarrissage_obligatoire(&state.pool, &band).await? {
+        return Err(AppError::Invalid(
+            "N° d'équarrissage obligatoire pour les sorties mortes de cette bande".into(),
+        ));
+    }
     // `horodatage` est renseigné explicitement, jamais laissé au
     // DEFAULT de la table : les bases héritées de la 1.65 portent la
     // colonne en NOT NULL sans valeur par défaut, et `CREATE TABLE IF
@@ -12462,7 +12435,7 @@ async fn declaration_ajouter(
     // sur le défaut faisait échouer toute déclaration de mortalité sur
     // ces bases — et seulement sur elles — avec « NOT NULL constraint
     // failed: declarationmort.horodatage ».
-    sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?)")
+    sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,num_equarrissage,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?,?)")
         .bind(&band)
         .bind(form_date_or_today(&form, "date")?)
         .bind(stade)
@@ -12470,11 +12443,12 @@ async fn declaration_ajouter(
         .bind(form_text(&form, "cause"))
         .bind(form_f64(&form, "poids"))
         .bind(number)
+        .bind(num_equarrissage)
         .bind(&session.identifiant)
         .bind(form_text(&form, "note"))
         .execute(&state.pool)
         .await?;
-    Ok(Redirect::to("/engraissement").into_response())
+    Ok(Redirect::to("/engraissement#mortalite").into_response())
 }
 
 /// Vrai si la quarantaine associée à une réception est toujours active à la

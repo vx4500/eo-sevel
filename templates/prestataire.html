@@ -1,13 +1,138 @@
 {% extends "base.html" %}
 {% block title %}Prestataire · EO_Sevel{% endblock %}
 {% block content %}
-<h1>Session prestataire</h1><p>Déclaration rapide des mortalités, poids et observations des lots confiés.</p>
-{% for b in bandes %}{% if b.instructions %}<div class="card"><h3>Consignes bande {{ b.code }}</h3><p>{{ b.instructions }}</p>{% if b.poids_cible %}<p>Poids cible : {{ b.poids_cible }} kg</p>{% endif %}</div>{% endif %}{% endfor %}
-<div class="card"><h2>Porcs présents par bande</h2><table class="rust-sortable"><thead><tr><th>Bande</th><th>Effectif</th></tr></thead><tbody>{% for e in effectifs_bandes %}<tr><td>{{ e.code }}</td><td>{{ e.effectif }}</td></tr>{% else %}<tr><td colspan="2" class="rust-empty">Aucune bande confiée</td></tr>{% endfor %}</tbody></table></div>
-<form class="card rust-actions" method="post" action="/declaration"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Bande<select name="bande_code" required>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }}</option>{% endfor %}</select></label><label>Date<input type="date" name="date" value="{{ today }}" required></label><label>Stade<select name="stade"><option>Post-sevrage</option><option>Engraissement</option><option>Autre</option></select></label><label>Case<select name="case_id"><option value="">Non précisée</option>{% for c in cases %}<option value="{{ c.id }}">{{ c.nom }}</option>{% endfor %}</select></label><label>Nombre<input type="number" name="nombre" min="1" value="1" required></label><label>Poids (kg)<input name="poids" inputmode="decimal"></label><label>Cause<input name="cause"></label><label>Observation<input name="note"></label><button>Enregistrer</button></form>
-<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Bande</th><th>Stade</th><th>Cause</th><th>Poids</th><th>Nombre</th><th>Déclaré par</th><th>Note</th><th></th></tr></thead><tbody>{% for d in declarations %}<tr><td>{{ d.date|date_fr }}</td><td>{{ d.bande_code }}</td><td>{{ d.stade or '—' }}</td><td>{{ d.cause or '—' }}</td><td>{{ d.poids or '—' }}</td><td>{{ d.nombre }}</td><td>{{ d.declare_par or '—' }}</td><td>{{ d.note or '—' }}</td><td><form method="post" action="/declaration/{{ d.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></td></tr>{% else %}<tr><td colspan="9" class="rust-empty">Aucune déclaration</td></tr>{% endfor %}</tbody></table></div>
+<h1>Session prestataire</h1>
+<p>Bandes confiées : inventaire, sorties mortes, aliment consommé et pesées.</p>
+<style>
+.presta-etapes{width:100%;border-collapse:collapse}
+.presta-etapes td{padding:.3rem .4rem;border-bottom:1px solid rgba(127,127,127,.2)}
+.presta-etapes tr.passee td{opacity:.55}
+.presta-etapes tr.prochaine td{font-weight:700}
+.presta-chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.5rem;margin:.6rem 0}
+.presta-chiffres div{border:1px solid rgba(127,127,127,.25);border-radius:.5rem;padding:.4rem .6rem}
+.presta-chiffres b{display:block;font-size:1.25rem}
+.presta-chiffres span{font-size:.85rem;opacity:.8}
+.presta-alerte{border-left:4px solid #d9822b;padding:.4rem .7rem;margin:.5rem 0}
+</style>
+
+{% for b in bandes %}
+<section class="card">
+  <h2>Bande {{ b.code }} <small class="muted">— {{ b.stade }}</small></h2>
+  {% if session.role != 'engraisseur' %}<p class="muted">Prestataire : {{ b.prestataire or 'aucun (élevage)' }}{% if b.equarrissage_obligatoire %} · n° d'équarrissage obligatoire{% endif %}</p>{% endif %}
+  {% if b.instructions %}<p><b>Consignes :</b> {{ b.instructions }}</p>{% endif %}
+  <div class="presta-chiffres">
+    <div><b>{{ b.effectif }}</b><span>porcs présents (estimé)</span></div>
+    <div><b>{% if b.inventaire %}{{ b.inventaire.nombre }}{% else %}—{% endif %}</b><span>dernier inventaire{% if b.inventaire %} · {{ b.inventaire.date|date_fr }}{% endif %}</span></div>
+    <div><b>{{ b.aliment_kg }} kg</b><span>aliment saisi{% if b.aliment_par_porc %} · {{ b.aliment_par_porc }} kg/porc{% endif %}</span></div>
+    <div><b>{% if b.derniere_pesee %}{{ b.derniere_pesee.poids }} kg{% else %}—{% endif %}</b><span>dernière pesée{% if b.derniere_pesee %} · {{ b.derniere_pesee.date|date_fr }}{% endif %}</span></div>
+    {% if b.gmq %}<div><b>{{ b.gmq }} g/j</b><span>GMQ entre pesées</span></div>{% endif %}
+    {% if b.poids_cible %}<div><b>{{ b.poids_cible }} kg</b><span>poids cible{% if b.date_cible %} · atteint vers le {{ b.date_cible|date_fr }}{% endif %}</span></div>{% endif %}
+  </div>
+  {% if b.pesees_ouvertes and not b.derniere_pesee %}<p class="presta-alerte">La période de pesées est commencée : pensez à peser un échantillon de la bande.</p>{% endif %}
+  {% if b.etapes %}
+  <details {% if loop.first %}open{% endif %}><summary><b>Stades et transitions</b> (mise-bas le {{ b.date_mb|date_fr }})</summary>
+  <table class="presta-etapes"><tbody>{% for e in b.etapes %}
+    <tr class="{% if e.passee %}passee{% endif %}{% if e.prochaine %} prochaine{% endif %}"><td>J{{ e.jour }}</td><td>{{ e.date|date_fr }}</td><td>{{ e.libelle }}</td>
+    <td>{% if e.passee %}fait{% elif e.jours_restants == 1 %}demain{% else %}dans {{ e.jours_restants }} j{% endif %}</td></tr>
+  {% endfor %}</tbody></table>
+  <p class="muted">Jours comptés depuis la mise-bas, d'après les réglages de conduite de l'éleveur.</p>
+  </details>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p class="rust-empty">Aucune bande confiée pour l'instant.</p></section>
+{% endfor %}
+
+{% if bandes %}
+<section class="card" id="mortalite"><h2>Sortie d'animaux morts</h2>
+<form class="rust-actions" method="post" action="/declaration"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Bande<select name="bande_code" required>{% for b in bandes %}<option value="{{ b.code }}" data-equarrissage="{{ b.equarrissage_obligatoire }}">{{ b.code }}</option>{% endfor %}</select></label>
+  <label>Date<input type="date" name="date" value="{{ today }}" required></label>
+  <label>Nombre<input type="number" name="nombre" min="1" value="1" required></label>
+  <label>N° d'équarrissage<input name="num_equarrissage" class="presta-equarrissage" autocomplete="off"></label>
+  <label>Cause<input name="cause" list="presta-causes"></label>
+  <label>Poids (kg)<input name="poids" inputmode="decimal"></label>
+  <label>Case<select name="case_id"><option value="">Non précisée</option>{% for c in cases %}<option value="{{ c.id }}">{{ c.nom }}</option>{% endfor %}</select></label>
+  <label>Stade<select name="stade"><option>Engraissement</option><option>Post-sevrage</option><option>Autre</option></select></label>
+  <label>Observation<input name="note"></label>
+  <button>Enregistrer</button>
+</form>
+<datalist id="presta-causes">{% for c in causes %}<option value="{{ c.libelle }}">{% endfor %}</datalist>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Bande</th><th>Nombre</th><th>N° équarrissage</th><th>Stade</th><th>Cause</th><th>Poids</th><th>Déclaré par</th><th>Note</th>{% if session.peut_modifier %}<th></th>{% endif %}</tr></thead><tbody>
+{% for d in declarations %}<tr><td>{{ d.date|date_fr }}</td><td>{{ d.bande_code }}</td><td>{{ d.nombre }}</td><td>{{ d.num_equarrissage or '—' }}</td><td>{{ d.stade or '—' }}</td><td>{{ d.cause or '—' }}</td><td>{{ d.poids or '—' }}</td><td>{{ d.declare_par or '—' }}</td><td>{{ d.note or '—' }}</td>{% if session.peut_modifier %}<td><form method="post" action="/declaration/{{ d.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></td>{% endif %}</tr>
+{% else %}<tr><td colspan="10" class="rust-empty">Aucune sortie déclarée</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+
+<section class="card" id="inventaire"><h2>Inventaire</h2>
+<p class="muted">Porcs comptés physiquement : l'effectif de la bande repart de ce chiffre.</p>
+<form class="rust-actions" method="post" action="/engraissement/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Bande<select name="bande_code" required>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }} ({{ b.effectif }} estimés)</option>{% endfor %}</select></label>
+  <label>Date<input type="date" name="date" value="{{ today }}" required></label>
+  <label>Porcs comptés<input type="number" name="nombre" min="0" required></label>
+  <label>Observation<input name="note"></label>
+  <button>Enregistrer l'inventaire</button>
+</form>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Bande</th><th>Porcs comptés</th><th>Libellé</th></tr></thead><tbody>
+{% for i in inventaires %}<tr><td>{{ i.date|date_fr }}</td><td>{{ i.bande_code }}</td><td>{{ i.nombre }}</td><td>{{ i.libelle or '—' }}</td></tr>
+{% else %}<tr><td colspan="4" class="rust-empty">Aucun inventaire</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+
+<section class="card" id="aliment"><h2>Aliment consommé</h2>
+<p class="muted"><b>Livraison / vidage de silo</b> : une quantité à une date. <b>Relevé</b> : la quantité consommée sur une période.</p>
+<form class="rust-actions" method="post" action="/engraissement/aliment"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Bande<select name="bande_code" required>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }}</option>{% endfor %}</select></label>
+  <label>Type<select name="type" class="presta-type-aliment"><option value="livraison">Livraison / silo</option><option value="releve">Relevé de période</option></select></label>
+  <label class="presta-debut" hidden>Du<input type="date" name="date_debut"></label>
+  <label><span class="presta-date-label">Date</span><input type="date" name="date" value="{{ today }}" required></label>
+  <label>Aliment<input name="aliment" list="presta-aliments"></label>
+  <label>Quantité (kg)<input name="quantite_kg" inputmode="decimal" required></label>
+  <label>Observation<input name="note"></label>
+  <button>Enregistrer</button>
+</form>
+<datalist id="presta-aliments">{% for a in aliments_connus %}<option value="{{ a.aliment }}">{% endfor %}</datalist>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Bande</th><th>Type</th><th>Aliment</th><th>Quantité</th><th>Saisi par</th><th>Note</th><th></th></tr></thead><tbody>
+{% for a in aliments %}<tr><td>{% if a.type == 'releve' %}{{ a.date_debut|date_fr }} → {% endif %}{{ a.date|date_fr }}</td><td>{{ a.bande_code }}</td><td>{{ 'Relevé' if a.type == 'releve' else 'Livraison' }}</td><td>{{ a.aliment or '—' }}</td><td>{{ a.quantite_kg }} kg</td><td>{{ a.declare_par or '—' }}</td><td>{{ a.note or '—' }}</td><td><form method="post" action="/engraissement/aliment/{{ a.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></td></tr>
+{% else %}<tr><td colspan="8" class="rust-empty">Aucune saisie d'aliment</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+
+<section class="card" id="pesees"><h2>Pesées</h2>
+<p class="muted">Pesez un échantillon : saisissez le poids moyen, ou le poids total (le moyen est calculé).</p>
+<form class="rust-actions" method="post" action="/engraissement/pesee"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Bande<select name="bande_code" required>{% for b in bandes %}<option value="{{ b.code }}">{{ b.code }}</option>{% endfor %}</select></label>
+  <label>Date<input type="date" name="date" value="{{ today }}" required></label>
+  <label>Porcs pesés<input type="number" name="nombre" min="1" required></label>
+  <label>Poids moyen (kg)<input name="poids_moyen" inputmode="decimal"></label>
+  <label>ou poids total (kg)<input name="poids_total" inputmode="decimal"></label>
+  <label>Observation<input name="note"></label>
+  <button>Enregistrer</button>
+</form>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Bande</th><th>Porcs pesés</th><th>Poids moyen</th><th>Saisi par</th><th>Note</th><th></th></tr></thead><tbody>
+{% for p in pesees %}<tr><td>{{ p.date|date_fr }}</td><td>{{ p.bande_code }}</td><td>{{ p.nombre }}</td><td>{{ p.poids_moyen }} kg</td><td>{{ p.declare_par or '—' }}</td><td>{{ p.note or '—' }}</td><td><form method="post" action="/engraissement/pesee/{{ p.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></td></tr>
+{% else %}<tr><td colspan="7" class="rust-empty">Aucune pesée</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+{% endif %}
+
+{% if session.role != 'engraisseur' %}
 <details class="card" {% if recurrences %}open{% endif %}><summary><b>Mortalités suspectes récurrentes</b> — même cause, même stade, sur plusieurs bandes</summary>
 <p>Une cause qui revient au même stade sur au moins 2 bandes différentes est un signal à investiguer (bâtiment, aliment, sanitaire...), pas un accident isolé.</p>
 <div class="rust-scroll"><table><thead><tr><th>Stade</th><th>Cause</th><th>Bandes touchées</th><th>Bandes concernées</th><th>Total pertes</th><th>Première mise-bas</th><th>Dernière mise-bas</th></tr></thead><tbody>{% for r in recurrences %}<tr><td>{{ r.stade }}</td><td>{{ r.cause }}</td><td><b>{{ r.nb_bandes }}</b></td><td>{{ r.bandes }}</td><td>{{ r.total_pertes }}</td><td>{{ r.premiere_mise_bas|date_fr }}</td><td>{{ r.derniere_mise_bas|date_fr }}</td></tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune récurrence détectée pour l'instant</td></tr>{% endfor %}</tbody></table></div>
 </details>
+{% endif %}
+<script>
+(function(){
+  var sel=document.querySelector('#mortalite select[name=bande_code]');
+  var num=document.querySelector('.presta-equarrissage');
+  function maj(){ if(!sel||!num)return; var o=sel.options[sel.selectedIndex]; var obl=o&&o.dataset.equarrissage==='1';
+    num.required=obl; num.placeholder=obl?'obligatoire':'facultatif'; }
+  if(sel){sel.addEventListener('change',maj);maj();}
+  var t=document.querySelector('.presta-type-aliment');
+  function majT(){ if(!t)return; var r=t.value==='releve'; var d=document.querySelector('.presta-debut');
+    d.hidden=!r; d.querySelector('input').required=r; document.querySelector('.presta-date-label').textContent=r?'Au':'Date'; }
+  if(t){t.addEventListener('change',majT);majT();}
+})();
+</script>
 {% endblock %}

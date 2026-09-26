@@ -202,6 +202,8 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         ),
         ("transfert", "vente_apport_id", "INTEGER"),
         ("declarationmort", "case_id", "INTEGER"),
+        // N° du bon d'équarrissage (obligatoire selon l'option du prestataire).
+        ("declarationmort", "num_equarrissage", "TEXT"),
         ("produitventedirecte", "quantite_disponible", "REAL"),
         ("produitventedirecte", "image_data", "BLOB"),
         ("produitventedirecte", "image_mime", "TEXT"),
@@ -348,6 +350,10 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         .await?;
     // Surveillance électrique des appareils (compteurs Zigbee).
     sqlx::raw_sql(include_str!("../migrations/0018_surveillance_electrique.sql"))
+        .execute(pool)
+        .await?;
+    // Prestataires : bandes confiées, aliment, pesées (voir /engraissement).
+    sqlx::raw_sql(include_str!("../migrations/0019_prestataires.sql"))
         .execute(pool)
         .await?;
     // Classement par nom des objets de l'automate : dépend de la colonne

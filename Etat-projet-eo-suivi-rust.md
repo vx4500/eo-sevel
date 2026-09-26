@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.29.0** —
+Version actuelle : **2.30.0** —
+
+### Version 2.30.0 — Prestataires : bandes confiées, inventaire, aliment, pesées
+
+Version Rust 2.30.0 : module `src/routes/prestataire.rs` (portail /engraissement réécrit) ; migration 0019 (`prestataire_option.equarrissage_obligatoire`, historique `bande_prestataire`, `consoaliment_bande` livraison/relevé, `pesee_bande`, réglage `debut_pesees`=180) ; `declarationmort.num_equarrissage` exigé selon l'option du prestataire de la bande ; inventaire via `mouvementstock` (est_stock=1) ; calendrier des stades par bande depuis les réglages de conduite, GMQ et date estimée du poids cible ; bandes confiées depuis Utilisateurs et depuis la fiche bande (`confier_bande`, un seul prestataire à la fois).
 
 ### Version 2.29.0 — Calendrier : IA après sevrage, vaccins, lisibilité
 
