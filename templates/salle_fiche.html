@@ -48,10 +48,10 @@
   <form method="post" action="/salles/{{ salle.id }}/reglages" data-no-ajax class="sl-reglages">
     <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
     <label>Consigne de température<select name="courbe_id"><option value="">Fixe (ci-contre)</option>{% for c in courbes %}<option value="{{ c.id }}"{% if reglages and reglages.courbe_id == c.id %} selected{% endif %}>Courbe « {{ c.nom }} » (selon l'âge de la bande)</option>{% endfor %}</select></label>
-    <label>Température fixe (°C)<input name="t_cible_fixe" inputmode="decimal" value="{{ reglages.t_cible_fixe if reglages and reglages.t_cible_fixe is not none else 22 }}"></label>
+    <label class="selon-courbe">Température fixe (°C) <span class="par-courbe">— fixé par la courbe</span><input name="t_cible_fixe" inputmode="decimal" value="{{ reglages.t_cible_fixe if reglages and reglages.t_cible_fixe is not none else 22 }}"></label>
     <label>Plage (°C)<input name="plage" inputmode="decimal" value="{{ reglages.plage if reglages and reglages.plage is not none else 3 }}"></label>
-    <label>Ventilation mini (%)<input name="ventil_min" inputmode="decimal" value="{{ reglages.ventil_min if reglages and reglages.ventil_min is not none else 20 }}"></label>
-    <label>Ventilation maxi (%)<input name="ventil_max" inputmode="decimal" value="{{ reglages.ventil_max if reglages and reglages.ventil_max is not none else 100 }}"></label>
+    <label class="selon-courbe">Ventilation mini (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_min" inputmode="decimal" value="{{ reglages.ventil_min if reglages and reglages.ventil_min is not none else 20 }}"></label>
+    <label class="selon-courbe">Ventilation maxi (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_max" inputmode="decimal" value="{{ reglages.ventil_max if reglages and reglages.ventil_max is not none else 100 }}"></label>
     <label>Alerte sous (°C)<input name="t_alerte_min" inputmode="decimal" value="{{ reglages.t_alerte_min if reglages and reglages.t_alerte_min is not none else '' }}" placeholder="aucune"></label>
     <label>Alerte au-dessus (°C)<input name="t_alerte_max" inputmode="decimal" value="{{ reglages.t_alerte_max if reglages and reglages.t_alerte_max is not none else '' }}" placeholder="aucune"></label>
     <label>Alerte humidité au-dessus (%)<input name="h_alerte_max" inputmode="decimal" value="{{ reglages.h_alerte_max if reglages and reglages.h_alerte_max is not none else '' }}" placeholder="aucune"></label>
@@ -148,4 +148,32 @@
 {% endif %}
 
 </div>
+
+<style>
+.selon-courbe.grise{color:var(--muted)!important}
+.selon-courbe.grise input{background:#eef0ef!important;color:#8a948f!important;cursor:not-allowed}
+.selon-courbe .par-courbe{display:none;font-size:.72rem;font-style:italic}
+.selon-courbe.grise .par-courbe{display:inline}
+</style>
+<script>
+(function(){
+  // Une courbe impose la consigne et les bornes de ventilation à chaque
+  // étape : les champs correspondants passent en lecture seule (pas
+  // « disabled », qui ne serait pas envoyé et effacerait la valeur gardée
+  // pour un retour en consigne fixe).
+  function appliquer(sel){
+    var courbe = !!sel.value;
+    sel.form.querySelectorAll('.selon-courbe').forEach(function(label){
+      label.classList.toggle('grise', courbe);
+      label.querySelectorAll('input').forEach(function(i){ i.readOnly = courbe; });
+    });
+  }
+  document.querySelectorAll('select[name=courbe_id]').forEach(function(sel){
+    if(!sel.form || sel.dataset.selonCourbe) return;
+    sel.dataset.selonCourbe = '1';
+    sel.addEventListener('change', function(){ appliquer(sel); });
+    appliquer(sel);
+  });
+})();
+</script>
 {% endblock %}

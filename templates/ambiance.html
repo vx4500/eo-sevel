@@ -156,10 +156,10 @@
       <div>
         <h3>Consigne</h3>
         <label>Courbe suivant l'âge de la bande<select name="courbe_id"><option value="">Aucune : consigne fixe</option>{% for c in courbes %}<option value="{{ c.id }}"{% if s.courbe_id == c.id %} selected{% endif %}>{{ c.nom }} ({{ c.points }} points)</option>{% endfor %}</select></label>
-        <label>Consigne fixe (°C)<input name="t_cible_fixe" inputmode="decimal" value="{{ s.t_cible_fixe }}"></label>
+        <label class="selon-courbe">Consigne fixe (°C) <span class="par-courbe">— fixé par la courbe</span><input name="t_cible_fixe" inputmode="decimal" value="{{ s.t_cible_fixe }}"></label>
         <label>Plage de régulation (°C)<input name="plage" inputmode="decimal" value="{{ s.plage }}"></label>
-        <label>Ventilation minimale (%)<input name="ventil_min" inputmode="decimal" value="{{ s.ventil_min }}"></label>
-        <label>Ventilation maximale (%)<input name="ventil_max" inputmode="decimal" value="{{ s.ventil_max }}"></label>
+        <label class="selon-courbe">Ventilation minimale (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_min" inputmode="decimal" value="{{ s.ventil_min }}"></label>
+        <label class="selon-courbe">Ventilation maximale (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_max" inputmode="decimal" value="{{ s.ventil_max }}"></label>
         <p class="muted">À la consigne, la ventilation est au minimum ; à la consigne plus la plage, au maximum. Le minimum n'est pas qu'un réglage de confort : c'est lui qui évacue l'ammoniac même quand il fait froid.</p>
       </div>
       <div>
@@ -344,6 +344,34 @@
           svg.outerHTML = '<p class="ambiance-graph-vide">Historique indisponible</p>';
         });
       });
+  });
+})();
+</script>
+
+<style>
+.selon-courbe.grise{color:var(--muted)!important}
+.selon-courbe.grise input{background:#eef0ef!important;color:#8a948f!important;cursor:not-allowed}
+.selon-courbe .par-courbe{display:none;font-size:.72rem;font-style:italic}
+.selon-courbe.grise .par-courbe{display:inline}
+</style>
+<script>
+(function(){
+  // Une courbe impose la consigne et les bornes de ventilation à chaque
+  // étape : les champs correspondants passent en lecture seule (pas
+  // « disabled », qui ne serait pas envoyé et effacerait la valeur gardée
+  // pour un retour en consigne fixe).
+  function appliquer(sel){
+    var courbe = !!sel.value;
+    sel.form.querySelectorAll('.selon-courbe').forEach(function(label){
+      label.classList.toggle('grise', courbe);
+      label.querySelectorAll('input').forEach(function(i){ i.readOnly = courbe; });
+    });
+  }
+  document.querySelectorAll('select[name=courbe_id]').forEach(function(sel){
+    if(!sel.form || sel.dataset.selonCourbe) return;
+    sel.dataset.selonCourbe = '1';
+    sel.addEventListener('change', function(){ appliquer(sel); });
+    appliquer(sel);
   });
 })();
 </script>

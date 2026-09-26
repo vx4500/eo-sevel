@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.26.0** —
+Version actuelle : **2.26.1** —
+
+### Version 2.26.1 — Champs imposés par une courbe grisés
+
+Version Rust 2.26.1 : fiche de salle et EO_Awel — quand une courbe est choisie, consigne fixe et ventilation mini/maxi (que la courbe impose via `consigne_courbe`) passent grisés en lecture seule, mention « fixé par la courbe ». readOnly et non disabled : la valeur fixe reste envoyée et conservée.
+
+—
 
 ### Version 2.26.0 — Surveillance électrique, ventilation et réglages dans la fiche de salle
 
