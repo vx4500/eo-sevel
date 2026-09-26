@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.26.3** —
+Version actuelle : **2.26.4** —
+
+### Version 2.26.4 — Saisie rapide « Perte porcelet »
+
+Version Rust 2.26.4 : le bouton de saisie rapide « Perte porc et porcelet » (perte en maternité, sur une portée) devient « Perte porcelet » ; « Perte porc » (bande et case) inchangé.
+
+—
 
 ### Version 2.26.3 — Mes salles rangées par stade
 

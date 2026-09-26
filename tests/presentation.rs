@@ -99,7 +99,7 @@ fn accueil_visualise_le_cycle_et_saisie_rapide_propose_la_mise_bas() {
     assert!(dashboard.contains("{% for e in l.etapes %}"));
     assert!(base.contains("data-type=\"mise_bas\""));
     assert!(base.contains("data-for=\"mise_bas\""));
-    assert!(base.contains("Perte porc et porcelet"));
+    assert!(base.contains(">Perte porcelet</button>"));
     assert!(routes.contains("\"mise_bas\" =>"));
     assert!(routes.contains("perf_nt=?"));
     assert!(dashboard.contains("Conduite des bandes"));
