@@ -10,7 +10,7 @@
 .cal thead a:hover{text-decoration:underline}
 .ev{display:block;margin:2px 0;padding:3px 4px;border-radius:6px;font-size:.74rem;font-weight:700;line-height:1.15;color:#fff;text-decoration:none}
 .ev small{display:block;font-weight:400;opacity:.9}
-.ev-ia{background:#6a4c93}.ev-echo{background:#8a7fb8}.ev-maternite{background:#c7832f}.ev-mise_bas{background:#b3401c}.ev-sevrage{background:#2a7f62}.ev-transfert{background:#3b6f96}.ev-depart{background:#555f66}
+.ev-ia{background:#6a4c93}.ev-retour{background:#9c6fb0}.ev-gestante{background:#7b5ea7}.ev-verraterie{background:#3a6d9a}.ev-echo{background:#8a7fb8}.ev-maternite{background:#c7832f}.ev-mise_bas{background:#b3401c}.ev-sevrage{background:#2a7f62}.ev-transfert{background:#3b6f96}.ev-depart{background:#555f66}
 .charge-barre{height:46px;display:flex;align-items:flex-end;justify-content:center}
 .charge-barre i{display:block;width:70%;border-radius:4px 4px 0 0;background:#9fb5a8}
 .niv-calme i{background:#b9d4c4}.niv-normale i{background:#7fae93}.niv-chargee i{background:#d19a52}.niv-pic i{background:#b3401c}
@@ -43,7 +43,7 @@
 {% for l in lignes %}
 <tr><td class="bande"><a href="/bande/{{ l.id }}"><b>{{ l.code }}</b></a><br><small class="note">Bande {{ l.groupe }}{% if not l.active %} · archivée{% endif %}</small></td>
 {% for cell in l.cellules %}{% set sem = semaines[loop.index0] %}<td class="{% if sem.courante %}courante{% elif sem.passee %}passee{% endif %}">
-  {% for e in cell %}<a class="ev ev-{{ e.code }}" href="/conduite/semaine?debut={{ sem.debut }}" title="{{ e.libelle }} · {{ l.code }} · {{ e.date|date_fr }}">{{ e.court }}<small>{{ e.jour }} {{ e.date[8:10] }}/{{ e.date[5:7] }} · {{ e.animaux }}{% if e.sur_truies %} tr.{% else %} p.{% endif %}</small></a>{% endfor %}
+  {% for e in cell %}<a class="ev ev-{{ e.code }}" href="/conduite/semaine?debut={{ sem.debut }}" title="{{ e.libelle }} · {{ l.code }} · {{ e.date|date_fr }}{% if e.realise %} · {{ e.realise }}{% endif %}">{{ e.court }}{% if e.realise %} ✓{% endif %}<small>{{ e.jour }} {{ e.date[8:10] }}/{{ e.date[5:7] }} · {{ e.animaux }}{% if e.sur_truies %} tr.{% else %} p.{% endif %}{% if e.realise %}<br>{{ e.realise }}{% endif %}</small></a>{% endfor %}
 </td>{% endfor %}</tr>
 {% else %}<tr><td class="bande" colspan="{{ nb_semaines + 1 }}">Aucune bande avec date de mise-bas.</td></tr>{% endfor %}
 <tr><td class="bande"><b>Charge</b><br><small class="note">travail estimé</small></td>

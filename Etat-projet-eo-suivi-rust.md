@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.27.0** —
+Version actuelle : **2.28.0** —
+
+### Version 2.28.0 — Calendrier de conduite : parcours des truies
+
+Version Rust 2.28.0 : demande d’Emmanuel (« il manque les IA, passage verraterie… »). Trois étapes de plus dans `conduite::etapes` : contrôle des retours en chaleur (IA + 21 j), passage en gestante (IA + écho + 2 j ; truies écho pleine encore en verraterie), passage en verraterie au sevrage (truies sevrées encore en maternité). Le réalisé (IA faites, mises-bas, truies sevrées) s’affiche dans les cases du calendrier et la liste de la semaine.
+
+—
 
 ### Version 2.27.0 — Supprimer une case occupée
 
