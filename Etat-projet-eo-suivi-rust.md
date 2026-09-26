@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.26.1** —
+Version actuelle : **2.26.2** —
+
+### Version 2.26.2 — Bande suivie dans les transferts de case à case
+
+Version Rust 2.26.2 : un transfert de porcs « case → case » était enregistré sans bande_id ; la salle d’arrivée affichait « aucune bande en place » (Post-Engraissement : 313 porcs de B2.12 ; PS 2 et PS 3 : B3.19). Corrigé à la saisie (`bande_de_la_case`), à l’affichage (Mes salles remonte la chaîne des transferts, mouvements trouvés aussi par les cases) et dans les données (réparation idempotente au démarrage dans `achever_init` : 5 transferts au 26/09).
+
+—
 
 ### Version 2.26.1 — Champs imposés par une courbe grisés
 

@@ -24,6 +24,53 @@ const ETAT_PERIME_S: i64 = 300;
 /// salle, sinon mise-bas des truies qui s'y trouvent (maternité). Même règle
 /// que la régulation, pour que la fiche et la consigne parlent du même lot.
 async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> AppResult<Option<Value>> {
+    // Dernier transfert de porcs arrivé dans la salle (ou l'une de ses
+    // cases). Sans bande notée, on remonte à la case d'où ils venaient,
+    // quatre étapes au plus.
+    let arrivee: Option<(Option<i64>, Option<i64>, String)> = sqlx::query_as(
+        "SELECT t.bande_id, t.case_source_id, t.date FROM transfert t \
+         WHERE t.espece='porc' AND t.date IS NOT NULL \
+           AND (t.salle_dest_id=?1 OR t.case_dest_id IN (SELECT id FROM casesalle WHERE salle_id=?1)) \
+         ORDER BY t.date DESC, t.id DESC LIMIT 1",
+    )
+    .bind(salle_id)
+    .fetch_optional(pool)
+    .await?;
+    let mut bande_trouvee: Option<(i64, String)> = None;
+    if let Some((mut bande, mut source, date_arrivee)) = arrivee {
+        let mut date = date_arrivee.clone();
+        for _ in 0..4 {
+            if bande.is_some() {
+                break;
+            }
+            let Some(case) = source else { break };
+            let precedent: Option<(Option<i64>, Option<i64>, String)> = sqlx::query_as(
+                "SELECT bande_id, case_source_id, date FROM transfert WHERE case_dest_id=? AND espece='porc' \
+                 AND date<=? ORDER BY date DESC, id DESC LIMIT 1",
+            )
+            .bind(case)
+            .bind(&date)
+            .fetch_optional(pool)
+            .await?;
+            let Some((b, s, d)) = precedent else { break };
+            bande = b;
+            source = s;
+            date = d;
+        }
+        if let Some(id) = bande {
+            bande_trouvee = sqlx::query_as("SELECT id, code FROM bande WHERE id=? AND active=1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+        }
+        if let Some((id, code)) = bande_trouvee {
+            let jours: i64 = sqlx::query_scalar("SELECT CAST(julianday('now') - julianday(?) AS INTEGER)")
+                .bind(&date_arrivee)
+                .fetch_one(pool)
+                .await?;
+            return Ok(Some(json!({"id": id, "code": code, "jour": jours.max(0)})));
+        }
+    }
     let ligne: Option<(i64, String, i64)> = sqlx::query_as(
         "SELECT b.id, b.code, CAST(julianday('now') - julianday(t.date) AS INTEGER) \
          FROM transfert t JOIN bande b ON b.id=t.bande_id \
@@ -378,6 +425,8 @@ pub(super) async fn fiche(
          FROM transfert t LEFT JOIN bande b ON b.id=t.bande_id LEFT JOIN truie tr ON tr.id=t.truie_id \
          LEFT JOIN salle ss ON ss.id=t.salle_source_id LEFT JOIN salle sd ON sd.id=t.salle_dest_id \
          WHERE t.salle_source_id=?1 OR t.salle_dest_id=?1 \
+            OR t.case_source_id IN (SELECT id FROM casesalle WHERE salle_id=?1) \
+            OR t.case_dest_id IN (SELECT id FROM casesalle WHERE salle_id=?1) \
          ORDER BY t.date DESC, t.id DESC LIMIT 12",
     )
     .bind(id)
@@ -385,7 +434,8 @@ pub(super) async fn fiche(
     .await?
     .into_iter()
     .map(|m| {
-        let entree = m.try_get::<Option<i64>, _>("salle_dest_id").ok().flatten() == Some(id);
+        let entree = m.try_get::<Option<i64>, _>("salle_dest_id").ok().flatten() == Some(id)
+            || m.try_get::<Option<i64>, _>("salle_source_id").ok().flatten() != Some(id);
         json!({
             "date": m.try_get::<Option<String>, _>("date").ok().flatten(),
             "entree": entree,
@@ -677,6 +727,25 @@ mod tests {
             println!("salle {id} : {} octets", html.len());
         }
         println!("liste : {} octets", liste_html.len());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn la_bande_suit_les_porcs_d_une_case_a_l_autre() -> anyhow::Result<()> {
+        let state = super::super::documents::tests::state().await;
+        sqlx::raw_sql(
+            "INSERT INTO site(id,code) VALUES(1,'S'); \
+             INSERT INTO salle(id,site_id,nom,nb_cases) VALUES(1,1,'PS 1',1),(2,1,'Post-Engraissement',1); \
+             INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'Case 1'),(2,2,'PE Paille'); \
+             INSERT INTO bande(id,code,active) VALUES(1,'B2.12',1); \
+             INSERT INTO transfert(date,espece,bande_id,case_dest_id,salle_dest_id,nombre) VALUES('2026-08-05','porc',1,1,1,113); \
+             INSERT INTO transfert(date,espece,case_source_id,salle_source_id,case_dest_id,salle_dest_id,nombre) VALUES('2026-09-01','porc',1,1,2,2,113);",
+        )
+        .execute(&state.pool)
+        .await?;
+        let bande = bande_en_place(&state.pool, 2).await?.expect("bande retrouvée");
+        assert_eq!(bande.get("code").and_then(Value::as_str), Some("B2.12"));
+        assert_eq!(super::super::bande_de_la_case(&state.pool, 1, "2026-09-01").await?, Some(1));
         Ok(())
     }
 

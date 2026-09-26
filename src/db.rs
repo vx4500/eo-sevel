@@ -377,6 +377,19 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
 /// nettoyages historiques. Jamais appelée seule sur une base de contrôle
 /// (voir `etablir_schema`) : ce n'est pas du schéma, c'est de la donnée.
 async fn achever_init(pool: &SqlitePool) -> anyhow::Result<()> {
+    // Transferts de porcs de case à case enregistrés sans leur bande (avant
+    // la 2.26.2) : la bande est celle de la case de départ à cette date.
+    // Idempotent, et ne touche que les transferts dont l'origine est connue.
+    sqlx::query(
+        "UPDATE transfert SET bande_id=(SELECT p.bande_id FROM transfert p \
+           WHERE p.case_dest_id=transfert.case_source_id AND p.bande_id IS NOT NULL AND p.espece='porc' \
+             AND p.date<=transfert.date ORDER BY p.date DESC, p.id DESC LIMIT 1) \
+         WHERE espece='porc' AND bande_id IS NULL AND case_source_id IS NOT NULL AND truie_id IS NULL \
+           AND vente_apport_id IS NULL AND EXISTS(SELECT 1 FROM transfert p WHERE p.case_dest_id=transfert.case_source_id \
+             AND p.bande_id IS NOT NULL AND p.espece='porc' AND p.date<=transfert.date)",
+    )
+    .execute(pool)
+    .await?;
     // Les anciens numéros libres deviennent immédiatement des choix fiables.
     sqlx::query("INSERT OR IGNORE INTO numeromarquage(numero) SELECT DISTINCT upper(trim(num_officiel)) FROM bande WHERE num_officiel IS NOT NULL AND trim(num_officiel)<>''")
         .execute(pool)

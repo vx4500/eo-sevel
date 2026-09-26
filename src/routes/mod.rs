@@ -7338,6 +7338,24 @@ async fn transferts(
 /// inventaire ou des mortalités incohérents ; voir aussi la même logique
 /// répliquée en SQL pur dans `etat_donnees` (« Cases avec effectif calculé
 /// négatif ») pour le rapport de contrôles structurels.
+/// Bande logée dans une case à une date : celle du dernier transfert de
+/// porcs arrivé dans la case avec une bande connue.
+pub(super) async fn bande_de_la_case(
+    pool: &SqlitePool,
+    case_id: i64,
+    date: &str,
+) -> AppResult<Option<i64>> {
+    Ok(sqlx::query_scalar(
+        "SELECT bande_id FROM transfert WHERE case_dest_id=? AND bande_id IS NOT NULL \
+         AND espece='porc' AND date<=? ORDER BY date DESC, id DESC LIMIT 1",
+    )
+    .bind(case_id)
+    .bind(date)
+    .fetch_optional(pool)
+    .await?
+    .flatten())
+}
+
 async fn case_pig_count_raw(pool: &SqlitePool, case_id: i64) -> AppResult<i64> {
     let mut conn = pool.acquire().await?;
     case_pig_count_conn(&mut conn, case_id).await
@@ -7648,7 +7666,8 @@ async fn transferts_porcs(
     let source_id = raw_id
         .parse::<i64>()
         .map_err(|_| AppError::Invalid("Source invalide".into()))?;
-    let mut band_id = None;
+    // Affectée dans chaque cas : la bande choisie, ou celle de la case de départ.
+    let band_id: Option<i64>;
     let mut source_case = None;
     let mut source_room = None;
     match kind {
@@ -7693,6 +7712,10 @@ async fn transferts_porcs(
             }
             source_case = Some(source_id);
             source_room = Some(room);
+            // Les porcs gardent leur bande en changeant de case : sans elle,
+            // la salle d'arrivée ne savait plus quel lot elle logeait (vu le
+            // 26/09 : 313 porcs de B2.12 en Post-Engraissement « sans bande »).
+            band_id = bande_de_la_case(&state.pool, source_id, &date).await?;
         }
         _ => return Err(AppError::Invalid("Type de source invalide".into())),
     }
