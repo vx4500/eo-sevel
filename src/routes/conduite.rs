@@ -22,100 +22,121 @@ const SEVRES_PORTEE_DEFAUT: f64 = 12.0;
 
 // ─────────────────────────── Étapes ───────────────────────────
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Etape {
-    code: &'static str,
-    libelle: &'static str,
-    court: &'static str,
+    code: String,
+    libelle: String,
+    court: String,
     jour: i64,
     /// Charge de travail par animal concerné (truie ou porc), en points.
     poids: f64,
     sur_truies: bool,
+    /// Acte de protocole sanitaire (vaccin, traitement) représenté.
+    acte_id: Option<i64>,
+    /// L'étape tombe le lundi qui suit `jour` (IA des truies sevrées : du
+    /// lundi au mercredi de la semaine après le sevrage).
+    lundi_suivant: bool,
 }
 
-fn etapes(c: BandSchedule) -> [Etape; 10] {
-    [
+impl Etape {
+    fn fixe(code: &str, libelle: &str, court: &str, jour: i64, poids: f64, sur_truies: bool) -> Self {
         Etape {
-            code: "ia",
-            libelle: "Inséminations",
-            court: "IA",
-            jour: -c.gestation,
-            poids: 1.0,
-            sur_truies: true,
-        },
-        Etape {
-            code: "retour",
-            libelle: "Contrôle des retours en chaleur",
-            court: "Retours",
-            jour: -c.gestation + 21,
-            poids: 0.3,
-            sur_truies: true,
-        },
-        Etape {
-            code: "echo",
-            libelle: "Échographies",
-            court: "Écho",
-            jour: -c.gestation + c.echo_after_ia,
-            poids: 0.3,
-            sur_truies: true,
-        },
-        Etape {
-            code: "gestante",
-            libelle: "Passage en gestante",
-            court: "→ Gestante",
-            jour: -c.gestation + c.echo_after_ia + 2,
-            poids: 0.3,
-            sur_truies: true,
-        },
-        Etape {
-            code: "maternite",
-            libelle: "Entrée en maternité",
-            court: "Entrée mater.",
-            jour: -c.maternity_before_farrowing,
-            poids: 0.5,
-            sur_truies: true,
-        },
-        Etape {
-            code: "mise_bas",
-            libelle: "Mises-bas",
-            court: "Mises-bas",
-            jour: 0,
-            poids: 2.0,
-            sur_truies: true,
-        },
-        Etape {
-            code: "sevrage",
-            libelle: "Sevrage",
-            court: "Sevrage",
-            jour: c.weaning,
-            poids: 1.0,
-            sur_truies: true,
-        },
-        Etape {
-            code: "verraterie",
-            libelle: "Passage en verraterie des truies sevrées",
-            court: "→ Verraterie",
-            jour: c.weaning,
-            poids: 0.3,
-            sur_truies: true,
-        },
-        Etape {
-            code: "transfert",
-            libelle: "Transfert en engraissement",
-            court: "Transfert",
-            jour: c.transfer_finishing,
-            poids: 0.05,
-            sur_truies: false,
-        },
-        Etape {
-            code: "depart",
-            libelle: "Départs abattoir",
-            court: "Départ",
-            jour: c.departure,
-            poids: 0.05,
-            sur_truies: false,
-        },
+            code: code.into(),
+            libelle: libelle.into(),
+            court: court.into(),
+            jour,
+            poids,
+            sur_truies,
+            acte_id: None,
+            lundi_suivant: false,
+        }
+    }
+
+    fn date(&self, date_mb: NaiveDate) -> NaiveDate {
+        let date = date_mb + Duration::days(self.jour);
+        if self.lundi_suivant {
+            lundi(date) + Duration::days(7)
+        } else {
+            date
+        }
+    }
+}
+
+fn etapes(c: BandSchedule) -> Vec<Etape> {
+    let mut ia_retour = Etape::fixe(
+        "ia_retour",
+        "IA des truies sevrées (lundi → mercredi)",
+        "IA sevrées",
+        c.weaning,
+        1.0,
+        true,
+    );
+    ia_retour.lundi_suivant = true;
+    vec![
+        Etape::fixe("ia", "Inséminations", "IA", -c.gestation, 1.0, true),
+        Etape::fixe("retour", "Contrôle des retours en chaleur", "Retours", -c.gestation + 21, 0.3, true),
+        Etape::fixe("echo", "Échographies", "Écho", -c.gestation + c.echo_after_ia, 0.3, true),
+        Etape::fixe("gestante", "Passage en gestante", "→ Gestante", -c.gestation + c.echo_after_ia + 2, 0.3, true),
+        Etape::fixe("maternite", "Entrée en maternité", "Entrée mater.", -c.maternity_before_farrowing, 0.5, true),
+        Etape::fixe("mise_bas", "Mises-bas", "Mises-bas", 0, 2.0, true),
+        Etape::fixe("sevrage", "Sevrage", "Sevrage", c.weaning, 1.0, true),
+        Etape::fixe("verraterie", "Passage en verraterie des truies sevrées", "→ Verraterie", c.weaning, 0.3, true),
+        ia_retour,
+        Etape::fixe("transfert", "Transfert en engraissement", "Transfert", c.transfer_finishing, 0.05, false),
+        Etape::fixe("depart", "Départs abattoir", "Départ", c.departure, 0.05, false),
     ]
+}
+
+/// Étapes fixes, plus les vaccins et traitements des protocoles sanitaires
+/// des truies, placés par rapport à l'IA (référence « gestation »), à la
+/// mise-bas ou au sevrage.
+async fn toutes_etapes(pool: &SqlitePool, c: BandSchedule) -> AppResult<Vec<Etape>> {
+    let mut liste = etapes(c);
+    let actes: Vec<(i64, String, String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, libelle, lower(reference), jour, produit, categorie FROM acteprotocole \
+         WHERE actif=1 AND (cible LIKE '%femelle%' OR cible LIKE '%truie%')",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for (id, libelle, reference, jour, produit, categorie) in actes {
+        let base = match reference.as_str() {
+            "gestation" | "ia" | "insemination" => -c.gestation,
+            "mise_bas" | "misebas" | "mb" | "lactation" => 0,
+            "sevrage" => c.weaning,
+            _ => continue,
+        };
+        let vaccin = categorie.as_deref() == Some("vaccin");
+        liste.push(Etape {
+            code: "soin".into(),
+            libelle: format!(
+                "{} : {libelle}{}",
+                if vaccin { "Vaccin" } else { "Traitement" },
+                produit.map(|p| format!(" ({p})")).unwrap_or_default()
+            ),
+            court: format!("{} {libelle}", if vaccin { "💉" } else { "💊" }),
+            jour: base + jour,
+            poids: 0.4,
+            sur_truies: true,
+            acte_id: Some(id),
+            lundi_suivant: false,
+        });
+    }
+    liste.sort_by_key(|e| e.jour);
+    Ok(liste)
+}
+
+/// Actes sanitaires réalisés : (acte, bande) → date de réalisation.
+async fn actes_faits(pool: &SqlitePool) -> HashMap<(i64, i64), String> {
+    sqlx::query_as::<_, (i64, i64, String)>(
+        "SELECT acte_id, bande_id, MAX(date_realise) FROM acterealise GROUP BY acte_id, bande_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(acte, bande, date)| ((acte, bande), date))
+    .collect()
 }
 
 /// « B2.12 » → « 2 » ; « 3.40 » → « 3 ». Sert à regrouper les cycles d'une
@@ -454,6 +475,7 @@ fn etat_occupation(valeur: f64, capacite: Option<i64>) -> Value {
 /// prévus. Utilisées par la cloche d'alertes et par le Rapport.
 pub(super) async fn alertes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
     let bandes = charger_bandes(pool, 6).await?;
     let r = references(&bandes);
     let aujourd_hui = Local::now().date_naive();
@@ -462,14 +484,14 @@ pub(super) async fn alertes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
         let Some(date_mb) = bande.date_mb else {
             continue;
         };
-        for etape in etapes(calendrier) {
-            let date = date_mb + Duration::days(etape.jour);
+        for etape in &liste_etapes {
+            let date = etape.date(date_mb);
             let jours = (date - aujourd_hui).num_days();
             if !(0..=ALERTE_ETAPE_JOURS).contains(&jours) {
                 continue;
             }
             // Une étape déjà enregistrée n'est plus à annoncer.
-            let deja_fait = match etape.code {
+            let deja_fait = match etape.code.as_str() {
                 "mise_bas" => bande.portees > 0 && jours == 0,
                 "sevrage" => bande.sevrages > 0,
                 _ => false,
@@ -561,6 +583,8 @@ pub(super) async fn calendrier(
         _ => 18,
     };
     let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
+    let faits = actes_faits(pool).await;
     let bandes = charger_bandes(pool, 6).await?;
     let r = references(&bandes);
     let places = capacites(pool).await?;
@@ -600,8 +624,8 @@ pub(super) async fn calendrier(
         // l'horizon affiché.
         let mut cellules: Vec<Vec<Value>> = vec![Vec::new(); nb_semaines as usize];
         let mut visible = false;
-        for etape in etapes(calendrier) {
-            let date = date_mb + Duration::days(etape.jour);
+        for etape in &liste_etapes {
+            let date = etape.date(date_mb);
             if date < premier || date >= dernier {
                 continue;
             }
@@ -616,14 +640,14 @@ pub(super) async fn calendrier(
             let courant = semaines[index]["charge"].as_f64().unwrap_or(0.0);
             semaines[index].insert("charge".into(), json!(courant + charge));
             cellules[index].push(json!({
-                "code": etape.code,
-                "court": etape.court,
-                "libelle": etape.libelle,
+                "code": &etape.code,
+                "court": &etape.court,
+                "libelle": &etape.libelle,
                 "date": date.to_string(),
                 "jour": jour_semaine(date),
                 "animaux": animaux.round() as i64,
                 "sur_truies": etape.sur_truies,
-                "realise": realise(bande, etape.code),
+                "realise": realise(bande, etape, &faits),
             }));
         }
         if visible && (bande.active || cellules.iter().any(|c| !c.is_empty())) {
@@ -704,8 +728,14 @@ pub(super) async fn calendrier(
 // ─────────────────────────── Liste de travail ───────────────────────────
 
 /// Ce qui a déjà été enregistré pour une étape de la bande.
-fn realise(bande: &BandeCycle, code: &str) -> Option<String> {
-    match code {
+fn realise(bande: &BandeCycle, etape: &Etape, faits: &HashMap<(i64, i64), String>) -> Option<String> {
+    if let Some(acte) = etape.acte_id {
+        return faits.get(&(acte, bande.id)).map(|date| {
+            let jour_mois = date.get(8..10).zip(date.get(5..7)).map(|(j, m)| format!("{j}/{m}"));
+            format!("fait le {}", jour_mois.unwrap_or_else(|| date.clone()))
+        });
+    }
+    match etape.code.as_str() {
         "ia" if bande.ia_truies > 0 => Some(format!("{} IA faite{}", bande.ia_truies, if bande.ia_truies > 1 { "s" } else { "" })),
         "mise_bas" if bande.portees > 0 => Some(format!("{} mise{}-bas", bande.portees, if bande.portees > 1 { "s" } else { "" })),
         "sevrage" if bande.sevrages > 0 => Some(format!("{} truie{} sevrée{}", bande.sevrages, if bande.sevrages > 1 { "s" } else { "" }, if bande.sevrages > 1 { "s" } else { "" })),
@@ -718,6 +748,13 @@ async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str) -> AppR
     // à faire dans le cycle en cours.
     let condition = match code {
         "ia" => "NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='ia')",
+        // IA après sevrage : sevrées avec cette bande, sans IA depuis.
+        "ia_retour" => "EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='sevrage') \
+                   AND NOT EXISTS(SELECT 1 FROM evenement e2 WHERE e2.truie_id=t.id AND e2.type='ia' \
+                     AND e2.date >= (SELECT MAX(e3.date) FROM evenement e3 WHERE e3.truie_id=t.id AND e3.bande_id=?1 AND e3.type='sevrage'))",
+        // Vaccins et traitements de gestation : truies non vides, pas encore mises bas.
+        "soin" => "COALESCE((SELECT e.resultat FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1),'pleine')<>'vide' \
+                   AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now'))",
         // Retours en chaleur : inséminées, pas encore échographiées.
         "retour" => "EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='ia') \
                    AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie'))",
@@ -735,11 +772,16 @@ async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str) -> AppR
                    AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='sevrage')",
         _ => return Ok(Vec::new()),
     };
+    let appartenance = if matches!(code, "verraterie" | "ia_retour") {
+        "t.bande_code=?2 OR EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='sevrage')"
+    } else {
+        "t.bande_code=?2"
+    };
     let sql = format!(
         "SELECT t.id,t.num_travail,t.rang,s.nom AS salle,c.nom AS case_nom,\
          (SELECT e.type||' le '||strftime('%d/%m',e.date) FROM evenement e WHERE e.truie_id=t.id ORDER BY e.date DESC,e.id DESC LIMIT 1) AS dernier \
          FROM truie t LEFT JOIN salle s ON s.id=t.salle_id LEFT JOIN casesalle c ON c.id=t.case_id \
-         WHERE t.reformee=0 AND t.bande_code=?2 AND {condition} ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail"
+         WHERE t.reformee=0 AND ({appartenance}) AND {condition} ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail"
     );
     let lignes = sqlx::query(&sql)
         .bind(bande.id)
@@ -763,6 +805,8 @@ pub(super) async fn semaine(
         .unwrap_or_else(|| lundi(aujourd_hui));
     let fin = debut + Duration::days(6);
     let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
+    let faits = actes_faits(pool).await;
     let bandes = charger_bandes(pool, 6).await?;
     let r = references(&bandes);
 
@@ -771,13 +815,13 @@ pub(super) async fn semaine(
         let Some(date_mb) = bande.date_mb else {
             continue;
         };
-        for etape in etapes(calendrier) {
-            let date = date_mb + Duration::days(etape.jour);
+        for etape in &liste_etapes {
+            let date = etape.date(date_mb);
             if date < debut || date > fin {
                 continue;
             }
             let truies = if etape.sur_truies && bande.active {
-                truies_etape(pool, bande, etape.code).await?
+                truies_etape(pool, bande, &etape.code).await?
             } else {
                 Vec::new()
             };
@@ -786,12 +830,12 @@ pub(super) async fn semaine(
                 "jour": jour_semaine(date),
                 "bande": bande.code,
                 "bande_id": bande.id,
-                "code": etape.code,
-                "libelle": etape.libelle,
+                "code": &etape.code,
+                "libelle": &etape.libelle,
                 "sur_truies": etape.sur_truies,
                 "prevus": (if etape.sur_truies { bande.truies_prevues(r) } else { bande.porcs(r) }).round() as i64,
                 "porcs_reels": bande.porcs_reels(),
-                "realise": realise(bande, etape.code),
+                "realise": realise(bande, etape, &faits),
                 "truies": truies,
             }));
         }
@@ -1451,7 +1495,7 @@ mod essai_base_reelle {
             crate::templates::build()?,
         );
         let html = calendrier(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
-        for code in ["ev-retour", "ev-gestante", "ev-verraterie", "IA faite"] {
+        for code in ["ev-retour", "ev-gestante", "ev-verraterie", "IA faite", "ev-ia_retour", "Eryseng", "Suigen", "Pigfen"] {
             println!("calendrier : {code} présent = {}", html.contains(code));
         }
         let aujourd_hui = Local::now().date_naive();
@@ -1460,7 +1504,7 @@ mod essai_base_reelle {
             let mut q = HashMap::new();
             q.insert("debut".to_string(), debut.to_string());
             let page = semaine(State(state.clone()), Extension(session()), Query(q)).await?.0;
-            let etapes: Vec<&str> = ["Contrôle des retours", "Passage en gestante", "Passage en verraterie", "Inséminations", "Sevrage"]
+            let etapes: Vec<&str> = ["Contrôle des retours", "Passage en gestante", "Passage en verraterie", "IA des truies sevrées", "Vaccin", "Traitement", "Sevrage"]
                 .into_iter()
                 .filter(|e| page.contains(e))
                 .collect();

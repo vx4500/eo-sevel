@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.28.0** —
+Version actuelle : **2.29.0** —
+
+### Version 2.29.0 — Calendrier : IA après sevrage, vaccins, lisibilité
+
+Version Rust 2.29.0 : (1) étape « IA des truies sevrées » le lundi qui suit le sevrage (IA du lundi au mercredi chez Emmanuel), liste des truies sevrées sans IA depuis ; (2) vaccins et traitements des protocoles truies (`acteprotocole`, référence gestation = IA, mise-bas, sevrage) placés pour chaque bande, « fait le … » depuis `acterealise` ; `Etape` porte désormais des chaînes possédées et est complétée par `toutes_etapes` ; (3) étiquettes du calendrier lisibles (texte blanc forcé, plus grand). Après le sevrage les truies quittent la bande : les listes verraterie/IA sevrées les retrouvent par leur événement de sevrage.
+
+—
 
 ### Version 2.28.0 — Calendrier de conduite : parcours des truies
 
