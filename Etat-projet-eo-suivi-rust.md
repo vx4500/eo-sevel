@@ -1,6 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.26.4** —
+Version actuelle : **2.27.0** —
+
+### Version 2.27.0 — Supprimer une case occupée
+
+Version Rust 2.27.0 : Structure → Supprimer une case même occupée ou avec un historique : on choisit la case qui reprend tout. Transferts, pertes, inventaires, réceptions, observations, nourrices, événements et truies sont rattachés à la case choisie, puis un inventaire de reprise daté du jour fixe l’effectif exact (porcs repris + présents), sans quoi les transferts rattachés fausseraient `case_pig_count`. Transaction unique.
+
+—
 
 ### Version 2.26.4 — Saisie rapide « Perte porcelet »
 

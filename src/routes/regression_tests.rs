@@ -379,3 +379,29 @@ async fn tableau_de_bord_delai_depuis_fin_traitement() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn supprimer_une_case_occupee_envoie_tout_vers_la_case_choisie() -> anyhow::Result<()> {
+    let state = farm().await;
+    sqlx::raw_sql(include_str!("../../migrations/0012_observation_comportement.sql")).execute(&state.pool).await?;
+    // Case 1 : truies T1 et T2 + 10 porcs ; case 2 : 5 porcs.
+    sqlx::raw_sql(
+        "INSERT INTO inventairecase(case_id,date,nombre) VALUES(1,'2026-09-01',10),(2,'2026-09-01',5); \
+         INSERT INTO declarationmort(horodatage,date,case_id,nombre) VALUES('2026-09-02','2026-09-02',1,1);",
+    )
+    .execute(&state.pool)
+    .await?;
+    let avant = case_pig_count(&state.pool, 1).await?;
+    assert_eq!(avant, 9);
+    // Sans case de reprise : refusé.
+    assert!(structure_case_supprimer(State(state.clone()), Extension(session()), Path(1), Form(form(&[]))).await.is_err());
+    structure_case_supprimer(State(state.clone()), Extension(session()), Path(1), Form(form(&[("case_cible_id", "2")]))).await?;
+    assert_eq!(case_pig_count(&state.pool, 2).await?, 14, "9 repris + 5 présents");
+    let truies: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie WHERE case_id=2").fetch_one(&state.pool).await?;
+    assert_eq!(truies, 2);
+    let pertes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM declarationmort WHERE case_id=2").fetch_one(&state.pool).await?;
+    assert_eq!(pertes, 1, "l'historique suit");
+    let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM casesalle WHERE id=1").fetch_one(&state.pool).await?;
+    assert_eq!(reste, 0);
+    Ok(())
+}

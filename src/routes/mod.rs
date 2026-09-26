@@ -11699,9 +11699,69 @@ async fn structure_case_supprimer(
     let used: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM transfert WHERE case_source_id=? OR case_dest_id=?)+(SELECT COUNT(*) FROM declarationmort WHERE case_id=?)+(SELECT COUNT(*) FROM truie WHERE case_id=?)+(SELECT COUNT(*) FROM evenement WHERE case_id=?)+(SELECT COUNT(*) FROM inventairecase WHERE case_id=?)+(SELECT COUNT(*) FROM receptionachat WHERE case_id=?)")
         .bind(id).bind(id).bind(id).bind(id).bind(id).bind(id).bind(id).fetch_one(&state.pool).await?;
     if used > 0 {
-        return Err(AppError::Invalid(
-            "Cette case contient un historique ou des animaux et ne peut pas être supprimée".into(),
-        ));
+        // Case occupée ou avec un historique : tout part vers la case
+        // choisie (animaux, transferts, pertes, inventaires, événements),
+        // puis un inventaire de reprise fixe l'effectif exact de la case qui
+        // reçoit — sans lui, les transferts rattachés fausseraient le compte.
+        let cible = form_i64(&form, "case_cible_id").filter(|c| *c != id).ok_or_else(|| {
+            AppError::Invalid(
+                "Cette case a des animaux ou un historique : choisissez la case qui les reprend".into(),
+            )
+        })?;
+        let (salle_cible, nom_cible): (i64, String) =
+            sqlx::query_as("SELECT salle_id, nom FROM casesalle WHERE id=?")
+                .bind(cible)
+                .fetch_optional(&state.pool)
+                .await?
+                .ok_or_else(|| AppError::Invalid("Case de reprise introuvable".into()))?;
+        let nom: String = sqlx::query_scalar("SELECT nom FROM casesalle WHERE id=?")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or(AppError::NotFound)?;
+        let porcs_supprimee = case_pig_count(&state.pool, id).await?.max(0);
+        let porcs_cible = case_pig_count(&state.pool, cible).await?.max(0);
+        let mut tx = state.pool.begin().await?;
+        for sql in [
+            "UPDATE transfert SET case_source_id=?1 WHERE case_source_id=?2",
+            "UPDATE transfert SET case_dest_id=?1 WHERE case_dest_id=?2",
+            "UPDATE declarationmort SET case_id=?1 WHERE case_id=?2",
+            "UPDATE inventairecase SET case_id=?1 WHERE case_id=?2",
+            "UPDATE receptionachat SET case_id=?1 WHERE case_id=?2",
+            "UPDATE observation_comportement SET case_id=?1 WHERE case_id=?2",
+            "UPDATE adoptionporcelet SET case_nourrice_id=?1 WHERE case_nourrice_id=?2",
+            "UPDATE evenement SET case_id=?1 WHERE case_id=?2",
+        ] {
+            sqlx::query(sql).bind(cible).bind(id).execute(&mut *tx).await?;
+        }
+        sqlx::query("UPDATE truie SET case_id=?, salle_id=? WHERE case_id=?")
+            .bind(cible)
+            .bind(salle_cible)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        if porcs_supprimee + porcs_cible > 0 {
+            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par) VALUES(?,?,?,?,?)")
+                .bind(cible)
+                .bind(today_iso())
+                .bind(porcs_supprimee + porcs_cible)
+                .bind(format!(
+                    "Reprise de la case « {nom} » supprimée : {porcs_supprimee} porc(s) ajouté(s) aux {porcs_cible} présent(s)"
+                ))
+                .bind(&session.identifiant)
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query("DELETE FROM casesalle WHERE id=?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        let message = format!(
+            "Case « {nom} » supprimée : animaux et historique repris par « {nom_cible} »{}",
+            if porcs_supprimee > 0 { format!(" ({porcs_supprimee} porcs déplacés)") } else { String::new() }
+        );
+        return Ok(Redirect::to(&format!("/structure?ok={}", encode_query(&message))).into_response());
     }
     sqlx::query("DELETE FROM casesalle WHERE id=?")
         .bind(id)
