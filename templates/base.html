@@ -297,11 +297,14 @@
     </div>{% endif %}
   </div></div>{% endif %}
 
-  {% if 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'structure' in session.pages %}
+  {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or 'structure' in session.pages %}
   <div class="rust-menu" data-rubrique="Ma gestion"><button type="button" aria-expanded="false">Ma gestion <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
     {% if 'structure' in session.pages %}<div class="rust-sub-groupe"><h3>Bâtiments</h3>
       <a href="/salles"><b>Mes salles</b><small>Bande, animaux, ambiance, éclairage : tout par salle</small></a>
     </div>{% endif %}
+    <div class="rust-sub-groupe"><h3>Achats et ventes</h3>
+      {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>{% endif %}
+    </div>
     <div class="rust-sub-groupe"><h3>Stocks et consommations</h3>
       {% if 'stock' in session.pages %}<a href="/aliment-previsions"><b>Aliment</b><small>Livraisons, silos, prévisions de commande</small></a>
       <a href="/stock"><b>Stocks</b><small>Inventaires et consommables</small></a>{% endif %}
@@ -328,16 +331,14 @@
     </div>
   </div></div>{% endif %}
 
-  {% if 'economique' in session.pages or 'imports' in session.pages or (session.module_vente_directe and 'vente' in session.pages) %}
-  <div class="rust-menu" data-rubrique="Achats et ventes"><button type="button" aria-expanded="false">Achats et ventes <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
-    <div class="rust-sub-groupe"><h3>Achats et factures</h3>
-      {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>{% endif %}
-      {% if session.module_vente_directe %}{% if 'vente' in session.pages %}<a href="/vente-directe"><b>Vente directe</b><small>Commandes, clients, sessions</small></a>
+  {% if session.module_vente_directe %}{% if 'vente' in session.pages %}
+  <div class="rust-menu" data-rubrique="Vente directe"><button type="button" aria-expanded="false">Vente directe <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
+    <div class="rust-sub-groupe"><h3>Vente à la ferme</h3>
+      <a href="/vente-directe"><b>Vente directe</b><small>Produits, clients, sessions</small></a>
       <a href="/vente-directe/commandes"><b>Commandes clients</b><small>À préparer et à livrer</small></a>
-      <a href="/vente-directe/bilan"><b>Récapitulatif des ventes</b><small>Sessions, marges, communications</small></a>{% endif %}{% endif %}
-      {% if 'imports' in session.pages %}<a href="/imports"><b>Importer un document</b><small>PDF fournisseur, CSV, relevés</small></a>{% endif %}
+      <a href="/vente-directe/bilan"><b>Récapitulatif des ventes</b><small>Sessions, marges, communications</small></a>
     </div>
-  </div></div>{% endif %}
+  </div></div>{% endif %}{% endif %}
 
   <span class="grow"></span>
   <form class="rust-search" action="/recherche" method="get" role="search"><span aria-hidden="true">🔍</span><input name="q" placeholder="Truie, bande, facture…" aria-label="Rechercher dans l’élevage"><button type="submit">OK</button></form>
@@ -1535,7 +1536,7 @@
 
     // Barre du bas : marquer l'entrée correspondant à la rubrique courante.
     var correspondances = {'Aujourd’hui':'/quotidien','Mes animaux':'/bandes',
-      'Mes résultats':'/gte','Ma gestion':'/economique','Achats et ventes':'/economique'};
+      'Mes résultats':'/gte','Ma gestion':'/economique','Vente directe':'/vente-directe'};
     var vise = correspondances[rubrique];
     document.querySelectorAll('.nav-pouce a[data-pouce]').forEach(function(lien){
       if(lien.dataset.pouce === vise){ lien.setAttribute('aria-current','page'); }

@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.30.0** —
+Version actuelle : **2.30.1** —
+
+### Version 2.30.1 — Rubrique Vente directe
+
+Version Rust 2.30.1 : le menu « Achats et ventes » de la 2.30.0 devient « Vente directe » (vente à la ferme seule, visible si module_vente_directe) ; Économie et imports reviennent dans Ma gestion.
 
 ### Version 2.30.0 — Prestataires : bandes confiées, inventaire, aliment, pesées
 
