@@ -252,7 +252,16 @@ async fn etat_appareil(
     ieee: &str,
     etat: &serde_json::Map<String, Value>,
 ) -> Result<()> {
-    let ts = maintenant();
+    // Heure du dernier contact réel avec l'appareil (option `last_seen` de
+    // Zigbee2MQTT, en millisecondes) : au redémarrage, Zigbee2MQTT republie
+    // l'état en cache d'un capteur muet depuis des heures ; sans cela, cette
+    // vieille valeur paraissait toute fraîche.
+    let ts = etat
+        .get("last_seen")
+        .and_then(Value::as_i64)
+        .map(|ms| ms / 1000)
+        .filter(|t| *t > 1_600_000_000 && *t <= maintenant() + 60)
+        .unwrap_or_else(maintenant);
     // Ce qu'il faut écrire, décidé sous le verrou, écrit ensuite.
     let mut a_ecrire: Vec<(String, Option<f64>, Option<String>)> = Vec::new();
     let mut a_historiser: Vec<(String, f64)> = Vec::new();
@@ -260,7 +269,7 @@ async fn etat_appareil(
     {
         let mut c = cache.lock().unwrap();
         for (cle, valeur) in etat {
-            if matches!(valeur, Value::Object(_) | Value::Array(_) | Value::Null) {
+            if matches!(valeur, Value::Object(_) | Value::Array(_) | Value::Null) || cle == "last_seen" {
                 continue;
             }
             let nombre = en_nombre(valeur);

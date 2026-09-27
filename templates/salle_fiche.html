@@ -21,7 +21,8 @@
     <div><b>{% if salle.ambiance.h is not none %}{{ salle.ambiance.h|round|int }} %{% else %}—{% endif %}</b><small>humidité</small></div>
     <div><b>{% if salle.ambiance.lux is not none %}{{ salle.ambiance.lux|round|int }}{% else %}—{% endif %}</b><small>lux</small></div>
   </div>
-  <p class="muted" style="margin:0 0 8px">{% if salle.ambiance.consigne %}Consigne {{ salle.ambiance.consigne|round(1) }} °C{% if reglage and reglage.courbe %} (courbe « {{ reglage.courbe }} »){% endif %}. {% endif %}{% if reglage and (reglage.t_alerte_min is not none or reglage.t_alerte_max is not none) %}Alerte sous {{ reglage.t_alerte_min or '—' }} °C / au-dessus de {{ reglage.t_alerte_max or '—' }} °C.{% endif %}{% if salle.ambiance.perime %} <b>Mesure ancienne.</b>{% endif %}</p>
+  <p class="muted" style="margin:0 0 8px">{% if salle.ambiance.consigne %}Consigne {{ salle.ambiance.consigne|round(1) }} °C{% if reglage and reglage.courbe %} (courbe « {{ reglage.courbe }} »){% endif %}. {% endif %}{% if reglage and (reglage.t_alerte_min is not none or reglage.t_alerte_max is not none) %}Alerte sous {{ reglage.t_alerte_min or '—' }} °C / au-dessus de {{ reglage.t_alerte_max or '—' }} °C.{% endif %}</p>
+  <p class="sl-mesure-le{% if salle.ambiance.vieille %} vieille{% endif %}">Dernière mesure {{ salle.ambiance.mesure_le }}{% if salle.ambiance.vieille %} — <b>capteur muet depuis</b>, valeur à vérifier{% endif %}</p>
   {% endif %}
   {% if historique %}
   <h3 style="font-size:.9rem;margin:8px 0 4px">14 derniers jours (mini – maxi, trait = moyenne)</h3>
@@ -40,7 +41,7 @@
   <h2>🌀 Ventilation et consignes {% if reglages and reglages.pilote %}<span class="sl-badge">régulation automatique</span>{% endif %}</h2>
   {% if ventilation or (ventil_etat and ventil_etat.ventil is not none) %}
   <div class="sl-mesures" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr));margin-bottom:10px">
-    {% for v in ventilation %}<div><b>{% if v.valeur is not none %}{{ v.valeur|round|int }}{{ ' %' if (v.unite == '%' or not v.unite) else ' ' ~ v.unite }}{% else %}—{% endif %}</b><small>{{ v.nom }}</small></div>{% endfor %}
+    {% for v in ventilation %}<div><b>{% if v.arret %}arrêt{% elif v.valeur is not none %}{{ v.valeur|round|int }}{{ ' %' if (v.unite == '%' or not v.unite) else ' ' ~ v.unite }}{% else %}—{% endif %}</b><small>{{ v.nom }} — vitesse</small><small class="sl-mesure-le{% if v.vieille %} vieille{% endif %}">{% if v.mesure_le %}{{ v.mesure_le }}{% elif v.zigbee %}inconnue : le variateur l’envoie quand on la change{% else %}automate injoignable{% endif %}</small></div>{% endfor %}
     {% if ventil_etat and ventil_etat.ventil is not none %}<div><b>{{ ventil_etat.ventil|round|int }} %</b><small>consigne calculée{% if ventil_etat.mode == 'securite' %} (repli){% endif %}</small></div>{% endif %}
   </div>
   {% else %}<p class="sl-vide" style="margin-top:0">Aucune sortie de ventilation rattachée à cette salle.</p>{% endif %}
@@ -142,7 +143,7 @@
 {% if points %}
 <section class="card">
   <h2>🔌 Capteurs et sorties de l'automate</h2>
-  <div class="sl-lignes">{% for p in points %}<div>{{ p.nom }} <span>· {{ p.role }}{% if p.pilotable %} · pilotable{% endif %}</span></div>{% endfor %}</div>
+  <div class="sl-lignes">{% for p in points %}<div>{{ p.nom }} <span>· {{ p.role }}{% if p.pilotable %} · pilotable{% endif %}</span>{% if p.mesure_le %} <span class="sl-mesure-le{% if p.vieille %} vieille{% endif %}">{% if p.valeur is not none %}<b>{{ p.valeur }}{% if p.unite %} {{ p.unite }}{% endif %}</b> {% endif %}{{ p.mesure_le }}</span>{% endif %}</div>{% endfor %}</div>
   <p style="margin:8px 0 0"><a href="/ambiance/ipx">Entrées et sorties →</a></p>
 </section>
 {% endif %}

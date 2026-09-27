@@ -20,6 +20,7 @@
     <div><b>{% if s.ambiance.h is not none %}{{ s.ambiance.h|round|int }} %{% else %}—{% endif %}</b><small>humidité</small></div>
     <div><b>{% if s.ambiance.lux is not none %}{{ s.ambiance.lux|round|int }}{% else %}—{% endif %}</b><small>lux</small></div>
   </div>
+  <p class="sl-mesure-le{% if s.ambiance.vieille %} vieille{% endif %}" style="font-size:.75rem;margin:2px 0 0;{% if s.ambiance.vieille %}color:#b3261e;font-weight:600{% else %}color:#52655d{% endif %}">Mesure {{ s.ambiance.mesure_le }}</p>
   {% endif %}
   <div class="sl-lignes">
     {% if s.truies %}<div>🐖 <b>{{ s.truies }}</b> truie{% if s.truies > 1 %}s{% endif %}</div>{% endif %}

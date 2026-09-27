@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.31.0** —
+Version actuelle : **2.32.0** —
+
+### Version 2.32.0 — Heure des mesures, vitesse des ventilateurs
+
+Version Rust 2.32.0 : le pont Zigbee (eo-regul) horodate avec `last_seen` de Zigbee2MQTT (option `advanced.last_seen: epoch` activée) — au redémarrage Z2M republiait l'état en cache (PS-3 muet depuis le 26/09 01:14 paraissait mesuré à 06:58). Fiche salle et Mes salles : « Dernière mesure à HH:MM » (date si > 24 h, rouge si > 1 h) ; capteurs de l'automate avec valeur et heure ; ventilateurs : vitesse, arrêt, heure (variateur Tuya TS0601 : pas de lecture sur demande, vitesse connue seulement quand elle change).
 
 ### Version 2.31.0 — Alertes SMS Free Mobile
 

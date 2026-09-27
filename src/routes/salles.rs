@@ -20,6 +20,32 @@ fn dixiemes(valeur: Option<i64>) -> Option<f64> {
 /// Âge au-delà duquel l'état d'ambiance n'est plus présenté comme actuel.
 const ETAT_PERIME_S: i64 = 300;
 
+/// Moment d'une mesure, lisible : « à 14:32 » dans les dernières 24 h,
+/// « le 26/09 à 01:14 » au-delà.
+pub(super) fn quand(ts: i64, maintenant: i64) -> String {
+    use chrono::TimeZone;
+    let Some(d) = Local.timestamp_opt(ts, 0).single() else {
+        return String::new();
+    };
+    if maintenant - ts < 86_400 {
+        d.format("à %H:%M").to_string()
+    } else {
+        d.format("le %d/%m à %H:%M").to_string()
+    }
+}
+
+/// Valeur et heure d'un point Zigbee (`<ieee>/<grandeur>`).
+async fn zigbee_valeur_ts(pool: &SqlitePool, chemin: &str) -> Option<(Option<f64>, i64)> {
+    let (ieee, cle) = chemin.split_once('/')?;
+    sqlx::query_as::<_, (Option<f64>, i64)>("SELECT valeur, ts FROM zigbee_valeur WHERE ieee=? AND cle=?")
+        .bind(ieee)
+        .bind(cle)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Bande présente et jour de présence : dernier transfert de bande vers la
 /// salle, sinon mise-bas des truies qui s'y trouvent (maternité). Même règle
 /// que la régulation, pour que la fiche et la consigne parlent du même lot.
@@ -181,6 +207,7 @@ async fn resume(pool: &SqlitePool, ligne: &sqlx::sqlite::SqliteRow) -> AppResult
         "ambiance": etat.map(|(t_ts, t, h, lux, consigne, sonde_ok)| json!({
             "t": t, "h": h, "lux": lux, "consigne": consigne,
             "sonde_ok": sonde_ok != 0, "perime": ts - t_ts > ETAT_PERIME_S,
+            "mesure_le": quand(t_ts, ts), "vieille": ts - t_ts > 3600,
         })),
         "alertes": alertes,
         "lampes": lampes.iter().map(|(nom, allume)| json!({"nom": nom, "allume": allume.map(|a| a != 0)})).collect::<Vec<_>>(),
@@ -414,13 +441,30 @@ pub(super) async fn fiche(
 
     // Équipements reliés : sondes et sorties de l'automate, lampes et
     // programmes, ventilateurs.
-    let points = generic_rows_bind(
+    let mut points = generic_rows_bind(
         pool,
-        "SELECT p.id, p.nom, p.role, p.unite, p.pilotable FROM ipx_point p \
+        "SELECT p.id, p.nom, p.role, p.unite, p.pilotable, p.hote, p.chemin, p.coefficient, p.decalage FROM ipx_point p \
          WHERE p.salle_id=? AND p.actif=1 ORDER BY p.role, p.nom",
         id,
     )
     .await?;
+    let maintenant_ts = chrono::Utc::now().timestamp();
+    for p in points.iter_mut() {
+        if p["hote"].as_str() != Some(super::zigbee::HOTE) {
+            continue;
+        }
+        let Some(chemin) = p["chemin"].as_str().map(str::to_string) else { continue };
+        if let Some((valeur, t)) = zigbee_valeur_ts(pool, &chemin).await {
+            let coef = p["coefficient"].as_f64().unwrap_or(1.0);
+            let dec = p["decalage"].as_f64().unwrap_or(0.0);
+            p["valeur"] = json!(valeur.map(|v| ((v * coef + dec) * 10.0).round() / 10.0));
+            p["mesure_le"] = json!(quand(t, maintenant_ts));
+            p["vieille"] = json!(maintenant_ts - t > 3600);
+        } else {
+            p["mesure_le"] = json!("jamais reçue");
+            p["vieille"] = json!(true);
+        }
+    }
     let lampes = sqlx::query(
         "SELECT p.id, p.nom, e.allume, e.raison, ep.nom AS programme, ep.id AS programme_id, ep.essai \
          FROM ipx_point p LEFT JOIN eclairage_etat e ON e.point_id=p.id \
@@ -529,11 +573,40 @@ pub(super) async fn fiche(
     let mut ventilation = Vec::new();
     for (nom, hote, chemin, formule, coefficient, decalage, unite) in sorties_ventil {
         let valeur = super::ambiance::lire_point(pool, &hote, &chemin, formule.as_deref(), coefficient, decalage).await;
+        let zigbee = hote == super::zigbee::HOTE;
+        // Heure de la dernière vitesse connue (Zigbee) ; un variateur Tuya
+        // n'envoie sa vitesse qu'à un changement, pas sur demande.
+        let (mesure_le, vieille) = if zigbee {
+            match zigbee_valeur_ts(pool, &chemin).await {
+                Some((_, t)) => (Some(quand(t, maintenant_ts)), maintenant_ts - t > 3600),
+                None => (None, true),
+            }
+        } else {
+            (valeur.map(|_| "lue à l'instant".to_string()), false)
+        };
+        // Etat marche/arrêt du variateur quand il l'a envoyé.
+        let marche = if zigbee {
+            match chemin.split_once('/') {
+                Some((ieee, _)) => sqlx::query_scalar::<_, Option<String>>("SELECT texte FROM zigbee_valeur WHERE ieee=? AND cle='state'")
+                    .bind(ieee)
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten()
+                    .flatten(),
+                None => None,
+            }
+        } else {
+            None
+        };
         ventilation.push(json!({
             "nom": nom,
             "valeur": valeur.map(|v| (v * 10.0).round() / 10.0),
             "unite": unite.unwrap_or_default(),
-            "zigbee": hote == super::zigbee::HOTE,
+            "zigbee": zigbee,
+            "mesure_le": mesure_le,
+            "vieille": vieille,
+            "arret": marche.as_deref() == Some("OFF"),
         }));
     }
     let reglages = sqlx::query(
