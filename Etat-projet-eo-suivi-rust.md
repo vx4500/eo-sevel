@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.36.0** —
+Version actuelle : **2.36.1** —
+
+### Version 2.36.1 — Correctif page Aliment
+
+Version Rust 2.36.1 : la section #alimentation de aliment_previsions.html avait été insérée dans le bloc title (invisible) ; déplacée dans le bloc content, test ajouté.
 
 ### Version 2.36.0 — Production prévue par bande
 
