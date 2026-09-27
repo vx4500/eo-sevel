@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.30.1** —
+Version actuelle : **2.31.0** —
+
+### Version 2.31.0 — Alertes SMS Free Mobile
+
+Version Rust 2.31.0 : `src/sms_free.rs` (API « Notifications par SMS » de Free : smsapi.free-mobile.fr/sendmsg), boucle lancée par eo-sevel chaque minute : battement `parametre.sms_battement`, SMS au redémarrage si arrêt > 5 min (coupure du 26/09 22h28 → 27/09 ~9h sans alerte), SMS des nouvelles `ambiance_alerte` ouvertes (critiques ou toutes, `sms_free_niveau`) ; page Mes équipements → Free SMS (/equipements/sms, réglages admin, SMS de test, historique `sms_envoi`, migration 0020).
 
 ### Version 2.30.1 — Rubrique Vente directe
 

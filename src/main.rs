@@ -16,6 +16,7 @@ mod mdns;
 mod models;
 mod regul_core;
 mod routes;
+mod sms_free;
 mod templates;
 mod vocal;
 
@@ -114,6 +115,12 @@ async fn main() -> anyhow::Result<()> {
     let ambiance_pool = pool.clone();
     tokio::spawn(async move {
         crate::ambiance::boucle_entretien(ambiance_pool).await;
+    });
+
+    // Alertes SMS (Free Mobile) et SMS au retour du courant.
+    let sms_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::sms_free::boucle(sms_pool).await;
     });
 
     // Rétention des enregistrements vocaux : l'audio ne sert qu'au diagnostic

@@ -48,6 +48,7 @@ mod zigbee;
 mod regression_tests;
 mod scan;
 mod sevrage;
+mod sms;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
@@ -127,6 +128,8 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/laezh", get(equipement_laezh))
         .route("/equipements/treizh", get(equipement_treizh))
         .route("/equipements/kren", get(equipement_kren))
+        .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
+        .route("/equipements/sms/test", post(sms::test))
         .route("/ambiance", get(ambiance::page))
         .route("/ambiance/etat.json", get(ambiance::etat_json))
         .route("/ambiance/eclairage", get(eclairage::page))
@@ -930,6 +933,12 @@ async fn equipements(
         Some(hote) => json!({"nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
         None => json!({"nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
     };
+    let sms_actif: bool = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM parametre WHERE cle='sms_free_actif' AND valeur='1'")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0)
+        > 0;
+    let sms = json!({"nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
     let zigbee = json!({
         "nom":"Réseau Zigbee",
         "etat": if zigbee_ok { "actif" } else { "attente" },
@@ -944,6 +953,7 @@ async fn equipements(
             {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             ipx,
             zigbee,
+            sms,
             {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
             {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
             {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}

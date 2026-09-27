@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Free SMS — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Free SMS</h1><p>Alertes de l’élevage par SMS sur votre portable Free.</p></div>
+  <span class="equipment-state {% if actif and cle_enregistree %}actif{% else %}attente{% endif %}">{% if actif and cle_enregistree %}Alertes actives{% elif cle_enregistree %}En pause{% else %}À configurer{% endif %}</span>
+</section>
+
+{% if resultat == 'test_ok' %}<section class="card"><p><b>✓ SMS de test envoyé.</b> Vérifiez votre téléphone.</p></section>
+{% elif resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b></p></section>
+{% elif resultat %}<section class="card"><p><b>{{ resultat }}</b></p></section>{% endif %}
+
+<section class="card"><h2>Ce qui est envoyé</h2><ul>
+<li><b>Retour du courant</b> : quand le serveur redémarre après plus de 5 minutes d’arrêt, un SMS donne l’heure de la coupure et sa durée.</li>
+<li><b>Alertes des salles</b> : température, ventilation, coupure de phase des compteurs Zigbee… dès qu’elles apparaissent (vérification chaque minute).</li>
+</ul>
+<p class="muted">Pendant une coupure, le serveur est éteint et ne peut rien envoyer : le SMS arrive au retour du courant. Pour être prévenu <i>pendant</i> la coupure, il faut un transmetteur GSM sur batterie ou une surveillance extérieure.</p>
+{% if battement_age is not none %}<p class="muted">Dernière vérification il y a {{ battement_age }} s.</p>{% endif %}
+</section>
+
+<section class="card"><h2>Réglages</h2>
+<p>Sur <b>mobile.free.fr</b> → Mon espace abonné → <b>Mes options</b> → <b>Notifications par SMS</b> : activez l’option, puis recopiez l’identifiant et la clé affichés.</p>
+{% if session.est_admin %}
+<form class="rust-actions" method="post" action="/equipements/sms"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Identifiant Free<input name="user" value="{{ user or '' }}" inputmode="numeric" autocomplete="off"></label>
+  <label>Clé d’identification<input type="password" name="pass" autocomplete="new-password" placeholder="{% if cle_enregistree %}enregistrée — laisser vide pour la garder{% else %}clé donnée par Free{% endif %}"></label>
+  <label>Envoyer<select name="niveau"><option value="critique" {% if niveau == 'critique' %}selected{% endif %}>Alertes critiques seulement</option><option value="alerte" {% if niveau == 'alerte' %}selected{% endif %}>Toutes les alertes</option></select></label>
+  <label><input type="checkbox" name="actif" {% if actif %}checked{% endif %}> Alertes SMS actives</label>
+  <button>Enregistrer</button>
+</form>
+{% if cle_enregistree %}<form method="post" action="/equipements/sms/test"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Envoyer un SMS de test</button></form>{% endif %}
+{% else %}<p class="muted">Réglages réservés à l’administrateur.</p>{% endif %}
+</section>
+
+<section class="card"><h2>Derniers SMS</h2>
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Origine</th><th>Message</th><th>Résultat</th></tr></thead><tbody>
+{% for e in envois %}<tr><td>{{ e.horodatage }}</td><td>{{ e.origine }}</td><td style="white-space:pre-line">{{ e.message }}</td><td>{{ e.statut }}</td></tr>
+{% else %}<tr><td colspan="4" class="rust-empty">Aucun SMS envoyé</td></tr>{% endfor %}
+</tbody></table></div></section>
+<p><a href="/equipements">← Retour à Mes équipements</a></p>
+</div>{% endblock %}
