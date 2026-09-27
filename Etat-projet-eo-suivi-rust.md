@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.32.0** —
+Version actuelle : **2.33.0** —
+
+### Version 2.33.0 — Travail de la semaine validable
+
+Version Rust 2.33.0 : /conduite/semaine — étapes repliables avec pastille « N à faire / terminé », vraies cases à cocher, « Tout cocher », POST /conduite/semaine/valider : `fait` → `travail_fait` (migration 0021, exclu de `truies_etape`) + `acterealise` pour un vaccin/traitement ; `pleine`/`vide` → événement echo ; `annuler`. IA, sevrage, mises-bas : liens vers leurs saisies (un vrai événement est nécessaire).
 
 ### Version 2.32.0 — Heure des mesures, vitesse des ventilateurs
 

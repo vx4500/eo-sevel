@@ -660,6 +660,7 @@ pub fn router(state: AppState) -> Router {
         .route("/rapport", get(rapport::page))
         .route("/conduite", get(conduite::calendrier))
         .route("/conduite/semaine", get(conduite::semaine))
+        .route("/conduite/semaine/valider", post(conduite::valider))
         .route("/flux", get(conduite::flux))
         .route("/analyse-bandes", get(conduite::analyse))
         .route("/rapport-hebdomadaire.pdf", get(rapport::ancien_pdf))

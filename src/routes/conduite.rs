@@ -743,7 +743,7 @@ fn realise(bande: &BandeCycle, etape: &Etape, faits: &HashMap<(i64, i64), String
     }
 }
 
-async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str) -> AppResult<Vec<Value>> {
+async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id: i64) -> AppResult<Vec<Value>> {
     // Chaque requête prend les truies de la bande qui ont encore cette étape
     // à faire dans le cycle en cours.
     let condition = match code {
@@ -781,11 +781,15 @@ async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str) -> AppR
         "SELECT t.id,t.num_travail,t.rang,s.nom AS salle,c.nom AS case_nom,\
          (SELECT e.type||' le '||strftime('%d/%m',e.date) FROM evenement e WHERE e.truie_id=t.id ORDER BY e.date DESC,e.id DESC LIMIT 1) AS dernier \
          FROM truie t LEFT JOIN salle s ON s.id=t.salle_id LEFT JOIN casesalle c ON c.id=t.case_id \
-         WHERE t.reformee=0 AND ({appartenance}) AND {condition} ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail"
+         WHERE t.reformee=0 AND ({appartenance}) AND {condition} \
+         AND NOT EXISTS(SELECT 1 FROM travail_fait f WHERE f.truie_id=t.id AND f.bande_id=?1 AND f.code=?3 AND f.acte_id=?4) \
+         ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail"
     );
     let lignes = sqlx::query(&sql)
         .bind(bande.id)
         .bind(&bande.code)
+        .bind(code)
+        .bind(acte_id)
         .fetch_all(pool)
         .await?;
     rows_to_json(lignes)
@@ -820,11 +824,24 @@ pub(super) async fn semaine(
             if date < debut || date > fin {
                 continue;
             }
+            let acte_id = etape.acte_id.unwrap_or(0);
             let truies = if etape.sur_truies && bande.active {
-                truies_etape(pool, bande, &etape.code).await?
+                truies_etape(pool, bande, &etape.code, acte_id).await?
             } else {
                 Vec::new()
             };
+            // Truies déjà pointées pour cette étape (annulables).
+            let faites = rows_to_json(
+                sqlx::query(
+                    "SELECT t.id,t.num_travail,f.date_fait,f.par FROM travail_fait f JOIN truie t ON t.id=f.truie_id \
+                     WHERE f.code=? AND f.acte_id=? AND f.bande_id=? ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail",
+                )
+                .bind(&etape.code)
+                .bind(acte_id)
+                .bind(bande.id)
+                .fetch_all(pool)
+                .await?,
+            )?;
             travaux.push(json!({
                 "date": date.to_string(),
                 "jour": jour_semaine(date),
@@ -837,6 +854,8 @@ pub(super) async fn semaine(
                 "porcs_reels": bande.porcs_reels(),
                 "realise": realise(bande, etape, &faits),
                 "truies": truies,
+                "faites": faites,
+                "acte_id": acte_id,
             }));
         }
     }
@@ -905,7 +924,92 @@ pub(super) async fn semaine(
     ctx.insert("rappels".into(), Value::Array(rappels));
     ctx.insert("taches".into(), Value::Array(taches));
     ctx.insert("entretiens".into(), Value::Array(entretiens));
+    ctx.insert("aujourdhui".into(), json!(aujourd_hui.to_string()));
+    ctx.insert("message".into(), json!(query.get("ok")));
     render(&state, "conduite_semaine.html", Value::Object(ctx))
+}
+
+/// Valide des truies cochées dans « Travail de la semaine » :
+/// - `fait` : pointage (déplacement, retour…) ; pour un vaccin ou un
+///   traitement, l'acte est aussi inscrit comme réalisé pour la bande ;
+/// - `pleine` / `vide` : échographie enregistrée pour chaque truie ;
+/// - `annuler` : retire le pointage.
+pub(super) async fn valider(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let pool = &state.pool;
+    let code = form_text(&form, "code").ok_or_else(|| AppError::Invalid("Étape manquante".into()))?;
+    let bande_id = form_i64(&form, "bande_id").ok_or_else(|| AppError::Invalid("Bande manquante".into()))?;
+    let acte_id = form_i64(&form, "acte_id").unwrap_or(0);
+    let date = form_date_or_today(&form, "date")?;
+    let action = form.get("action").map(String::as_str).unwrap_or("fait");
+    let ids = form_selected_ids(&form, "truie_");
+    if ids.is_empty() {
+        return Err(AppError::Invalid("Cochez au moins une truie".into()));
+    }
+    let mut tx = pool.begin().await?;
+    match action {
+        "pleine" | "vide" => {
+            for id in &ids {
+                sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,resultat,note,suivi_actif) VALUES('echo',?,?,?,?,'Travail de la semaine',0)")
+                    .bind(&date)
+                    .bind(id)
+                    .bind(bande_id)
+                    .bind(action)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        "annuler" => {
+            for id in &ids {
+                sqlx::query("DELETE FROM travail_fait WHERE code=? AND acte_id=? AND bande_id=? AND truie_id=?")
+                    .bind(&code)
+                    .bind(acte_id)
+                    .bind(bande_id)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        _ => {
+            for id in &ids {
+                sqlx::query("INSERT OR IGNORE INTO travail_fait(code,acte_id,bande_id,truie_id,date_fait,par) VALUES(?,?,?,?,?,?)")
+                    .bind(&code)
+                    .bind(acte_id)
+                    .bind(bande_id)
+                    .bind(id)
+                    .bind(&date)
+                    .bind(&session.identifiant)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            if acte_id > 0 {
+                let deja: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM acterealise WHERE acte_id=? AND bande_id=? AND date_realise=?")
+                    .bind(acte_id)
+                    .bind(bande_id)
+                    .bind(&date)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                if deja == 0 {
+                    sqlx::query("INSERT INTO acterealise(acte_id,bande_id,date_realise,note) VALUES(?,?,?,?)")
+                        .bind(acte_id)
+                        .bind(bande_id)
+                        .bind(&date)
+                        .bind(format!("Travail de la semaine ({})", session.identifiant))
+                        .execute(&mut *tx)
+                        .await?;
+                }
+            }
+        }
+    }
+    tx.commit().await?;
+    let debut = form_text(&form, "debut").unwrap_or_default();
+    let n = ids.len();
+    Ok(Redirect::to(&format!("/conduite/semaine?debut={debut}&ok={n}#etape-{code}-{bande_id}-{acte_id}")).into_response())
 }
 
 // ─────────────────────────── Places et flux ───────────────────────────
