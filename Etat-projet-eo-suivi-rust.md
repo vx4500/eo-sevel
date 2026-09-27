@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.34.0** —
+Version actuelle : **2.34.1** —
+
+### Version 2.34.1 — Installation de cloudflared expliquée
+
+Version Rust 2.34.1 : la page Accès à distance affiche les commandes d'installation de cloudflared (paquet .deb officiel, lien /usr/local/bin) avec bouton Copier.
 
 ### Version 2.34.0 — Accès à distance (tunnel Cloudflare)
 

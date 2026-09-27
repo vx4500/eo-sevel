@@ -8,7 +8,21 @@
 
 {% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b> Le tunnel redémarre dans quelques secondes : rechargez la page.</p></section>
 {% elif resultat == 'relance' %}<section class="card"><p><b>✓ Redémarrage demandé.</b></p></section>{% endif %}
-{% if not installe %}<section class="card"><p><b>cloudflared n’est pas installé sur le serveur.</b> Il doit être installé une fois par l’administrateur système.</p></section>{% endif %}
+<details class="card" id="installation" {% if not installe %}open{% endif %}><summary><h2 style="display:inline">Installation de cloudflared</h2> {% if installe %}<span class="equipment-state actif">installé</span>{% else %}<span class="equipment-state attente">à installer</span>{% endif %}</summary>
+<p>À faire <b>une seule fois</b>, dans un terminal du serveur (compte avec <code>sudo</code>). Copiez chaque ligne l’une après l’autre :</p>
+{% for ligne in [
+  "curl -L -o /var/tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb",
+  "sudo dpkg -i /var/tmp/cloudflared.deb",
+  "sudo ln -sf /usr/bin/cloudflared /usr/local/bin/cloudflared",
+  "cloudflared --version"
+] %}<div class="cf-ligne"><code>{{ ligne }}</code><button type="button" class="ghost cf-copier" data-texte="{{ ligne }}">Copier</button></div>{% endfor %}
+<p class="muted">La dernière ligne doit afficher « cloudflared version … ». Rechargez ensuite cette page : l’état passe à « installé ». Pas besoin de <code>cloudflared service install</code> : c’est EO_Sevel qui lance le tunnel.</p>
+<p class="muted">Mise à jour plus tard : relancer les deux premières lignes, puis « Redémarrer le tunnel ».</p>
+</details>
+<style>.cf-ligne{display:flex;gap:8px;align-items:center;margin:6px 0}.cf-ligne code{flex:1;background:#06161f;color:#e0f3fb;padding:8px 10px;border-radius:6px;font-size:.8rem;overflow-x:auto;white-space:nowrap}</style>
+<script>document.addEventListener('click',function(e){var b=e.target.closest('.cf-copier');if(!b)return;var t=b.dataset.texte;
+function ok(){b.textContent='Copié ✓';setTimeout(function(){b.textContent='Copier';},1500);}
+if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(ok);}else{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();ok();}});</script>
 
 <section class="card"><h2>État</h2>
 <ul>
