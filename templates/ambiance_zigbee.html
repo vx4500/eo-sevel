@@ -63,7 +63,7 @@
         {% elif a.categorie == 'interrupteur' %}{% if a.etat == 'ON' %}<span class="zb-etat-on">💡 Allumé</span>{% elif a.etat == 'OFF' %}⚫ Éteint{% else %}—{% endif %}
         {% elif a.categorie == 'variateur' %}{% if a.etat == 'OFF' %}⚫ Arrêt{% elif a.reglage_pct is not none %}{{ a.reglage_pct }}<small> %</small>{% else %}—{% endif %}
         {% elif a.categorie == 'compteur' %}{% if a.puissance is not none %}{{ a.puissance|round|int }}<small> W</small>{% else %}—{% endif %}{% if a.energie is not none %} <small>· {{ a.energie|round|int }} kWh</small>{% endif %}
-        {% elif a.categorie == 'vibration' %}{% if a.vibration %}📳 En marche{% elif a.vibration == false %}À l'arrêt{% else %}—{% endif %}
+        {% elif a.categorie == 'vibration' %}{% if a.vibration %}📳 En marche{% elif a.vibration == false %}À l'arrêt{% else %}—{% endif %}{% if a.demarrages %}<br><small{% if a.demarrages.trop %} style="color:#a3361a;font-weight:700"{% endif %}>{{ a.demarrages.sur_periode }} démarrage(s) en {{ a.demarrages.periode }}{% if a.demarrages.max %} (max {{ a.demarrages.max }}){% endif %} · {{ a.demarrages.sur_24h }} en 24 h{% if a.demarrages.dernier %} · dernier {{ a.demarrages.dernier }}{% endif %}</small>{% endif %}
         {% else %}—{% endif %}
       </div>
 
@@ -75,7 +75,7 @@
       </div>
 
       <div class="zb-lien{% if a.usage %} rattache{% endif %}">
-        {% if a.usage %}✔ {% for u in a.usages %}{% if u.code == a.usage %}{{ u.libelle }}{% endif %}{% endfor %}{% if a.salle %} — {{ a.salle }}{% endif %}{% else %}Pas encore rattaché{% endif %}
+        {% if a.usage %}✔ {% for u in a.usages %}{% if u.code == a.usage %}{{ u.libelle }}{% endif %}{% endfor %}{% if a.salle %} — {{ a.salle }}{% else %} — Bâtiment général{% endif %}{% else %}Pas encore rattaché{% endif %}
       </div>
 
       {% if session.peut_modifier %}
@@ -86,16 +86,19 @@
       </form>
       {% endif %}
       <details{% if not a.usage %} open{% endif %}>
-        <summary>{% if a.usage %}Modifier le rattachement{% else %}Rattacher à une salle{% endif %}</summary>
+        <summary>{% if a.usage %}Modifier le rattachement{% else %}Rattacher{% endif %}</summary>
         <form method="post" action="/ambiance/zigbee/rattacher" data-no-ajax>
           <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ieee" value="{{ a.ieee }}">
-          <label>Salle<select name="salle_id"><option value="">— aucune —</option>{% for s in salles %}<option value="{{ s.id }}"{% if s.id == a.salle_id %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
+          <label>Emplacement<select name="salle_id"><option value="">Bâtiment général (aucune salle)</option>{% for s in salles %}<option value="{{ s.id }}"{% if s.id == a.salle_id %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
           <label>Utiliser comme<select name="usage">
             {% for u in a.usages %}<option value="{{ u.code }}"{% if u.code == a.usage or (not a.usage and loop.first) %} selected{% endif %}>{{ u.libelle }}</option>{% endfor %}
             {% if a.usage %}<option value="aucun">— Détacher —</option>{% endif %}
           </select></label>
           {% if a.categorie == 'compteur' %}
           <label>Compteur alimenté<select name="compteur_id"><option value="">＋ créer « Électricité — {{ a.nom }} »</option>{% for c in compteurs %}<option value="{{ c.id }}"{% if c.id == a.compteur_id %} selected{% endif %}>{{ c.nom }}</option>{% endfor %}</select></label>
+          {% endif %}
+          {% if a.categorie == 'vibration' %}
+          <div class="zb-ligne"><label>Alerte au-delà de (démarrages)<input type="number" min="1" name="demarrages_max" value="{{ a.demarrages.max if a.demarrages and a.demarrages.max is not none else '' }}" placeholder="vide = pas d’alerte"></label><label>Sur une période de (minutes)<input type="number" min="1" name="periode_min" value="{{ a.demarrages.periode_min if a.demarrages else 60 }}"></label></div>
           {% endif %}
           {% if a.categorie == 'sonde' %}
           <div class="zb-ligne"><label>Alerte sous (°C)<input name="t_min" inputmode="decimal" value="{{ a.t_min if a.t_min is not none else '' }}" placeholder="ex. 2"></label><label>Alerte au-dessus (°C)<input name="t_max" inputmode="decimal" value="{{ a.t_max if a.t_max is not none else '' }}" placeholder="ex. 8"></label></div>

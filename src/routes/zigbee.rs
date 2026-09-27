@@ -137,6 +137,16 @@ pub(super) async fn page(
     .fetch_all(pool)
     .await?;
 
+    let demarrages: Vec<(String, Option<i64>, i64, i64, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT a.ieee, r.demarrages_max, COALESCE(r.periode_min,60), \
+                (SELECT COUNT(*) FROM zigbee_demarrage d WHERE d.ieee=a.ieee AND d.ts>=?1-COALESCE(r.periode_min,60)*60), \
+                (SELECT COUNT(*) FROM zigbee_demarrage d WHERE d.ieee=a.ieee AND d.ts>=?1-86400), \
+                (SELECT MAX(ts) FROM zigbee_demarrage d WHERE d.ieee=a.ieee) \
+         FROM zigbee_appareil a LEFT JOIN zigbee_demarrage_reglage r ON r.ieee=a.ieee WHERE a.categorie='vibration'",
+    )
+    .bind(ts)
+    .fetch_all(pool)
+    .await?;
     let mut par_categorie: HashMap<String, Vec<Value>> = HashMap::new();
     let mut piles_faibles = Vec::new();
     for l in &lignes {
@@ -175,7 +185,13 @@ pub(super) async fn page(
         let compteur_id = lies.iter().find_map(|(.., c)| *c);
         let vu_le: Option<i64> = l.try_get::<Option<i64>, _>("vu_le").ok().flatten();
         let brightness = nombre("brightness");
+        let demarrage = demarrages.iter().find(|d| d.0 == ieee).map(|(_, max, periode, n, jour, dernier)| {
+            json!({"max": max, "periode_min": periode, "sur_periode": n, "sur_24h": jour,
+                   "periode": if periode % 60 == 0 { format!("{} h", periode / 60) } else { format!("{periode} min") },
+                   "dernier": dernier.map(|d| il_y_a(ts - d)), "trop": max.is_some_and(|m| *n > m)})
+        });
         let appareil = json!({
+            "demarrages": demarrage,
             "ieee": ieee,
             "nom": nom,
             "modele": l.try_get::<Option<String>, _>("modele").ok().flatten(),
@@ -259,6 +275,19 @@ pub(super) async fn rattacher(
     let grandeurs: Vec<&str> = grandeurs.split(',').collect();
     let usage = form_text(&form, "usage").unwrap_or_default();
     let salle_id = form_i64(&form, "salle_id");
+
+    // Démarrages d'une machine (compresseur) : alerte au-delà du maximum.
+    if categorie == "vibration" {
+        sqlx::query(
+            "INSERT INTO zigbee_demarrage_reglage(ieee,demarrages_max,periode_min) VALUES(?,?,?) \
+             ON CONFLICT(ieee) DO UPDATE SET demarrages_max=excluded.demarrages_max, periode_min=excluded.periode_min",
+        )
+        .bind(&ieee)
+        .bind(form_i64(&form, "demarrages_max").filter(|n| *n > 0))
+        .bind(form_i64(&form, "periode_min").filter(|n| *n > 0).unwrap_or(60))
+        .execute(pool)
+        .await?;
+    }
 
     // Seuils de température (frigo, salle) : propres à l'appareil.
     if categorie == "sonde" {

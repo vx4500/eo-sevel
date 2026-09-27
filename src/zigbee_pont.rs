@@ -265,6 +265,7 @@ async fn etat_appareil(
     // Ce qu'il faut écrire, décidé sous le verrou, écrit ensuite.
     let mut a_ecrire: Vec<(String, Option<f64>, Option<String>)> = Vec::new();
     let mut a_historiser: Vec<(String, f64)> = Vec::new();
+    let mut demarrage = false;
     let vu_a_ecrire;
     {
         let mut c = cache.lock().unwrap();
@@ -275,6 +276,15 @@ async fn etat_appareil(
             let nombre = en_nombre(valeur);
             let texte = valeur.as_str().map(str::to_string);
             let clef = (ieee.to_string(), cle.clone());
+            // Démarrage d'une machine : la vibration passe de 0 à 1. Sans
+            // valeur connue (redémarrage du service), seul un message récent
+            // compte, pas l'état republié par Zigbee2MQTT.
+            if cle == "vibration" && nombre == Some(1.0) {
+                demarrage = match c.ecrit.get(&clef) {
+                    Some((avant, ..)) => *avant != Some(1.0),
+                    None => maintenant() - ts < 120,
+                };
+            }
             let changer = match c.ecrit.get(&clef) {
                 Some((v, t, quand)) => *v != nombre || *t != texte || ts - quand >= REECRITURE_S,
                 None => true,
@@ -301,6 +311,13 @@ async fn etat_appareil(
         return Ok(());
     }
     let mut tx = pool.begin().await?;
+    if demarrage {
+        sqlx::query("INSERT INTO zigbee_demarrage(ieee,ts) VALUES(?,?)")
+            .bind(ieee)
+            .bind(ts)
+            .execute(&mut *tx)
+            .await?;
+    }
     for (cle, nombre, texte) in &a_ecrire {
         sqlx::query(
             "INSERT INTO zigbee_valeur(ieee,cle,valeur,texte,ts) VALUES(?,?,?,?,?) \
@@ -530,7 +547,58 @@ pub async fn alertes(pool: &SqlitePool) -> Result<()> {
         }
     }
     surveillance_electrique(pool).await?;
+    surveillance_demarrages(pool).await?;
     Ok(())
+}
+
+/// Trop de démarrages d'une machine (compresseur qui fait du « court
+/// cycle ») : alerte quand le nombre de démarrages sur la période glissante
+/// dépasse le maximum réglé pour le détecteur.
+pub async fn surveillance_demarrages(pool: &SqlitePool) -> Result<()> {
+    let ts = maintenant();
+    sqlx::query("DELETE FROM zigbee_demarrage WHERE ts < ?")
+        .bind(ts - HISTORIQUE_JOURS * 86400)
+        .execute(pool)
+        .await?;
+    let reglages: Vec<(String, String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT r.ieee, a.nom, r.demarrages_max, r.periode_min FROM zigbee_demarrage_reglage r \
+         JOIN zigbee_appareil a ON a.ieee=r.ieee WHERE a.present=1",
+    )
+    .fetch_all(pool)
+    .await?;
+    for (ieee, nom, max, periode) in reglages {
+        let periode = periode.max(1);
+        let nombre: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM zigbee_demarrage WHERE ieee=? AND ts>=?")
+            .bind(&ieee)
+            .bind(ts - periode * 60)
+            .fetch_one(pool)
+            .await?;
+        let salle: Option<i64> = sqlx::query_scalar(
+            "SELECT salle_id FROM ipx_point WHERE hote='zigbee' AND chemin LIKE ? AND salle_id IS NOT NULL LIMIT 1",
+        )
+        .bind(format!("{ieee}/%"))
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+        signaler(
+            pool,
+            salle,
+            &format!("zigbee_demarrages:{ieee}"),
+            max.is_some_and(|m| nombre > m),
+            "alerte",
+            &format!("{nom} : {nombre} démarrages en {} (maximum {})", duree_texte(periode), max.unwrap_or(0)),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+pub fn duree_texte(minutes: i64) -> String {
+    if minutes % 60 == 0 {
+        format!("{} h", minutes / 60)
+    } else {
+        format!("{minutes} min")
+    }
 }
 
 // ---------------------------------------------------------------------------
