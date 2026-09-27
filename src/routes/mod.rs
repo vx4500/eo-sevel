@@ -415,6 +415,9 @@ pub fn router(state: AppState) -> Router {
         .route("/energie", get(energie))
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/aliment-previsions/silo", post(silo_ajouter))
+        .route("/aliment-previsions/plan/ajouter", post(parity::aliment_ajouter))
+        .route("/aliment-previsions/plan/{id}/modifier", post(parity::aliment_modifier))
+        .route("/aliment-previsions/plan/{id}/supprimer", post(parity::aliment_supprimer))
         .route(
             "/aliment-previsions/silo/{id}/releve",
             post(silo_releve_ajouter),
@@ -12828,6 +12831,28 @@ async fn aliment_previsions(
     );
     ctx.insert("sites".into(), Value::Array(sites));
     ctx.insert("today".into(), json!(today_iso()));
+    if session.est_admin() {
+        let feed = generic_rows(&state.pool, "SELECT id,categorie,jour_debut,jour_fin,aliment,quantite,unite,note,ordre FROM planaliment ORDER BY ordre,categorie,jour_debut").await?;
+        let calendrier = load_band_schedule(&state.pool).await?;
+        ctx.insert(
+            "plans_groupes".into(),
+            Value::Array(plans_aliment::grouper(&feed, calendrier)),
+        );
+        ctx.insert(
+            "categories_aliment".into(),
+            json!(plans_aliment::categories_connues()),
+        );
+        ctx.insert(
+            "reglages_aliment".into(),
+            Value::Array(
+                generic_rows(
+                    &state.pool,
+                    "SELECT cle,valeur,libelle FROM reglage WHERE cle LIKE 'aliment%' ORDER BY valeur+0",
+                )
+                .await?,
+            ),
+        );
+    }
     render(&state, "aliment_previsions.html", Value::Object(ctx))
 }
 
@@ -13512,10 +13537,9 @@ async fn parametres(
     let params = generic_rows(&state.pool, "SELECT cle,valeur FROM parametre ORDER BY cle").await?;
     let settings = generic_rows(
         &state.pool,
-        "SELECT cle,valeur,libelle FROM reglage ORDER BY cle",
+        "SELECT cle,valeur,libelle FROM reglage WHERE cle NOT LIKE 'aliment%' ORDER BY cle",
     )
     .await?;
-    let feed=generic_rows(&state.pool,"SELECT id,categorie,jour_debut,jour_fin,aliment,quantite,unite,note,ordre FROM planaliment ORDER BY ordre,categorie,jour_debut").await?;
     let causes = generic_rows(
         &state.pool,
         "SELECT id,libelle FROM causeperte ORDER BY libelle",
@@ -13541,16 +13565,6 @@ async fn parametres(
     ctx.insert("parametres".into(), Value::Array(params));
     ctx.insert("infos".into(), Value::Object(infos));
     ctx.insert("reglages".into(), Value::Array(settings));
-    let calendrier = load_band_schedule(&state.pool).await?;
-    ctx.insert(
-        "plans_groupes".into(),
-        Value::Array(plans_aliment::grouper(&feed, calendrier)),
-    );
-    ctx.insert(
-        "categories_aliment".into(),
-        json!(plans_aliment::categories_connues()),
-    );
-    ctx.insert("plans_aliment".into(), Value::Array(feed));
     ctx.insert("causes".into(), Value::Array(causes));
     // Aucun repli : tant que la conduite n'a pas été choisie, le formulaire le
     // dit au lieu de présenter un système au hasard comme s'il était retenu.

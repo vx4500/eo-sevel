@@ -1017,7 +1017,7 @@ pub(super) async fn aliment_ajouter(
     let category = form_text(&form, "categorie")
         .ok_or_else(|| AppError::Invalid("Catégorie obligatoire".into()))?;
     sqlx::query("INSERT INTO planaliment(categorie,jour_debut,jour_fin,aliment,quantite,unite,note,ordre) VALUES(?,?,?,?,?,?,?,?)").bind(category).bind(form_i64(&form,"jour_debut").unwrap_or(0)).bind(form_i64(&form,"jour_fin").unwrap_or(0)).bind(form_text(&form,"aliment")).bind(form_f64(&form,"quantite")).bind(form_text(&form,"unite").unwrap_or_else(||"kg/j".into())).bind(form_text(&form,"note")).bind(form_i64(&form,"ordre").unwrap_or(0)).execute(&state.pool).await?;
-    Ok(Redirect::to("/parametres#alimentation").into_response())
+    Ok(Redirect::to("/aliment-previsions#alimentation").into_response())
 }
 pub(super) async fn aliment_modifier(
     State(state): State<AppState>,
@@ -1028,7 +1028,7 @@ pub(super) async fn aliment_modifier(
     require_admin(&session)?;
     verify_csrf(&session, &form)?;
     sqlx::query("UPDATE planaliment SET categorie=?,jour_debut=?,jour_fin=?,aliment=?,quantite=?,unite=?,note=?,ordre=? WHERE id=?").bind(form_text(&form,"categorie")).bind(form_i64(&form,"jour_debut").unwrap_or(0)).bind(form_i64(&form,"jour_fin").unwrap_or(0)).bind(form_text(&form,"aliment")).bind(form_f64(&form,"quantite")).bind(form_text(&form,"unite")).bind(form_text(&form,"note")).bind(form_i64(&form,"ordre").unwrap_or(0)).bind(id).execute(&state.pool).await?;
-    Ok(Redirect::to("/parametres#alimentation").into_response())
+    Ok(Redirect::to("/aliment-previsions#alimentation").into_response())
 }
 pub(super) async fn aliment_supprimer(
     State(state): State<AppState>,
@@ -1042,7 +1042,7 @@ pub(super) async fn aliment_supprimer(
         .bind(id)
         .execute(&state.pool)
         .await?;
-    Ok(Redirect::to("/parametres#alimentation").into_response())
+    Ok(Redirect::to("/aliment-previsions#alimentation").into_response())
 }
 
 pub(super) async fn reglages_maj(
@@ -1054,7 +1054,7 @@ pub(super) async fn reglages_maj(
     verify_csrf(&session, &form)?;
     let mut tx = state.pool.begin().await?;
     for (key, value) in &form {
-        if key == "csrf" {
+        if key == "csrf" || key == "retour" {
             continue;
         }
         if let Ok(value) = value.trim().parse::<i64>() {
@@ -1068,6 +1068,9 @@ pub(super) async fn reglages_maj(
         }
     }
     tx.commit().await?;
+    if form.get("retour").map(String::as_str) == Some("aliment") {
+        return Ok(Redirect::to("/aliment-previsions#alimentation").into_response());
+    }
     Ok(Redirect::to("/parametres#reglages").into_response())
 }
 
