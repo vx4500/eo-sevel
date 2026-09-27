@@ -6721,6 +6721,7 @@ async fn capacites_par_etape(pool: &SqlitePool, session: &SessionData) -> AppRes
     if session.a_truies() {
         for (cle, libelle, type_like) in [
             ("capacite_verraterie", "Verraterie", "%verrater%"),
+            ("capacite_gestante", "Gestantes", "%gest%"),
             ("capacite_maternite", "Maternité", "%matern%"),
         ] {
             let capacite = reglage_i64(pool, cle, 0).await?;
@@ -13646,8 +13647,9 @@ async fn conduite_bandes_maj(
 
 /// Les quatre capacités de bâtiment, dans l'ordre du cycle, avec le libellé que
 /// la table `reglage` exige à la création de la ligne.
-const CAPACITES: [(&str, &str); 4] = [
+const CAPACITES: [(&str, &str); 5] = [
     ("capacite_verraterie", "Capacité de verraterie (places)"),
+    ("capacite_gestante", "Capacité de gestantes (places)"),
     ("capacite_maternite", "Capacité de maternité (places)"),
     ("capacite_postsevrage", "Capacité de post-sevrage (places)"),
     (

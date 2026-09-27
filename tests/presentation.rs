@@ -494,6 +494,7 @@ fn une_base_neuve_ne_presume_aucune_capacite_ni_conduite() {
     assert!(parametres.contains("action=\"/parametres/capacites\""));
     for cle in [
         "capacite_verraterie",
+        "capacite_gestante",
         "capacite_maternite",
         "capacite_postsevrage",
         "capacite_engraissement",
