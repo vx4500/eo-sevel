@@ -17,6 +17,7 @@ mod models;
 mod regul_core;
 mod routes;
 mod sms_free;
+mod tunnel;
 mod templates;
 mod vocal;
 
@@ -121,6 +122,12 @@ async fn main() -> anyhow::Result<()> {
     let sms_pool = pool.clone();
     tokio::spawn(async move {
         crate::sms_free::boucle(sms_pool).await;
+    });
+
+    // Tunnel Cloudflare (accès à distance), piloté depuis Mes équipements.
+    let tunnel_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::tunnel::boucle(tunnel_pool).await;
     });
 
     // Rétention des enregistrements vocaux : l'audio ne sert qu'au diagnostic

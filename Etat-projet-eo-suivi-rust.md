@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.33.0** —
+Version actuelle : **2.34.0** —
+
+### Version 2.34.0 — Accès à distance (tunnel Cloudflare)
+
+Version Rust 2.34.0 : `src/tunnel.rs` — eo-sevel lance et surveille `/usr/local/bin/cloudflared tunnel --no-autoupdate run` (jeton par TUNNEL_TOKEN, `parametre.cf_token/cf_actif/cf_adresse`), relance avec délai croissant, journal gardé en mémoire ; page admin Mes équipements → Accès à distance (/equipements/acces-distance). Remplace l'add-on Cloudflared de Home Assistant.
 
 ### Version 2.33.0 — Travail de la semaine validable
 

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Accès à distance — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Accès à distance</h1><p>Tunnel Cloudflare : EO_Sevel accessible depuis internet, sans ouvrir de port sur la box.</p></div>
+  <span class="equipment-state {% if etat.en_marche and etat.connexions > 0 %}actif{% else %}attente{% endif %}">{% if etat.en_marche and etat.connexions > 0 %}Connecté ({{ etat.connexions }} liaisons){% elif etat.en_marche %}Connexion en cours…{% elif actif %}Arrêté{% else %}Désactivé{% endif %}</span>
+</section>
+
+{% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b> Le tunnel redémarre dans quelques secondes : rechargez la page.</p></section>
+{% elif resultat == 'relance' %}<section class="card"><p><b>✓ Redémarrage demandé.</b></p></section>{% endif %}
+{% if not installe %}<section class="card"><p><b>cloudflared n’est pas installé sur le serveur.</b> Il doit être installé une fois par l’administrateur système.</p></section>{% endif %}
+
+<section class="card"><h2>État</h2>
+<ul>
+  <li>Adresse publique : {% if adresse %}<a href="https://{{ adresse }}" target="_blank" rel="noopener"><b>https://{{ adresse }}</b></a>{% else %}<i>non renseignée</i>{% endif %}</li>
+  <li>Tunnel : {% if etat.en_marche %}en marche depuis {{ etat.depuis }}{% else %}arrêté{% endif %}{% if etat.redemarrages %} · {{ etat.redemarrages }} redémarrage(s){% endif %}</li>
+  {% if etat.erreur %}<li style="color:#b3261e">Dernière erreur : {{ etat.erreur }}</li>{% endif %}
+</ul>
+<p class="muted">Le tunnel tourne dans EO_Sevel : il repart tout seul après une coupure de courant, sans Home Assistant.</p>
+<form method="post" action="/equipements/acces-distance/relancer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Redémarrer le tunnel</button></form>
+</section>
+
+<section class="card"><h2>Réglages</h2>
+<ol>
+  <li>Sur <b>one.dash.cloudflare.com</b> → Networks → <b>Tunnels</b> → <b>Create a tunnel</b> (type Cloudflared), nommez-le « eo-sevel ».</li>
+  <li>Copiez la commande affichée (elle contient le jeton <code>eyJ…</code>) et collez-la ci-dessous, en entier si vous voulez.</li>
+  <li>Dans le tunnel → <b>Public Hostname</b> : votre adresse → service <b>HTTP</b>, URL <b>localhost:8080</b>.</li>
+</ol>
+<form class="rust-actions" method="post" action="/equipements/acces-distance"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label style="flex:1 1 100%">Jeton du tunnel<input type="password" name="jeton" autocomplete="new-password" placeholder="{% if jeton_enregistre %}enregistré — laisser vide pour le garder{% else %}eyJ… ou la commande complète{% endif %}"></label>
+  <label>Adresse publique<input name="adresse" value="{{ adresse or '' }}" placeholder="eo-sevel.mondomaine.fr"></label>
+  <label><input type="checkbox" name="actif" {% if actif %}checked{% endif %}> Tunnel actif</label>
+  <button>Enregistrer</button>
+</form>
+<p class="muted">Si l’ancien tunnel de Home Assistant utilise la même adresse, retirez-la de l’ancien tunnel puis arrêtez l’add-on Cloudflared de Home Assistant.</p>
+</section>
+
+<section class="card"><h2>Journal du tunnel</h2>
+<div class="rust-scroll"><pre style="font-size:.75rem;white-space:pre-wrap;margin:0">{% for l in etat.journal %}{{ l }}
+{% else %}Aucune ligne pour l’instant.{% endfor %}</pre></div></section>
+<p><a href="/equipements">← Retour à Mes équipements</a></p>
+</div>{% endblock %}
