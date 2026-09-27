@@ -8,13 +8,13 @@
 <ul class="cd-alertes">{% for a in alertes %}<li class="{{ a.niveau }}">{{ a.message }}</li>{% endfor %}</ul></section>{% endif %}
 
 <section class="cd-section">
-<h2>Occupation prévue <small>places réglées : maternité {{ capacites.maternite or '?' }} · post-sevrage {{ capacites.post_sevrage or '?' }} · engraissement {{ capacites.engraissement or '?' }} — <a href="/parametres#conduite-bandes">modifier</a></small></h2>
+<h2>Occupation prévue <small>places réglées : gestantes {{ capacites.gestante or '?' }} · maternité {{ capacites.maternite or '?' }} · post-sevrage {{ capacites.post_sevrage or '?' }} · engraissement {{ capacites.engraissement or '?' }} — <a href="/parametres#capacites">modifier</a></small></h2>
 <div class="cd-scroll"><table>
-<thead><tr><th>Semaine</th><th>Maternité (truies)</th><th>Post-sevrage (porcs)</th><th>Engraissement (porcs)</th></tr></thead>
+<thead><tr><th>Semaine</th><th>Gestantes (truies)</th><th>Maternité (truies)</th><th>Post-sevrage (porcs)</th><th>Engraissement (porcs)</th></tr></thead>
 <tbody>{% for p in prevision %}
-<tr class="{% if p.mat.etat == 'deborde' or p.ps.etat == 'deborde' or p.engr.etat == 'deborde' %}rouge{% elif p.mat.etat == 'limite' or p.ps.etat == 'limite' or p.engr.etat == 'limite' %}orange{% endif %}">
+<tr class="{% if p.gest.etat == 'deborde' or p.mat.etat == 'deborde' or p.ps.etat == 'deborde' or p.engr.etat == 'deborde' %}rouge{% elif p.gest.etat == 'limite' or p.mat.etat == 'limite' or p.ps.etat == 'limite' or p.engr.etat == 'limite' %}orange{% endif %}">
   <td><a href="/conduite/semaine?debut={{ p.debut }}"><b>S{{ p.numero }}</b></a> <small class="note">{{ p.debut|date_fr }}</small></td>
-  {% for cle in ['mat','ps','engr'] %}{% set o = p[cle] %}{% set qui = p['b_' ~ cle] %}
+  {% for cle in ['gest','mat','ps','engr'] %}{% set o = p[cle] %}{% set qui = p['b_' ~ cle] %}
   <td><span class="occ-{{ o.etat }}">{{ o.valeur }}{% if o.capacite %} / {{ o.capacite }}{% endif %}{% if o.taux is not none %} · {{ o.taux }} %{% endif %}</span>
     {% if o.taux is not none %}<div class="cd-jauge {{ o.etat }}"><i style="width:{% if o.taux > 100 %}100{% else %}{{ o.taux }}{% endif %}%"></i></div>{% endif %}
     {% if qui %}<small class="note">{{ qui|join(', ') }}</small>{% endif %}</td>{% endfor %}
@@ -23,6 +23,23 @@
 </section>
 
 <div class="cd-deux">
+<section class="cd-section"><h2>Production prévue par bande <small>porcs attendus à la vente et place aux étapes à venir</small></h2>
+<div class="cd-scroll"><table>
+<thead><tr><th>Bande</th><th>Truies</th><th>Nés vifs</th><th>Sevrés</th><th>Porcs aujourd’hui</th><th>À vendre (prévu)</th><th>Départ</th><th>Places aux étapes à venir</th></tr></thead>
+<tbody>{% for b in production %}
+<tr class="{% for e in b.etapes %}{% if e.occupation and e.occupation.etat == 'deborde' %}rouge {% endif %}{% endfor %}">
+<td><a href="/bande/{{ b.id }}"><b>{{ b.code }}</b></a></td>
+<td class="n">{{ b.truies }}{% if not b.portees %} <small class="note">prévu</small>{% endif %}</td>
+<td class="n">{% if b.portees %}{{ b.nv }}{% else %}—{% endif %}</td>
+<td class="n">{% if b.sevres is not none %}{{ b.sevres }}{% else %}—{% endif %}</td>
+<td class="n">{{ b.porcs }}{% if not b.reel %} <small class="note">prévu</small>{% endif %}</td>
+<td class="n"><b>{{ b.a_vendre }}</b>{% if b.vendus %} <small class="note">+ {{ b.vendus }} déjà vendus</small>{% endif %}</td>
+<td>S{{ b.semaine_depart }} <small class="note">{{ b.depart|date_fr }}</small></td>
+<td>{% for e in b.etapes %}{% set o = e.occupation %}<div><small>{{ e.libelle }} ({{ e.date|date_fr }}) :</small> {% if o and o.capacite %}<span class="occ-{{ o.etat }}">jusqu’à {{ o.valeur }} / {{ o.capacite }}</span>{% elif o %}<small class="note">{{ o.valeur }} — capacité à renseigner</small>{% endif %}</div>{% else %}<small class="note">vente en cours</small>{% endfor %}</td>
+</tr>{% else %}<tr><td colspan="8" class="note">Aucune bande active.</td></tr>{% endfor %}</tbody></table></div>
+<p class="note">À vendre = porcs d’aujourd’hui moins les pertes encore à venir ({{ references.pertes_apres_sevrage|decimal1 }} % entre sevrage et départ, moyenne de vos bandes terminées ; 5 % tant qu’aucune n’est terminée). Estimation : aucune bande n’a d’inventaire enregistré.</p>
+</section>
+
 <section class="cd-section"><h2>Prochains sevrages <small>places en post-sevrage</small></h2>
 {% if sevrages %}<table><thead><tr><th>Bande</th><th>Sevrage</th><th class="n">Porcelets</th><th>Post-sevrage ce jour-là</th></tr></thead><tbody>
 {% for s in sevrages %}<tr class="{% if s.occupation.etat == 'deborde' %}rouge{% elif s.occupation.etat == 'limite' %}orange{% endif %}"><td><b>{{ s.code }}</b></td><td>{{ s.date|date_fr }}</td><td class="n">{{ s.prevus }}{% if not s.reel %} <small class="note">prévus</small>{% endif %}</td>

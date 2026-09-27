@@ -19,6 +19,7 @@ const ALERTE_OCCUPATION_SEMAINES: i64 = 16;
 /// Valeurs par défaut quand l'élevage n'a pas encore d'historique.
 const TAUX_MISE_BAS_DEFAUT: f64 = 0.85;
 const SEVRES_PORTEE_DEFAUT: f64 = 12.0;
+const PERTES_APRES_SEVRAGE_DEFAUT: f64 = 0.05;
 
 // ─────────────────────────── Étapes ───────────────────────────
 
@@ -223,6 +224,8 @@ struct BandeCycle {
 struct References {
     taux_mise_bas: f64,
     sevres_portee: f64,
+    /// Part des sevrés morts avant la vente, bandes terminées.
+    pertes_apres_sevrage: f64,
 }
 
 impl BandeCycle {
@@ -356,7 +359,16 @@ fn references(bandes: &[BandeCycle]) -> References {
         .iter()
         .filter(|b| b.sevrages > 0)
         .fold((0, 0), |(s, n), b| (s + b.sevres, n + b.sevrages));
+    let (morts, sevres_finis) = bandes
+        .iter()
+        .filter(|b| !b.active && b.sevrages > 0 && b.sevres > 0)
+        .fold((0, 0), |(m, s), b| (m + b.morts_post, s + b.sevres));
     References {
+        pertes_apres_sevrage: if sevres_finis > 0 {
+            (morts as f64 / sevres_finis as f64).clamp(0.0, 0.3)
+        } else {
+            PERTES_APRES_SEVRAGE_DEFAUT
+        },
         taux_mise_bas: if ia > 0 {
             (portees as f64 / ia as f64).clamp(0.5, 1.0)
         } else {
@@ -374,6 +386,7 @@ fn references(bandes: &[BandeCycle]) -> References {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Capacites {
+    gestante: Option<i64>,
     maternite: Option<i64>,
     post_sevrage: Option<i64>,
     engraissement: Option<i64>,
@@ -400,6 +413,7 @@ async fn capacites(pool: &SqlitePool) -> AppResult<Capacites> {
         .await?)
     }
     Ok(Capacites {
+        gestante: lire(pool, "places_gestante", "capacite_gestante").await?,
         maternite: lire(pool, "places_maternite", "capacite_maternite").await?,
         post_sevrage: lire(pool, "places_post_sevrage", "capacite_postsevrage").await?,
         engraissement: lire(pool, "places_engraissement", "capacite_engraissement").await?,
@@ -410,6 +424,8 @@ async fn capacites(pool: &SqlitePool) -> AppResult<Capacites> {
 /// post-sevrage et en engraissement, avec les bandes concernées.
 #[derive(Default)]
 struct Occupation {
+    gest: f64,
+    b_gest: Vec<String>,
     mat: f64,
     ps: f64,
     engr: f64,
@@ -431,7 +447,12 @@ fn occupation(
             continue;
         };
         let age = (jour - date_mb).num_days();
-        if age >= -c.maternity_before_farrowing && age < c.weaning {
+        if age >= c.echo_after_ia - c.gestation && age < -c.maternity_before_farrowing {
+            // Truies confirmées gestantes (après l'échographie), jusqu'à
+            // l'entrée en maternité.
+            o.gest += bande.truies_prevues(r);
+            o.b_gest.push(bande.code.clone());
+        } else if age >= -c.maternity_before_farrowing && age < c.weaning {
             o.mat += bande.truies_prevues(r);
             o.b_mat.push(bande.code.clone());
         } else if age >= c.weaning && age < c.transfer_finishing {
@@ -1082,6 +1103,7 @@ pub(super) async fn flux(
         prevision.push(json!({
             "debut": debut.to_string(),
             "numero": debut.iso_week().week(),
+            "gest": etat_occupation(o.gest, places.gestante), "b_gest": o.b_gest,
             "mat": etat_occupation(o.mat, places.maternite), "b_mat": o.b_mat,
             "ps": etat_occupation(o.ps, places.post_sevrage), "b_ps": o.b_ps,
             "engr": etat_occupation(o.engr, places.engraissement), "b_engr": o.b_engr,
@@ -1152,18 +1174,85 @@ pub(super) async fn flux(
         }));
     }
 
+    // Production prévue par bande : porcs attendus à la vente et place
+    // disponible aux étapes qu'il reste à passer.
+    let mut production = Vec::new();
+    for bande in bandes.iter().filter(|b| b.active) {
+        let Some(date_mb) = bande.date_mb else {
+            continue;
+        };
+        let age = (aujourd_hui - date_mb).num_days();
+        let depart = date_mb + Duration::days(calendrier.departure);
+        let porcs = bande.porcs(r);
+        // Pertes encore à venir : la part restante de la période sevrage → départ.
+        let duree = (calendrier.departure - calendrier.weaning).max(1) as f64;
+        let reste = if age <= calendrier.weaning {
+            1.0
+        } else {
+            ((calendrier.departure - age) as f64 / duree).clamp(0.0, 1.0)
+        };
+        let a_vendre = (porcs * (1.0 - r.pertes_apres_sevrage * reste)).round() as i64;
+        let mut etapes = Vec::new();
+        for (libelle, debut, fin, capacite, cle) in [
+            ("Gestantes", calendrier.echo_after_ia - calendrier.gestation, -calendrier.maternity_before_farrowing, places.gestante, 0),
+            ("Maternité", -calendrier.maternity_before_farrowing, calendrier.weaning, places.maternite, 1),
+            ("Post-sevrage", calendrier.weaning, calendrier.transfer_finishing, places.post_sevrage, 2),
+            ("Engraissement", calendrier.transfer_finishing, calendrier.departure, places.engraissement, 3),
+        ] {
+            if age >= fin {
+                continue;
+            }
+            // Le jour le plus chargé de l'étape, vu une fois par semaine.
+            let mut pire = json!(null);
+            let mut pire_taux = -1.0;
+            let mut jour = debut.max(age);
+            while jour < fin {
+                let o = occupation(&bandes, calendrier, r, date_mb + Duration::days(jour), aujourd_hui);
+                let valeur = [o.gest, o.mat, o.ps, o.engr][cle];
+                let etat = etat_occupation(valeur, capacite);
+                let taux = etat["taux"].as_f64().unwrap_or(0.0);
+                if taux > pire_taux {
+                    pire_taux = taux;
+                    pire = etat;
+                }
+                jour += 7;
+            }
+            etapes.push(json!({
+                "libelle": libelle,
+                "date": (date_mb + Duration::days(debut.max(age))).to_string(),
+                "occupation": pire,
+            }));
+        }
+        production.push(json!({
+            "id": bande.id,
+            "code": bande.code,
+            "truies": bande.truies_prevues(r).round() as i64,
+            "portees": bande.portees,
+            "nv": bande.nv,
+            "sevres": if bande.sevrages > 0 { Some(bande.sevres) } else { None },
+            "porcs": porcs.round() as i64,
+            "reel": bande.porcs_reels(),
+            "vendus": bande.vendus,
+            "a_vendre": a_vendre,
+            "depart": depart.to_string(),
+            "semaine_depart": depart.iso_week().week(),
+            "etapes": etapes,
+        }));
+    }
+
     let mut ctx = context(&session);
+    ctx.insert("production".into(), Value::Array(production));
     ctx.insert("salles".into(), Value::Array(occupation_salles));
     ctx.insert("prevision".into(), Value::Array(prevision));
     ctx.insert("sorties".into(), Value::Array(sorties));
     ctx.insert("sevrages".into(), Value::Array(sevrages));
     ctx.insert(
         "capacites".into(),
-        json!({"maternite": places.maternite, "post_sevrage": places.post_sevrage, "engraissement": places.engraissement}),
+        json!({"gestante": places.gestante, "maternite": places.maternite, "post_sevrage": places.post_sevrage, "engraissement": places.engraissement}),
     );
     ctx.insert(
         "references".into(),
-        json!({"taux_mise_bas": r.taux_mise_bas * 100.0, "sevres_portee": r.sevres_portee}),
+        json!({"taux_mise_bas": r.taux_mise_bas * 100.0, "sevres_portee": r.sevres_portee, "pertes_apres_sevrage": r.pertes_apres_sevrage * 100.0}),
     );
     ctx.insert(
         "alertes".into(),
@@ -1509,6 +1598,7 @@ mod tests {
     #[test]
     fn prevision_des_porcs() {
         let r = References {
+            pertes_apres_sevrage: 0.05,
             taux_mise_bas: 0.8,
             sevres_portee: 12.0,
         };
@@ -1554,6 +1644,7 @@ mod tests {
     fn debordement_detecte() {
         let c = BandSchedule::default();
         let r = References {
+            pertes_apres_sevrage: 0.05,
             taux_mise_bas: 0.85,
             sevres_portee: 12.0,
         };

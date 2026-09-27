@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.35.0** —
+Version actuelle : **2.36.0** —
+
+### Version 2.36.0 — Production prévue par bande
+
+Version Rust 2.36.0 : /flux ajoute la colonne Gestantes (capacite_gestante, fenêtre écho → entrée maternité) et le tableau de production par bande (à vendre = porcs × (1 − pertes après sevrage restantes), pertes moyennes des bandes terminées, 5 % par défaut).
 
 ### Version 2.35.0 — Aliment regroupé
 
