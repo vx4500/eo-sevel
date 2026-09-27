@@ -1120,6 +1120,8 @@ pub(super) async fn parametres_maj(
         let module_prestataires = form.contains_key("module_prestataires");
         let module_charcutiers_rfid = form.contains_key("module_charcutiers_rfid");
         let module_vente_directe = form.contains_key("module_vente_directe");
+        let module_equipements = form.contains_key("module_equipements");
+        sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_equipements',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_equipements{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_genetique',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_genetique{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_prestataires',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_prestataires{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_charcutiers_rfid',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_charcutiers_rfid{"1"}else{"0"}).execute(&mut *tx).await?;
@@ -1136,6 +1138,7 @@ pub(super) async fn parametres_maj(
             entry.value_mut().module_prestataires = module_prestataires;
             entry.value_mut().module_charcutiers_rfid = module_charcutiers_rfid;
             entry.value_mut().module_vente_directe = module_vente_directe;
+            entry.value_mut().module_equipements = module_equipements;
         }
     } else {
         tx.commit().await?;
@@ -2528,6 +2531,7 @@ mod perte_porcelet_tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 

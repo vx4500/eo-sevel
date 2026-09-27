@@ -509,3 +509,12 @@ fn une_base_neuve_ne_presume_aucune_capacite_ni_conduite() {
     // Une conduite non choisie se présente comme telle.
     assert!(parametres.contains("— non configurée —"));
 }
+
+#[test]
+fn inseminations_affichent_une_note_de_rentabilite() {
+    let page = include_str!("../templates/inseminations.html");
+    let routes = include_str!("../src/routes/mod.rs");
+    assert!(page.contains("t.note.valeur"));
+    assert!(page.contains("Trier par note"));
+    assert!(routes.contains("fn note_rentabilite("));
+}

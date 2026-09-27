@@ -37,6 +37,9 @@ struct Etape {
     /// L'étape tombe le lundi qui suit `jour` (IA des truies sevrées : du
     /// lundi au mercredi de la semaine après le sevrage).
     lundi_suivant: bool,
+    /// Soin placé par rapport à l'IA : affiché sous le code de la bande
+    /// sevrée qui a donné cette IA (comme « IA des truies sevrées »).
+    bande_ia: bool,
 }
 
 impl Etape {
@@ -50,6 +53,7 @@ impl Etape {
             sur_truies,
             acte_id: None,
             lundi_suivant: false,
+            bande_ia: false,
         }
     }
 
@@ -108,6 +112,7 @@ async fn toutes_etapes(pool: &SqlitePool, c: BandSchedule) -> AppResult<Vec<Etap
             _ => continue,
         };
         let vaccin = categorie.as_deref() == Some("vaccin");
+        let bande_ia = base == -c.gestation;
         liste.push(Etape {
             code: "soin".into(),
             libelle: format!(
@@ -121,6 +126,7 @@ async fn toutes_etapes(pool: &SqlitePool, c: BandSchedule) -> AppResult<Vec<Etap
             sur_truies: true,
             acte_id: Some(id),
             lundi_suivant: false,
+            bande_ia,
         });
     }
     liste.sort_by_key(|e| e.jour);
@@ -153,6 +159,18 @@ fn groupe(code: &str) -> String {
     } else {
         groupe
     }
+}
+
+/// Code de la bande précédente du même groupe (B2.12 pour B2.33) : ses
+/// truies sevrées ont été inséminées pour former `bande`.
+fn bande_sevree(bandes: &[BandeCycle], bande: &BandeCycle) -> String {
+    let g = groupe(&bande.code);
+    bandes
+        .iter()
+        .filter(|b| groupe(&b.code) == g && b.date_mb.is_some() && b.date_mb < bande.date_mb)
+        .max_by_key(|b| b.date_mb)
+        .map(|b| b.code.clone())
+        .unwrap_or_else(|| bande.code.clone())
 }
 
 fn lundi(date: NaiveDate) -> NaiveDate {
@@ -392,23 +410,23 @@ struct Capacites {
     engraissement: Option<i64>,
 }
 
-/// Places déclarées dans Paramètres. `parametre.places_*` (saisies place par
-/// place) priment sur les anciens réglages `reglage.capacite_*`.
+/// Places réglées dans Paramètres (`reglage.capacite_*`). Les anciens
+/// `parametre.places_*`, plus modifiables, ne servent qu en repli.
 async fn capacites(pool: &SqlitePool) -> AppResult<Capacites> {
-    async fn lire(pool: &SqlitePool, places: &str, ancien: &str) -> AppResult<Option<i64>> {
+    async fn lire(pool: &SqlitePool, places: &str, reglage: &str) -> AppResult<Option<i64>> {
         let valeur: Option<i64> = sqlx::query_scalar(
-            "SELECT CAST(valeur AS INTEGER) FROM parametre WHERE cle=? AND CAST(valeur AS INTEGER)>0",
+            "SELECT CAST(valeur AS INTEGER) FROM reglage WHERE cle=? AND CAST(valeur AS INTEGER)>0",
         )
-        .bind(places)
+        .bind(reglage)
         .fetch_optional(pool)
         .await?;
         if valeur.is_some() {
             return Ok(valeur);
         }
         Ok(sqlx::query_scalar(
-            "SELECT CAST(valeur AS INTEGER) FROM reglage WHERE cle=? AND CAST(valeur AS INTEGER)>0",
+            "SELECT CAST(valeur AS INTEGER) FROM parametre WHERE cle=? AND CAST(valeur AS INTEGER)>0",
         )
-        .bind(ancien)
+        .bind(places)
         .fetch_optional(pool)
         .await?)
     }
@@ -866,7 +884,7 @@ pub(super) async fn semaine(
             travaux.push(json!({
                 "date": date.to_string(),
                 "jour": jour_semaine(date),
-                "bande": bande.code,
+                "bande": if etape.bande_ia { bande_sevree(&bandes, bande) } else { bande.code.clone() },
                 "bande_id": bande.id,
                 "code": &etape.code,
                 "libelle": &etape.libelle,

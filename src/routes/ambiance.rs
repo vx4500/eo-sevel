@@ -2229,6 +2229,7 @@ mod enregistrer_validation_tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 
@@ -2354,6 +2355,7 @@ mod page_points_disponibles_tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 
@@ -2485,6 +2487,7 @@ mod ipx_point_commander_tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 

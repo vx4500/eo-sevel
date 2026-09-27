@@ -181,6 +181,7 @@ pub(crate) mod tests {
             module_prestataires: false,
             module_charcutiers_rfid: false,
             module_vente_directe: false,
+            module_equipements: true,
         }
     }
     pub(crate) async fn state() -> AppState {

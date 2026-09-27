@@ -237,6 +237,7 @@ mod tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
     fn form(destination: &str, number: &str) -> HashMap<String, String> {

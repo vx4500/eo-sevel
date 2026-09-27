@@ -482,6 +482,7 @@ mod tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
     async fn state() -> AppState {

@@ -113,6 +113,7 @@ pub struct SessionData {
     pub module_prestataires: bool,
     pub module_charcutiers_rfid: bool,
     pub module_vente_directe: bool,
+    pub module_equipements: bool,
 }
 
 impl SessionData {
@@ -349,6 +350,11 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
         if !session.module_vente_directe && path_has_prefix(&path, "/vente-directe") {
             return Redirect::to("/").into_response();
         }
+        if !session.module_equipements
+            && (path_has_prefix(&path, "/equipements") || path_has_prefix(&path, "/ambiance"))
+        {
+            return Redirect::to("/").into_response();
+        }
         if session.role != "admin"
             && ADMIN_ONLY
                 .iter()
@@ -427,6 +433,7 @@ mod tests {
             module_prestataires: true,
             module_charcutiers_rfid: true,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 

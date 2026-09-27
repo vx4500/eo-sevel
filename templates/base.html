@@ -318,7 +318,7 @@
     </div>
   </div></div>{% endif %}
 
-  {% if 'ambiance' in session.pages %}
+  {% if session.module_equipements and 'ambiance' in session.pages %}
   <div class="rust-menu" data-rubrique="Mes équipements"><button type="button" aria-expanded="false">Mes équipements <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
     <div class="rust-sub-groupe"><h3>Automatismes de l’élevage</h3>
       <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
@@ -448,6 +448,7 @@
       <input type="search" id="fab-truie-recherche" placeholder="Rechercher par numéro, RFID ou bande" hidden>
       <select name="truie_id" id="fab-truie" required><option value="">Chargement…</option></select>
     </label>
+    <p id="fab-groupe" hidden><a href="/inseminations?verraterie=1">Saisie par groupe (IA et chaleurs) →</a></p>
     <div class="fab-f" data-for="perte" hidden>
       <label>Bande
         <select name="bande_id" id="fab-bande" disabled required><option value="">Chargement…</option></select>
@@ -477,6 +478,7 @@
       </label>
     </div>
     <div class="fab-f fab-chaleur" data-for="chaleur" hidden>
+      <fieldset><legend>Moment</legend><label><input type="checkbox" name="ia_matin" value="1" disabled> Matin</label><label><input type="checkbox" name="ia_soir" value="1" disabled> Soir</label></fieldset>
       <div class="fab-question"><b>Ajouter dans l’observation</b>
         <div class="fab-chaleur-suggestions">
           <button type="button" data-observation="Aspect de la vulve">Aspect vulve</button>
@@ -800,7 +802,7 @@
   fetch('/api/truies').then(function(response){return response.json();}).then(function(rows){
     _truieRows = rows;
     fillSelect(sow,rows,function(row){return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'');});
-    if(typeInput.value==='mise_bas') refreshMiseBasSows();
+    refreshMiseBasSows();
     // now fetch sevrage-specific extra values (dernier mise-bas, dernier sevrage) and merge
     fetch('/api/truies-sevrage').then(function(resp){return resp.json();}).then(function(extraRows){
       var map = {};
@@ -811,16 +813,18 @@
     }).catch(function(){});
   }).catch(function(){sow.replaceChildren(new Option('Liste indisponible',''));});
   function refreshMiseBasSows(){
-    if(typeInput.value!=='mise_bas'&&typeInput.value!=='perte') return;
+    var verraterie=typeInput.value==='ia'||typeInput.value==='chaleur';
+    if(typeInput.value!=='mise_bas'&&typeInput.value!=='perte'&&!verraterie) return;
     var query=(sowSearch.value||'').trim().toLowerCase();
     var rows=_truieRows.filter(function(row){
+      if(!query&&verraterie) return String(row.salle||'').indexOf('verrat')===0;
       if(!query) return typeInput.value==='perte'||Number(row.dans_periode_mise_bas)===1;
       return [row.num_travail,row.rfid,row.bande_code,row.num_vanne].some(function(v){return String(v||'').toLowerCase().includes(query);});
     });
     var previous=sow.value;
     fillSelect(sow,rows,function(row){return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'')+(row.num_vanne?' · vanne '+text(row.num_vanne):'')+(row.mise_bas_prevue?' · prévue '+text(row.mise_bas_prevue):'');});
     if(rows.some(function(row){return String(row.id)===previous;})) sow.value=previous;
-    if(!rows.length) sow.options[0].text=query?'Aucune truie trouvée':'Aucune truie dans la période de mise-bas';
+    if(!rows.length) sow.options[0].text=query?'Aucune truie trouvée':(verraterie?'Aucune truie en verraterie':'Aucune truie dans la période de mise-bas');
   }
   sowSearch.addEventListener('input',function(){
     if(typeInput.value==='mouvement') refreshMovementSources(); else refreshMiseBasSows();
@@ -985,7 +989,10 @@
     if(cochette) sowSearch.hidden=true;
     sowSearch.placeholder=loss?'Écrire le numéro de la truie, son RFID ou sa bande'
       :(movement?'Rechercher une bande, une truie ou une case':'Rechercher par numéro, RFID ou bande');
-    if(type==='mise_bas'||loss) refreshMiseBasSows(); else if(_truieRows.length) fillSelect(sow,_truieRows,function(row){return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'');});
+    var verraterie=type==='ia'||type==='chaleur';
+    document.getElementById('fab-groupe').hidden=!verraterie;
+    if(verraterie) sowSearch.hidden=false;
+    if(type==='mise_bas'||loss||verraterie) refreshMiseBasSows(); else if(_truieRows.length) fillSelect(sow,_truieRows,function(row){return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'');});
     if(loss) casesDeLaBande();
     if(movement){refreshMovementSources();ajusterMouvement();}
     band.disabled=!loss; band.required=false;

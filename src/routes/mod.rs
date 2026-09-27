@@ -312,6 +312,7 @@ pub fn router(state: AppState) -> Router {
         .route("/evenement/{id}/supprimer", post(evenement_supprimer))
         .route("/evenement/{id}/modifier", post(evenement_modifier))
         .route("/inseminations", get(inseminations))
+        .route("/inseminations/chaleurs", post(inseminations_chaleurs))
         .route(
             "/inseminations/enregistrer",
             post(inseminations_enregistrer),
@@ -1063,6 +1064,7 @@ fn session_value(session: &SessionData) -> Value {
         "module_prestataires": session.module_prestataires,
         "module_charcutiers_rfid": session.module_charcutiers_rfid,
         "module_vente_directe": session.module_vente_directe,
+        "module_equipements": session.module_equipements,
     })
 }
 
@@ -2035,6 +2037,8 @@ async fn login_post(
                 module_actif(&state.pool, "module_charcutiers_rfid", false).await?;
             let module_vente_directe =
                 module_actif(&state.pool, "module_vente_directe", true).await?;
+            let module_equipements =
+                module_actif(&state.pool, "module_equipements", true).await?;
             state.sessions.insert(
                 session_id.clone(),
                 SessionData {
@@ -2050,6 +2054,7 @@ async fn login_post(
                     module_prestataires,
                     module_charcutiers_rfid,
                     module_vente_directe,
+                    module_equipements,
                 },
             );
             let cookie = Cookie::build(("eo_session", session_id))
@@ -4738,27 +4743,206 @@ async fn evenement_modifier(
 async fn inseminations(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
-    let candidates = generic_rows(
-        &state.pool,
-        "SELECT t.id,t.num_travail,t.bande_code,(SELECT MAX(e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type='chaleur') AS date_chaleur,date((SELECT MAX(e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type='chaleur'),'+1 day') AS date_conseillee,(SELECT e.note FROM evenement e WHERE e.truie_id=t.id AND e.type='chaleur' ORDER BY e.date DESC,e.id DESC LIMIT 1) AS observation,CASE WHEN EXISTS(SELECT 1 FROM evenement ch WHERE ch.truie_id=t.id AND ch.type='chaleur' AND NOT EXISTS(SELECT 1 FROM evenement ia WHERE ia.truie_id=t.id AND ia.type='ia' AND ia.date>=ch.date)) THEN 1 ELSE 0 END AS a_inseminer,CASE WHEN lower(COALESCE((SELECT e.resultat FROM evenement e WHERE e.truie_id=t.id AND e.type IN ('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1),'')) IN ('vide','négative','negative','negatif','négatif') THEN 'Truie vide' WHEN t.bande_code IS NULL OR trim(t.bande_code)='' THEN CASE WHEN t.rang=0 THEN 'Cochette à préparer' ELSE 'Prochaine IA' END ELSE 'Chaleur détectée' END AS categorie FROM truie t WHERE t.reformee=0 AND (EXISTS(SELECT 1 FROM evenement ch WHERE ch.truie_id=t.id AND ch.type='chaleur' AND NOT EXISTS(SELECT 1 FROM evenement ia WHERE ia.truie_id=t.id AND ia.type='ia' AND ia.date>=ch.date)) OR lower(COALESCE((SELECT e.resultat FROM evenement e WHERE e.truie_id=t.id AND e.type IN ('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1),'')) IN ('vide','négative','negative','negatif','négatif') OR t.bande_code IS NULL OR trim(t.bande_code)='') ORDER BY a_inseminer DESC,categorie,t.num_travail",
-    )
-    .await?;
-    let bands = sqlx::query_as::<_, Bande>(BAND_SELECT_ACTIVE)
-        .fetch_all(&state.pool)
-        .await?;
+    let pool = &state.pool;
     let mut ctx = context(&session);
-    ctx.insert("candidates".into(), Value::Array(candidates));
-    ctx.insert(
-        "bandes".into(),
-        serde_json::to_value(bands).unwrap_or_default(),
-    );
     ctx.insert(
         "today".into(),
         json!(Local::now().date_naive().format("%Y-%m-%d").to_string()),
     );
-    ctx.insert("semences".into(),Value::Array(generic_rows(&state.pool,"SELECT id,date,designation,num_facture,fournisseur,nb_doses FROM achatsemence WHERE trim(COALESCE(designation,''))<>'' ORDER BY date DESC,id DESC").await?));
-    render(&state, "inseminations.html", Value::Object(ctx))
+    if query.contains_key("verraterie") {
+        let evenements = rows_to_json(
+            sqlx::query(
+                "SELECT t.id AS truie_id,t.num_travail,t.rang,t.reformee,t.bande_code,e.type,e.date,e.creneaux_ia,e.produit,e.note \
+                 FROM truie t JOIN salle s ON s.id=t.salle_id \
+                 LEFT JOIN evenement e ON e.truie_id=t.id AND e.type IN ('ia','chaleur') AND e.date>=date('now','-21 day') \
+                 WHERE t.reformee=0 AND lower(s.nom) LIKE 'verrat%' \
+                 ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail,e.date,e.id",
+            )
+            .fetch_all(pool)
+            .await?,
+        )?;
+        ctx.insert("bande".into(), json!({"id": null, "code": "en verraterie", "verraterie": true}));
+        return etat_inseminations(&state, ctx, evenements).await;
+    }
+    let bande_id = query.get("bande").and_then(|v| v.parse::<i64>().ok());
+    let Some(bande_id) = bande_id else {
+        // Liste des bandes : nombre de truies inséminées, d'IA et de chaleurs.
+        let bandes = generic_rows(
+            pool,
+            "SELECT b.id,b.code,b.date_mb,b.active,\
+             (SELECT COUNT(DISTINCT e.truie_id) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS truies_ia,\
+             (SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS nb_ia,\
+             (SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS premiere_ia,\
+             (SELECT MAX(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS derniere_ia \
+             FROM bande b WHERE b.active=1 OR EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='ia' AND e.date>=date('now','-1 year')) \
+             ORDER BY b.date_mb IS NULL DESC,b.date_mb DESC,b.id DESC",
+        )
+        .await?;
+        ctx.insert("bandes".into(), Value::Array(bandes));
+        return render(&state, "inseminations.html", Value::Object(ctx));
+    };
+    let bande = rows_to_json(
+        sqlx::query("SELECT id,code,date_mb,active FROM bande WHERE id=?")
+            .bind(bande_id)
+            .fetch_all(pool)
+            .await?,
+    )?
+    .into_iter()
+    .next()
+    .ok_or(AppError::NotFound)?;
+    let code = bande["code"].as_str().unwrap_or_default().to_string();
+    // Truies de la bande (actuelles ou inséminées pour elle) et leurs
+    // chaleurs / IA de la période d'insémination de la bande.
+    let evenements = rows_to_json(
+        sqlx::query(
+            "WITH ia AS (SELECT MIN(date) AS debut,MAX(date) AS fin FROM evenement WHERE bande_id=?1 AND type='ia'),\
+             truies AS (SELECT t.id FROM truie t WHERE (t.reformee=0 AND t.bande_code=?2) \
+               OR EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('ia','chaleur'))) \
+             SELECT t.id AS truie_id,t.num_travail,t.rang,t.reformee,e.type,e.date,e.creneaux_ia,e.produit,e.note \
+             FROM truie t JOIN truies USING(id) LEFT JOIN ia \
+             LEFT JOIN evenement e ON e.truie_id=t.id AND ( \
+               (e.type='ia' AND e.bande_id=?1) OR \
+               (e.type='chaleur' AND (e.bande_id=?1 OR (ia.debut IS NOT NULL AND e.date BETWEEN date(ia.debut,'-10 day') AND ia.fin)))) \
+             ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail,e.date,e.id",
+        )
+        .bind(bande_id)
+        .bind(&code)
+        .fetch_all(pool)
+        .await?,
+    )?;
+    ctx.insert("bande".into(), bande);
+    etat_inseminations(&state, ctx, evenements).await
+}
+
+/// Regroupe chaleurs et IA par truie pour la page « état des inséminations ».
+/// Note de rentabilité sur 20, calculée sur les trois dernières portées de
+/// la truie : sevrés par portée (10), nés vifs (4), pertes sous la mère (3)
+/// et rang (3). Sert à choisir les truies à inséminer en priorité.
+pub(crate) fn note_rentabilite(sevres: f64, nes_vifs: f64, rang: i64) -> f64 {
+    let borne = |x: f64| x.clamp(0.0, 1.0);
+    let pertes = if nes_vifs > 0.0 { borne((nes_vifs - sevres) / nes_vifs) } else { 0.0 };
+    let note_rang = match rang {
+        2..=5 => 3.0,
+        1 | 6 => 2.0,
+        7 => 1.0,
+        _ => 0.0,
+    };
+    let note = 10.0 * borne((sevres - 8.0) / 6.0)
+        + 4.0 * borne((nes_vifs - 9.0) / 6.0)
+        + 3.0 * borne(1.0 - pertes / 0.25)
+        + note_rang;
+    (note * 10.0).round() / 10.0
+}
+
+async fn notes_rentabilite(pool: &SqlitePool, truies: &mut [Value]) -> AppResult<()> {
+    for truie in truies.iter_mut() {
+        let Some(id) = truie["id"].as_i64() else { continue };
+        let (portees, nv, sevres): (i64, Option<f64>, Option<f64>) = sqlx::query_as(
+            "SELECT \
+             (SELECT COUNT(*) FROM (SELECT 1 FROM evenement WHERE truie_id=?1 AND type='mise_bas' ORDER BY date DESC LIMIT 3)),\
+             (SELECT AVG(nes_vifs) FROM (SELECT nes_vifs FROM evenement WHERE truie_id=?1 AND type='mise_bas' AND nes_vifs IS NOT NULL ORDER BY date DESC LIMIT 3)),\
+             (SELECT AVG(nb_sevres) FROM (SELECT nb_sevres FROM evenement WHERE truie_id=?1 AND type='sevrage' AND nb_sevres IS NOT NULL ORDER BY date DESC LIMIT 3))",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        let rang = truie["rang"].as_i64().unwrap_or(0);
+        truie["note"] = match (nv, sevres) {
+            (Some(nv), Some(sevres)) => json!({
+                "valeur": note_rentabilite(sevres, nv, rang),
+                "detail": format!("{portees} portée(s) : {sevres:.1} sevrés, {nv:.1} nés vifs en moyenne, rang {rang}"),
+            }),
+            _ => Value::Null,
+        };
+    }
+    Ok(())
+}
+
+async fn etat_inseminations(
+    state: &AppState,
+    mut ctx: serde_json::Map<String, Value>,
+    evenements: Vec<Value>,
+) -> AppResult<Html<String>> {
+    let mut truies: Vec<Value> = Vec::new();
+    for ev in evenements {
+        let id = ev["truie_id"].clone();
+        if truies.last().map(|t| t["id"] != id).unwrap_or(true) {
+            truies.push(json!({
+                "id": id,
+                "num_travail": ev["num_travail"],
+                "rang": ev["rang"],
+                "reformee": ev["reformee"],
+                "bande_code": ev["bande_code"],
+                "chaleurs": [],
+                "ias": [],
+                "passages": 0,
+            }));
+        }
+        let truie = truies.last_mut().expect("truie ajoutée");
+        let periode = ev["creneaux_ia"]
+            .as_str()
+            .filter(|p| !p.is_empty())
+            .map(|p| p.replace(',', " + "));
+        let ligne = json!({"date": ev["date"], "periode": periode, "produit": ev["produit"], "note": ev["note"]});
+        match ev["type"].as_str() {
+            Some("chaleur") => truie["chaleurs"].as_array_mut().expect("tableau").push(ligne),
+            Some("ia") => {
+                let n = ev["creneaux_ia"].as_str().filter(|p| !p.is_empty()).map(|p| p.split(',').count()).unwrap_or(1);
+                truie["passages"] = json!(truie["passages"].as_i64().unwrap_or(0) + n as i64);
+                truie["ias"].as_array_mut().expect("tableau").push(ligne);
+            }
+            _ => {}
+        }
+    }
+    notes_rentabilite(&state.pool, &mut truies).await?;
+    let inseminees = truies.iter().filter(|t| t["passages"].as_i64().unwrap_or(0) > 0).count();
+    let passages: i64 = truies.iter().map(|t| t["passages"].as_i64().unwrap_or(0)).sum();
+    ctx.insert("truies".into(), Value::Array(truies));
+    ctx.insert("inseminees".into(), json!(inseminees));
+    ctx.insert("passages".into(), json!(passages));
+    render(state, "inseminations.html", Value::Object(ctx))
+}
+
+async fn inseminations_chaleurs(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let ids = form_selected_ids(&form, "truie_");
+    if ids.is_empty() {
+        return Err(AppError::Invalid("Sélectionne au moins une truie".into()));
+    }
+    let date = form_date_or_today(&form, "date")?;
+    let slots = ia_slots(&form);
+    let slot_text = (!slots.is_empty()).then(|| slots.join(","));
+    let gestation = load_band_schedule(&state.pool).await?.gestation;
+    let mut tx = state.pool.begin().await?;
+    for id in ids {
+        let band_id = bande_pour_ia(&mut tx, id, &date, gestation).await?;
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,creneaux_ia,note,suivi_actif) VALUES('chaleur',?,?,?,?,?,0)")
+            .bind(&date)
+            .bind(id)
+            .bind(band_id)
+            .bind(&slot_text)
+            .bind(form_text(&form, "note"))
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(Redirect::to(&retour_inseminations(&form)).into_response())
+}
+
+fn retour_inseminations(form: &HashMap<String, String>) -> String {
+    if form.contains_key("retour_verraterie") {
+        return "/inseminations?verraterie=1".into();
+    }
+    form_i64(form, "retour_bande")
+        .map(|id| format!("/inseminations?bande={id}"))
+        .unwrap_or_else(|| "/inseminations".into())
 }
 
 async fn inseminations_enregistrer(
@@ -4796,10 +4980,15 @@ async fn inseminations_enregistrer(
     let schedule = load_band_schedule(&state.pool).await?;
     let mut tx = state.pool.begin().await?;
     let mut bandes_touchees = HashSet::new();
+    // Même IA répétée sur plusieurs jours consécutifs (ex. 2 jours matin + soir).
+    let nb_jours = form_i64(&form, "nb_jours").unwrap_or(1).clamp(1, 5);
+    let premier = parse_stored_date(&date).ok_or_else(|| AppError::Invalid("Date invalide".into()))?;
+    let jours: Vec<String> = (0..nb_jours).map(|d| (premier + Duration::days(d)).to_string()).collect();
     for id in ids {
-        let band_id = bande_pour_ia(&mut tx, id, &date, schedule.gestation).await?;
+      for date in &jours {
+        let band_id = bande_pour_ia(&mut tx, id, date, schedule.gestation).await?;
         sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,produit,nb_doses,creneaux_ia,note,suivi_actif) VALUES('ia',?,?,?,?,?,?,?,0)")
-            .bind(&date)
+            .bind(date)
             .bind(id)
             .bind(band_id)
             .bind(choices.get(&id).cloned().flatten())
@@ -4811,6 +5000,7 @@ async fn inseminations_enregistrer(
         if let Some(band_id) = band_id {
             bandes_touchees.insert(band_id);
         }
+      }
     }
     // Bandes actives sans date de mise-bas (voir le contrôle qualité de la
     // page Archives) : plutôt que de laisser le champ vide en attendant une
@@ -4828,7 +5018,7 @@ async fn inseminations_enregistrer(
         .await?;
     }
     tx.commit().await?;
-    Ok(Redirect::to("/inseminations").into_response())
+    Ok(Redirect::to(&retour_inseminations(&form)).into_response())
 }
 
 fn csv_value(value: Option<&Value>) -> String {
@@ -5649,7 +5839,7 @@ async fn api_bandes_actives(State(state): State<AppState>) -> AppResult<axum::Js
 async fn api_truies(State(state): State<AppState>) -> AppResult<axum::Json<Value>> {
     let rows = generic_rows(
         &state.pool,
-        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','-10 day') AND date('now','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
+        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,(SELECT lower(s.nom) FROM salle s WHERE s.id=t.salle_id) AS salle,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','-10 day') AND date('now','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
     )
     .await?;
     Ok(axum::Json(Value::Array(rows)))
@@ -7548,6 +7738,7 @@ mod transfert_maternite_tests {
             module_prestataires: true,
             module_charcutiers_rfid: false,
             module_vente_directe: true,
+            module_equipements: true,
         }
     }
 

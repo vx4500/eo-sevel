@@ -30,7 +30,6 @@ if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t)
   <li>Tunnel : {% if etat.en_marche %}en marche depuis {{ etat.depuis }}{% else %}arrêté{% endif %}{% if etat.redemarrages %} · {{ etat.redemarrages }} redémarrage(s){% endif %}</li>
   {% if etat.erreur %}<li style="color:#b3261e">Dernière erreur : {{ etat.erreur }}</li>{% endif %}
 </ul>
-<p class="muted">Le tunnel tourne dans EO_Sevel : il repart tout seul après une coupure de courant, sans Home Assistant.</p>
 <form method="post" action="/equipements/acces-distance/relancer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Redémarrer le tunnel</button></form>
 </section>
 
@@ -46,11 +45,10 @@ if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t)
   <label><input type="checkbox" name="actif" {% if actif %}checked{% endif %}> Tunnel actif</label>
   <button>Enregistrer</button>
 </form>
-<p class="muted">Si l’ancien tunnel de Home Assistant utilise la même adresse, retirez-la de l’ancien tunnel puis arrêtez l’add-on Cloudflared de Home Assistant.</p>
 </section>
 
 <section class="card"><h2>Journal du tunnel</h2>
-<div class="rust-scroll"><pre style="font-size:.75rem;white-space:pre-wrap;margin:0">{% for l in etat.journal %}{{ l }}
+<div class="rust-scroll"><pre style="font-size:.78rem;line-height:1.45;white-space:pre-wrap;word-break:break-all;margin:0;background:#06161f;color:#e0f3fb;padding:10px 12px;border-radius:6px;max-height:480px;overflow-y:auto">{% for l in etat.journal %}{{ l }}
 {% else %}Aucune ligne pour l’instant.{% endfor %}</pre></div></section>
 <p><a href="/equipements">← Retour à Mes équipements</a></p>
 </div>{% endblock %}

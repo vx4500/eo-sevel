@@ -1,6 +1,14 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.36.1** —
+Version actuelle : **2.37.0** —
+
+### Version 2.37.0 — Note de rentabilité
+
+Version Rust 2.37.0 : /inseminations?bande= affiche note_rentabilite (mod.rs) sur 20 par truie. Inclut le travail non commité déjà en ligne (tableau des inséminations par bande, module_equipements).
+
+### Version 2.36.2 — Capacités du flux
+
+Version Rust 2.36.2 : conduite::capacites lit d'abord reglage.capacite_* (édité dans Paramètres), parametre.places_* (figé, plus éditable) seulement en repli.
 
 ### Version 2.36.1 — Correctif page Aliment
 
