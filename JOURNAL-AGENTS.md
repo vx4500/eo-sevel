@@ -132,3 +132,12 @@ cycle précédent (filtre date >= 1re IA) ; tuile verraterie = truies
 actuellement en verraterie (l'ancien compteur ne comptait que les sevrées
 transférées). Emplacements triés Engraissement 1 → 5. Les pages /bandes et
 /bande gardent l'ancien compteur « vers la verraterie » (flux après sevrage).
+
+### 2026-09-28 — claude (master) — 2.39.3 : ATTENTION aux déploiements depuis la branche `cameras`
+La 2.38.1 a été déployée à 07:31 depuis la branche `cameras` (partie de 2.37.2)
+alors que master était en 2.39.2 : cela a retiré de la production l'impression
+des inséminations, les cases incohérentes, la correction d'effectif après
+inventaire (inventairecase.dernier_transfert_id) et les corrections du flux.
+Emmanuel l'a vu. La 2.39.3 (master) fusionne `cameras` (2.38.1) et 2.39.2.
+**Règle : avant tout déploiement, fusionner master dans sa branche (ou
+travailler sur master), et comparer avec le binaire en ligne.**
