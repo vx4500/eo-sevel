@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.38.0** —
+Version actuelle : **2.38.1** —
+
+### Version 2.38.1 — Carte de bande (accueil)
+
+Version Rust 2.38.1 : tuile « Truies inséminées » (nombre + date de la 1re IA) en tête du flux ; l'écho affichée ne peut plus être antérieure à la 1re IA du cycle (une écho « vide » du cycle précédent s'affichait) ; « Truies → verraterie » remplacée par « Truies en verraterie » (truies de la bande logées dans une salle de verraterie, `flux.en_verraterie`) ; emplacements actuels triés par bâtiment puis ordre/nom de salle (Engraissement 1 → 5) au lieu de l'effectif.
 
 ### Version 2.38.0 — Caméras des salles
 

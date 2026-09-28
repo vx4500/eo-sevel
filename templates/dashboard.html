@@ -79,12 +79,13 @@
     <div class="band-progress" role="progressbar" aria-label="Avancement de la bande {{ l.code }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ l.progression }}"><span style="width:{{ l.progression }}%"></span><i class="band-progress-arrow" style="left:{{ l.progression }}%" aria-hidden="true">➜</i></div>
 
     <div class="band-flow-strip" aria-label="Flux de la bande {{ l.code }}">
+      {% if l.reproduction.inseminees %}<span><small>Truies inséminées</small><b>{{ l.reproduction.inseminees }}</b>{% if l.reproduction.date_ia %}<em>{{ l.reproduction.date_ia|date_fr }}</em>{% endif %}</span>{% endif %}
       {% if l.reproduction.derniere_echo_date %}<span><small>Écho confirmée</small><b>{{ l.reproduction.derniere_echo_resultat or '—' }}</b><em>{{ l.reproduction.derniere_echo_date|date_fr }}</em></span>{% endif %}
       {% if l.reproduction.taux_pleine is not none %}<span><small>Réussite à l’écho</small><b>{{ l.reproduction.taux_pleine }} %</b><em>{{ l.reproduction.pleines }}/{{ l.reproduction.ia }} IA</em></span>{% endif %}
       <span><small>Truies ayant mis bas</small><b>{{ l.flux.naissances.truies_mises_bas }}</b></span>
       <span><small>Porcelets nés au total</small><b>{{ l.flux.naissances.porcelets_nes }}</b></span>
       <span><small>Moyenne par truie</small><b>{{ l.flux.naissances.moyenne_par_truie }}</b></span>
-      <span><small>Truies → verraterie</small><b>{{ l.flux.verraterie }}</b></span>
+      <span><small>Truies en verraterie</small><b>{{ l.flux.en_verraterie }}</b></span>
       <span><small>Truies en attente</small><b>{{ l.flux.attente }}</b></span>
       <span><small>Truies réformées</small><b>{{ l.flux.reformees }}</b></span>
       <span><small>Porcelets sevrés</small><b>{{ l.flux.sevres }}</b></span>
