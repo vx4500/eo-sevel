@@ -1,10 +1,14 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.38.0** —
+Version actuelle : **2.39.0** —
 
-### Version 2.38.0 — Impression et cases incohérentes
+### Version 2.39.0 — Impression et cases incohérentes
 
-Version Rust 2.38.0 : impression de /inseminations (CSS print) ; cases_incoherentes() (mod.rs) partagée par l'alerte, /structure#cases-incoherentes, Mes salles et la fiche de salle (astérisque rouge).
+Version Rust 2.39.0 : impression de /inseminations (CSS print) ; cases_incoherentes() (mod.rs) partagée par l'alerte, /structure#cases-incoherentes, Mes salles et la fiche de salle (astérisque rouge).
+
+### Version 2.38.0 — Caméras des salles
+
+Version Rust 2.38.0 : Mes équipements → Caméras (/equipements/cameras, table `camera`, migration 0023) : nom, adresse RTSP, identifiant/mot de passe gardés sur le serveur (extraits de l'adresse s'ils y sont collés), salle rattachée. Image servie par /salles/camera/{id}/image : ffmpeg tire une image du flux seulement à la demande (une capture à la fois par caméra, resservie 2 s, délai 10 s, rien sur le disque, mot de passe masqué dans les erreurs). La fiche salle affiche l'image et un bouton « Direct » (rafraîchissement 2 s tant que l'onglet est visible). Nécessite le paquet `ffmpeg` sur le serveur.
 
 ### Version 2.37.2 — Saisie par groupe
 

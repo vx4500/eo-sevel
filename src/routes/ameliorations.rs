@@ -523,7 +523,7 @@ mod tests {
             super::super::reformes(State(s.clone()), Extension(session())).await,
             super::super::entretien(State(s.clone()), Extension(session())).await,
             super::super::sanitaire(State(s.clone()), Extension(session())).await,
-            super::super::inseminations(State(s.clone()), Extension(session())).await,
+            super::super::inseminations(State(s.clone()), Extension(session()), Query(HashMap::new())).await,
         ];
         for page in pages {
             let Html(body) = page.unwrap();

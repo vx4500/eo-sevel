@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Caméras — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Caméras</h1><p>L’image de chaque caméra s’affiche dans la page de sa salle.</p></div>
+  <span class="equipment-state {% if cameras %}actif{% else %}attente{% endif %}">{% if cameras %}{{ cameras|length }} caméra{% if cameras|length > 1 %}s{% endif %}{% else %}À configurer{% endif %}</span>
+</section>
+
+{% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Caméra enregistrée.</b> Vérifiez l’image ci-dessous.</p></section>
+{% elif resultat == 'supprimee' %}<section class="card"><p><b>✓ Caméra supprimée.</b></p></section>{% endif %}
+
+<section class="card"><h2>Fonctionnement</h2>
+<p>L’image est prise dans le flux vidéo <b>seulement quand une page l’affiche</b>, puis la connexion est fermée : rien n’est enregistré et le serveur ne travaille pas quand personne ne regarde. Préférez le <b>flux secondaire</b> de la caméra (plus petit, plus rapide).</p>
+<p class="muted">Adresse habituelle : <code>rtsp://192.168.1.2:554/Streaming/Channels/102</code>. Le mot de passe reste sur le serveur.</p>
+</section>
+
+{% for c in cameras %}
+<section class="card" id="camera-{{ c.id }}"><h2>📷 {{ c.nom }} {% if c.salle %}<span class="sl-badge">{{ c.salle }}</span>{% else %}<span class="sl-badge jaune">sans salle</span>{% endif %}{% if not c.actif %} <span class="sl-badge jaune">désactivée</span>{% endif %}</h2>
+{% if c.actif %}<p><img src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable : vérifiez l’adresse et le mot de passe" loading="lazy" style="max-width:100%;width:640px;border-radius:8px;background:#0002;min-height:60px"></p>{% endif %}
+{% if session.est_admin %}
+<form class="rust-actions" method="post" action="/equipements/cameras"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="id" value="{{ c.id }}">
+  <label>Nom<input name="nom" value="{{ c.nom }}" required></label>
+  <label>Salle<select name="salle_id"><option value="">— aucune —</option>{% for s in salles %}<option value="{{ s.id }}" {% if s.id == c.salle_id %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
+  <label>Adresse du flux<input name="url" value="{{ c.url }}" required size="45" autocomplete="off"></label>
+  <label>Identifiant<input name="identifiant" value="{{ c.identifiant or '' }}" autocomplete="off"></label>
+  <label>Mot de passe<input type="password" name="mot_de_passe" autocomplete="new-password" placeholder="{% if c.mdp %}enregistré — laisser vide pour le garder{% endif %}"></label>
+  <label><input type="checkbox" name="actif" {% if c.actif %}checked{% endif %}> Active</label>
+  <button>Enregistrer</button>
+</form>
+<form method="post" action="/equipements/cameras/{{ c.id }}/supprimer" onsubmit="return confirm('Supprimer la caméra {{ c.nom }} ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Supprimer</button></form>
+{% endif %}
+</section>
+{% endfor %}
+
+{% if session.est_admin %}
+<section class="card"><h2>Ajouter une caméra</h2>
+<form class="rust-actions" method="post" action="/equipements/cameras"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Nom<input name="nom" placeholder="Mater 1" required></label>
+  <label>Salle<select name="salle_id"><option value="">— aucune —</option>{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
+  <label>Adresse du flux<input name="url" placeholder="rtsp://192.168.1.2:554/Streaming/Channels/102" required size="45" autocomplete="off"></label>
+  <label>Identifiant<input name="identifiant" placeholder="admin" autocomplete="off"></label>
+  <label>Mot de passe<input type="password" name="mot_de_passe" autocomplete="new-password"></label>
+  <label><input type="checkbox" name="actif" checked> Active</label>
+  <button>Ajouter</button>
+</form>
+</section>
+{% else %}<section class="card"><p class="muted">Réglages réservés à l’administrateur.</p></section>{% endif %}
+<p><a href="/equipements">← Retour à Mes équipements</a></p>
+</div>{% endblock %}

@@ -12,6 +12,14 @@
 
 <div class="sl-blocs">
 
+{% for c in cameras %}
+<section class="card sl-camera">
+  <h2>📷 {{ c.nom }} <button type="button" class="ghost" style="float:right" data-camera-direct="{{ c.id }}">▶ Direct</button></h2>
+  <img id="camera-{{ c.id }}" src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable" style="width:100%;border-radius:8px;background:#0002;min-height:60px">
+  <small class="muted" id="camera-{{ c.id }}-heure"></small>
+</section>
+{% endfor %}
+
 {% if salle.ambiance or historique %}
 <section class="card">
   <h2>🌡️ Ambiance {% if reglage and reglage.pilote %}<span class="sl-badge">régulation automatique</span>{% elif reglage and reglage.actif %}<span class="sl-badge jaune">observation</span>{% endif %}</h2>
@@ -177,4 +185,26 @@
   });
 })();
 </script>
+{% if cameras %}<script>
+// Image de la caméra : une prise à l'ouverture, puis toutes les 2 s en
+// « Direct » tant que la page est visible. Rien ne tourne sinon.
+document.querySelectorAll('[data-camera-direct]').forEach(function (bouton) {
+  var id = bouton.dataset.cameraDirect, img = document.getElementById('camera-' + id),
+      heure = document.getElementById('camera-' + id + '-heure'), minuterie = null;
+  function marquer() { heure.textContent = 'Image de ' + new Date().toLocaleTimeString('fr-FR'); }
+  img.addEventListener('load', marquer);
+  function suivante() {
+    if (!minuterie || document.hidden) return;
+    var nouvelle = new Image();
+    nouvelle.onload = function () { img.src = nouvelle.src; minuterie = minuterie && setTimeout(suivante, 2000); };
+    nouvelle.onerror = function () { minuterie = minuterie && setTimeout(suivante, 5000); };
+    nouvelle.src = '/salles/camera/' + id + '/image?t=' + Date.now();
+  }
+  bouton.addEventListener('click', function () {
+    if (minuterie) { clearTimeout(minuterie); minuterie = null; bouton.textContent = '▶ Direct'; return; }
+    minuterie = true; bouton.textContent = '■ Arrêter'; suivante();
+  });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && minuterie) suivante(); });
+});
+</script>{% endif %}
 {% endblock %}
