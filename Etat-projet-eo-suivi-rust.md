@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.39.1** —
+Version actuelle : **2.39.2** —
+
+### Version 2.39.2 — Production par bande
+
+Version Rust 2.39.2 : tableau pleine largeur ; BandeCycle.morts_reelles (sans Régul inventaire ni Départ / terminé) pour le taux de pertes de référence.
 
 ### Version 2.39.1 — Effectif après inventaire
 

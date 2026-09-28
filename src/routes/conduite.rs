@@ -233,6 +233,9 @@ struct BandeCycle {
     sevres: i64,
     poids_sevrage: Option<f64>,
     morts_post: i64,
+    /// Vraies morts après la maternité, sans les régularisations
+    /// d'inventaire ni les sorties « Départ / terminé ».
+    morts_reelles: i64,
     vendus: i64,
 }
 
@@ -340,6 +343,14 @@ async fn charger_bandes(pool: &SqlitePool, archivees: i64) -> AppResult<Vec<Band
             .bind(&code)
             .fetch_one(pool)
             .await?;
+        let morts_reelles: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM declarationmort WHERE bande_code=? \
+             AND (stade IS NULL OR (stade NOT LIKE 'mater%' AND stade NOT LIKE 'Départ%')) \
+             AND COALESCE(cause,'') NOT LIKE 'Régul%'",
+        )
+        .bind(&code)
+        .fetch_one(pool)
+        .await?;
         let vendus: i64 = sqlx::query_scalar(VENDUS_BANDE)
             .bind(id)
             .fetch_one(pool)
@@ -362,6 +373,7 @@ async fn charger_bandes(pool: &SqlitePool, archivees: i64) -> AppResult<Vec<Band
             sevres: chiffres.try_get("sevres").unwrap_or(0),
             poids_sevrage: chiffres.try_get::<Option<f64>, _>("poids").ok().flatten(),
             morts_post,
+            morts_reelles,
             vendus,
         });
     }
@@ -380,7 +392,7 @@ fn references(bandes: &[BandeCycle]) -> References {
     let (morts, sevres_finis) = bandes
         .iter()
         .filter(|b| !b.active && b.sevrages > 0 && b.sevres > 0)
-        .fold((0, 0), |(m, s), b| (m + b.morts_post, s + b.sevres));
+        .fold((0, 0), |(m, s), b| (m + b.morts_reelles, s + b.sevres));
     References {
         pertes_apres_sevrage: if sevres_finis > 0 {
             (morts as f64 / sevres_finis as f64).clamp(0.0, 0.3)

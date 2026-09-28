@@ -22,7 +22,6 @@
 <p class="note">Effectifs réels quand ils sont enregistrés (sevrés − morts − vendus), sinon prévus : truies inséminées × {{ references.taux_mise_bas|round|int }} % de mises-bas × {{ references.sevres_portee|decimal1 }} sevrés par portée, moyennes de vos bandes.</p>
 </section>
 
-<div class="cd-deux">
 <section class="cd-section"><h2>Production prévue par bande <small>porcs attendus à la vente et place aux étapes à venir</small></h2>
 <style>.cd-prod{width:100%;min-width:0!important;table-layout:auto!important;font-size:.88rem}.cd-prod th,.cd-prod td{white-space:normal!important;width:auto!important;padding:5px 6px}.cd-prod .et{display:block;white-space:nowrap}</style>
 <div class="cd-scroll"><table class="cd-prod">
@@ -40,6 +39,8 @@
 </tr>{% else %}<tr><td colspan="8" class="note">Aucune bande active.</td></tr>{% endfor %}</tbody></table></div>
 <p class="note">À vendre = porcs d’aujourd’hui moins les pertes encore à venir ({{ references.pertes_apres_sevrage|decimal1 }} % entre sevrage et départ, moyenne de vos bandes terminées ; 5 % tant qu’aucune n’est terminée). Estimation : aucune bande n’a d’inventaire enregistré. * = prévu (pas encore de mise-bas). Survoler une étape pour sa date.</p>
 </section>
+<div class="cd-deux">
+
 
 <section class="cd-section"><h2>Prochains sevrages <small>places en post-sevrage</small></h2>
 {% if sevrages %}<table><thead><tr><th>Bande</th><th>Sevrage</th><th class="n">Porcelets</th><th>Post-sevrage ce jour-là</th></tr></thead><tbody>
