@@ -5,7 +5,7 @@
 .ia-bande b{font-size:1.15rem}.ia-bande small{display:block;color:var(--muted,#667);margin-top:4px}
 .ia-etat td{vertical-align:top}.ia-etat ul{list-style:none;margin:0;padding:0}.ia-etat li{white-space:nowrap}
 .ia-per{display:inline-block;padding:0 6px;border-radius:8px;background:rgba(127,127,127,.15);font-size:.8rem;margin-left:4px}
-.ia-nb{font-weight:700;text-align:center}.ia-note{display:inline-block;min-width:2.4em;padding:2px 6px;border-radius:8px}.ia-note.haute{background:#d8efe3;color:#1f654b}.ia-note.moyenne{background:#fff1d6;color:#8a5a12}.ia-note.basse{background:#fbe0dc;color:#a3361a}.ia-zero{color:#b3261e}
+.ia-choix{border:2px solid #2a7f62;border-radius:10px;padding:6px 12px;margin:0 0 10px}.ia-choix label{font-weight:700;margin-right:14px}.ia-nb{font-weight:700;text-align:center}.ia-note{display:inline-block;min-width:2.4em;padding:2px 6px;border-radius:8px}.ia-note.haute{background:#d8efe3;color:#1f654b}.ia-note.moyenne{background:#fff1d6;color:#8a5a12}.ia-note.basse{background:#fbe0dc;color:#a3361a}.ia-zero{color:#b3261e}
 </style>
 {% if bande %}
 <header class="hero"><h1>Inséminations · {% if bande.verraterie %}truies en verraterie{% else %}bande {{ bande.code }}{% endif %}</h1><p>{% if bande.verraterie %}Chaleurs et IA des 3 dernières semaines · {% endif %}{{ inseminees }} truie(s) inséminée(s) · {{ passages }} passage(s) d’IA{% if bande.date_mb %} · mise-bas prévue le {{ bande.date_mb|date_fr }}{% endif %}</p></header>
@@ -24,10 +24,12 @@
 </tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune truie dans cette bande</td></tr>{% endfor %}
 </tbody></table></div>
 {% if session.peut_modifier %}<div class="card ia-layout"><h2>Saisie par groupe (truies cochées)</h2>
+<fieldset class="ia-choix"><legend>Saisir</legend><label class="slot"><input type="radio" name="saisie_type" value="ia" checked onchange="iaChoix(this)"> Insémination</label><label class="slot"><input type="radio" name="saisie_type" value="chaleur" onchange="iaChoix(this)"> Chaleur</label></fieldset>
 <label>Date<input type="date" name="date" value="{{ today }}" required></label>
-<label>Pendant<select name="nb_jours"><option value="1">1 jour</option><option value="2">2 jours</option><option value="3">3 jours</option></select></label><fieldset><legend>Moment</legend><label class="slot"><input type="checkbox" name="ia_matin" value="1"> Matin</label><label class="slot"><input type="checkbox" name="ia_midi" value="1"> Midi</label><label class="slot"><input type="checkbox" name="ia_soir" value="1"> Soir</label></fieldset>
-<label>Verrat ou n° de semence (IA)<input name="produit"></label><p class="help">« Pendant » s’applique aux IA ; les chaleurs sont enregistrées pour le jour choisi.</p><label>Note<input name="note"></label>
-<div class="ia-actions"><button>Enregistrer les IA</button><button formaction="/inseminations/chaleurs" class="ghost">Enregistrer les chaleurs</button><button type="button" class="ghost" onclick="document.querySelectorAll('.ia-check').forEach(x=>x.checked=true)">Tout cocher</button><button type="button" class="ghost" onclick="document.querySelectorAll('.ia-check').forEach(x=>x.checked=false)">Tout décocher</button></div></div></form>{% endif %}
+<label class="ia-seule">Pendant<select name="nb_jours"><option value="1">1 jour</option><option value="2">2 jours</option><option value="3">3 jours</option></select></label><fieldset><legend>Moment</legend><label class="slot"><input type="checkbox" name="ia_matin" value="1"> Matin</label><label class="slot"><input type="checkbox" name="ia_midi" value="1"> Midi</label><label class="slot"><input type="checkbox" name="ia_soir" value="1"> Soir</label></fieldset>
+<label class="ia-seule">Verrat ou n° de semence<input name="produit"></label><label>Note<input name="note"></label>
+<div class="ia-actions"><button id="ia-enregistrer">Enregistrer les inséminations</button><button type="button" class="ghost" onclick="document.querySelectorAll('.ia-check').forEach(x=>x.checked=true)">Tout cocher</button><button type="button" class="ghost" onclick="document.querySelectorAll('.ia-check').forEach(x=>x.checked=false)">Tout décocher</button></div></div></form>
+<script>function iaChoix(r){var f=r.form,c=r.value==='chaleur';f.action=c?'/inseminations/chaleurs':'/inseminations/enregistrer';f.querySelectorAll('.ia-seule').forEach(function(e){e.hidden=c});document.getElementById('ia-enregistrer').textContent=c?'Enregistrer les chaleurs':'Enregistrer les inséminations'}</script>{% endif %}
 {% else %}
 <header class="hero"><h1>Inséminations</h1><p>Choisissez une bande pour voir, truie par truie, les chaleurs et chaque IA (jour, matin ou soir).</p></header>
 <div class="ia-bandes"><a class="card ia-bande" href="/inseminations?verraterie=1"><b>Verraterie</b><small>Truies présentes en verraterie : saisie des chaleurs et IA par groupe</small></a>{% for b in bandes %}<a class="card ia-bande" href="/inseminations?bande={{ b.id }}"><b>{{ b.code }}</b>

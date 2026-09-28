@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.37.1** —
+Version actuelle : **2.37.2** —
+
+### Version 2.37.2 — Saisie par groupe
+
+Version Rust 2.37.2 : choix Insémination / Chaleur (radio saisie_type, JS change l'action du formulaire).
 
 ### Version 2.37.1 — Paramètres
 
