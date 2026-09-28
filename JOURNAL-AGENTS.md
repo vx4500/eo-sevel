@@ -110,3 +110,17 @@ l'urlencoded ; le 415 était masqué par un renvoi classique. **Ne pas toucher
 à ce script sans essai réel dans un navigateur** (Chrome indisponible pour
 Claude ce jour-là). Chantier à reprendre : envoyer en urlencoded hors
 formulaires de fichiers, pour que les erreurs s'affichent vraiment sur place.
+
+### 2026-09-28 — claude — v2.38.0 caméras des salles
+Demande d'Emmanuel : voir les caméras des maternités dans les salles « sans
+alourdir ». Les 3 caméras mater (192.168.1.2/.3/.4, serveur `LSWebServer`,
+générique type Longse) n'ont **aucune URL de photo** (ISAPI, ONVIF, cgi : 404) ;
+seul le RTSP marche (`/Streaming/Channels/102`, ex-config Frigate/HA). D'où
+ffmpeg à la demande : ~1,2 s dont 0,16 s CPU par image. Caméra extérieure
+Reolink (.104) non ajoutée. Emmanuel saisit lui-même les caméras.
+Au passage : test `ameliorations` corrigé (inseminations() prend Query depuis
+2.37.0). Reste en échec, sans lien : `zigbee::rattacher_une_sonde_une_lampe_et_un_compteur`
+(la base de test n'a pas la table `zigbee_demarrage_reglage` de la migration 0022).
+Déploiement : binaire /var/tmp/eo-sevel-2.38.0, installation faite par Emmanuel
+(copie du service bloquée pour Claude). Branche `cameras` (worktree
+/var/tmp/eo-cameras) à fusionner dans master après le WIP en cours.
