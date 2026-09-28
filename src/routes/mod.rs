@@ -27,6 +27,7 @@ mod acces;
 mod ambiance;
 mod ameliorations;
 mod automate;
+mod cameras;
 mod conduite;
 mod eclairage;
 mod demo_portal;
@@ -131,6 +132,9 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/kren", get(equipement_kren))
         .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
         .route("/equipements/sms/test", post(sms::test))
+        .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
+        .route("/equipements/cameras/{id}/supprimer", post(cameras::supprimer))
+        .route("/salles/camera/{id}/image", get(cameras::image))
         .route("/equipements/acces-distance", get(acces::page).post(acces::enregistrer))
         .route("/equipements/acces-distance/relancer", post(acces::relancer))
         .route("/ambiance", get(ambiance::page))
@@ -947,6 +951,11 @@ async fn equipements(
         .unwrap_or(0)
         > 0;
     let sms = json!({"nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
+    let nb_cameras: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM camera WHERE actif=1")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let cameras = json!({"nom":"Caméras", "etat": if nb_cameras > 0 { "actif" } else { "attente" }, "etat_texte": if nb_cameras > 0 { format!("{nb_cameras} caméra{}", if nb_cameras > 1 { "s" } else { "" }) } else { "À configurer".to_string() }, "description":"Image des caméras IP dans la page de chaque salle, prise à la demande, sans enregistrement.", "href":"/equipements/cameras", "action":"Régler les caméras"});
     let tunnel = crate::tunnel::instantane();
     let acces = json!({"nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
@@ -965,6 +974,7 @@ async fn equipements(
             zigbee,
             sms,
             acces,
+            cameras,
             {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
             {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
             {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}

@@ -680,6 +680,11 @@ pub(super) async fn fiche(
     contexte.insert("ventilation".into(), Value::Array(ventilation));
     contexte.insert("reglages".into(), json!(reglages));
     contexte.insert("courbes".into(), Value::Array(courbes));
+    // Caméras : table absente sur une base qui n'a pas encore migré.
+    let cameras = generic_rows_bind(pool, "SELECT id, nom FROM camera WHERE actif=1 AND salle_id=? ORDER BY nom", id)
+        .await
+        .unwrap_or_default();
+    contexte.insert("cameras".into(), Value::Array(cameras));
     contexte.insert("maj".into(), json!(ts));
     render(&state, "salle_fiche.html", Value::Object(contexte))
 }
