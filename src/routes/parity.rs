@@ -1121,6 +1121,8 @@ pub(super) async fn parametres_maj(
         let module_charcutiers_rfid = form.contains_key("module_charcutiers_rfid");
         let module_vente_directe = form.contains_key("module_vente_directe");
         let module_equipements = form.contains_key("module_equipements");
+        let module_machine_soupe = form.contains_key("module_machine_soupe");
+        sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_machine_soupe',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_machine_soupe{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_equipements',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_equipements{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_genetique',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_genetique{"1"}else{"0"}).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_prestataires',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").bind(if module_prestataires{"1"}else{"0"}).execute(&mut *tx).await?;

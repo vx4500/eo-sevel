@@ -60,6 +60,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("ambiance.html", include_str!("../templates/ambiance.html"))?;
     env.add_template("acces_distance.html", include_str!("../templates/acces_distance.html"))?;
     env.add_template("cameras.html", include_str!("../templates/cameras.html"))?;
+    env.add_template("machine_soupe.html", include_str!("../templates/machine_soupe.html"))?;
     env.add_template(
         "sms_free.html",
         include_str!("../templates/sms_free.html"),

@@ -51,6 +51,7 @@ mod regression_tests;
 mod scan;
 mod sevrage;
 mod sms;
+mod soupe;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
@@ -133,6 +134,9 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
         .route("/equipements/sms/test", post(sms::test))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
+        .route("/equipements/soupe", get(soupe::page))
+        .route("/api/soupe/trames", post(soupe::trames))
+        .route("/api/soupe/script", get(soupe::script))
         .route("/equipements/cameras/{id}/supprimer", post(cameras::supprimer))
         .route("/salles/camera/{id}/image", get(cameras::image))
         .route("/equipements/acces-distance", get(acces::page).post(acces::enregistrer))
@@ -956,6 +960,17 @@ async fn equipements(
         .await
         .unwrap_or(0);
     let cameras = json!({"nom":"Caméras", "etat": if nb_cameras > 0 { "actif" } else { "attente" }, "etat_texte": if nb_cameras > 0 { format!("{nb_cameras} caméra{}", if nb_cameras > 1 { "s" } else { "" }) } else { "À configurer".to_string() }, "description":"Image des caméras IP dans la page de chaque salle, prise à la demande, sans enregistrement.", "href":"/equipements/cameras", "action":"Régler les caméras"});
+    let soupe = if module_actif(&state.pool, "module_machine_soupe", false).await? {
+        let age: Option<i64> = sqlx::query_scalar("SELECT strftime('%s','now') - ts FROM soupe_etat WHERE id=1")
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten();
+        let ok = age.is_some_and(|a| a < 600);
+        Some(json!({"nom":"Machine à soupe", "etat": if ok { "actif" } else { "attente" }, "etat_texte": if ok { "Écoute en cours" } else if age.is_some() { "Pas de nouvelles" } else { "Service d’écoute à installer" }, "description":"Exa-Feeder Asserva suivie en écoute seule : phases, repas vanne par vanne et alertes.", "href":"/equipements/soupe", "action":"Ouvrir la machine à soupe"}))
+    } else {
+        None
+    };
     let tunnel = crate::tunnel::instantane();
     let acces = json!({"nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
@@ -968,7 +983,8 @@ async fn equipements(
     });
     contexte.insert(
         "equipements".into(),
-        json!([
+        {
+        let mut liste = json!([
             {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             ipx,
             zigbee,
@@ -978,7 +994,12 @@ async fn equipements(
             {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
             {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
             {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
-        ]),
+        ]);
+        if let (Some(s), Value::Array(l)) = (soupe, &mut liste) {
+            l.insert(6, s);
+        }
+        liste
+        },
     );
     render(&state, "equipements.html", Value::Object(contexte))
 }
@@ -13843,6 +13864,7 @@ async fn parametres(
     ctx.insert("capacites_reglees".into(), Value::Object(capacites_reglees));
     ctx.insert("demo_actif".into(), json!(demo > 0));
     ctx.insert("types_elevage".into(), Value::Array(types_elevage));
+    ctx.insert("module_machine_soupe".into(), json!(module_actif(&state.pool, "module_machine_soupe", false).await?));
     render(&state, "parametres.html", Value::Object(ctx))
 }
 

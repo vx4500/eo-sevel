@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Machine à soupe — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Machine à soupe</h1><p>Suivi de l’Exa-Feeder Asserva, en écoute seule : EO_Sevel n’envoie jamais rien à la machine.</p></div>
+  {% if not actif %}<span class="equipment-state attente">Module désactivé</span>
+  {% elif etat and etat.age_s < 600 %}<span class="equipment-state actif">{{ etat.libelle }}</span>
+  {% else %}<span class="equipment-state attente">Pas de nouvelles</span>{% endif %}
+</section>
+
+{% if not actif %}
+<section class="card"><p>Le module <b>Machine à soupe</b> est désactivé. Activez-le dans <a href="/parametres#type-elevage">Paramètres → Modules facultatifs</a>.</p></section>
+{% else %}
+
+{% if etat %}
+<section class="card"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
+<div class="sl-blocs" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+  <div><small>Phase</small><br><b style="font-size:1.3em{% if etat.phase == 7 %};color:#c0392b{% endif %}">{{ etat.libelle }}</b></div>
+  <div><small>Poids cuve</small><br><b style="font-size:1.3em">{{ etat.poids }} kg</b></div>
+  <div><small>Séquence · formule</small><br><b>{{ etat.sequence }} · {{ etat.formule }}</b></div>
+  <div><small>Temps</small><br><b>{{ etat.temps_min }} min</b></div>
+  <div><small>Mélangeur</small><br><b>{{ etat.rpm }} %rpm</b></div>
+  {% if etat.phase in [31, 35, 45] %}
+  <div><small>Vanne {{ etat.vanne }}</small><br><b>{{ etat.controle }} / {{ etat.consigne }} kg</b></div>
+  <div><small>Débit</small><br><b>{{ etat.debit }}</b></div>
+  {% endif %}
+  {% if etat.phase in [1, 7, 9] %}
+  <div><small>Produit {{ etat.produit }}{% if etat.produit == 0 %} (eau){% endif %}</small><br><b>doit {{ etat.doit }} · seuil {{ etat.seuil }}</b></div>
+  {% endif %}
+  <div><small>Distribué ce repas</small><br><b>{{ etat.cumul }} kg</b></div>
+</div></section>
+{% else %}
+<section class="card"><p>Aucune trame reçue pour l’instant. Installez le service d’écoute sur l’hôte Proxmox (ci-dessous).</p></section>
+{% endif %}
+
+<section class="card"><h2>Repas des 7 derniers jours</h2>
+<div class="rust-scroll"><table><thead><tr><th>Jour</th><th>Heure</th><th>Séquence</th><th>Formule</th><th>Vannes</th><th>Prévu (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>
+{% for t in totaux %}<tr><td>{{ t.jour|date_fr }}</td><td>{{ t.debut }} → {{ t.fin }}</td><td>{{ t.sequence }}</td><td>{{ t.formule }}</td><td>{{ t.vannes }}</td><td>{{ t.consigne }}</td><td>{{ t.distribue }}</td></tr>
+{% else %}<tr><td colspan="7" class="rust-empty">Aucune distribution enregistrée</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted">« Prévu » : consigne de chaque vanne (tous passages confondus). « Distribué » : compteur de la machine, vanne par vanne.</p>
+</section>
+
+<details class="card"><summary><b>Détail par vanne (hier et aujourd’hui)</b></summary>
+<div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Séquence</th><th>Formule</th><th>Passage</th><th>Vanne</th><th>Consigne (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>
+{% for d in distributions %}<tr><td>{{ d.heure }}</td><td>{{ d.sequence }}</td><td>{{ d.formule }}</td><td>{{ d.passage }}</td><td>{{ d.vanne }}</td><td>{{ d.consigne }}</td><td>{{ d.distribue }}</td></tr>
+{% else %}<tr><td colspan="7" class="rust-empty">—</td></tr>{% endfor %}
+</tbody></table></div></details>
+
+<section class="card"><h2>Journal</h2>
+<div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Événement</th></tr></thead><tbody>
+{% for e in evenements %}<tr><td>{{ e.heure }}</td><td{% if e.phase == 7 %} style="color:#c0392b;font-weight:bold"{% endif %}>{{ e.message }}</td></tr>
+{% else %}<tr><td colspan="2" class="rust-empty">—</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted">Alertes SMS : « alerte dosage » dès qu’elle apparaît, et « plus de nouvelles » après 10 minutes sans trame (PC Mega-feeder, câble ou service arrêté).</p>
+</section>
+
+{% if session.est_admin and jeton %}
+<details class="card"{% if not etat %} open{% endif %}><summary><b>Installer le service d’écoute sur l’hôte Proxmox</b></summary>
+<p>Dans Proxmox : cliquez sur le nœud <b>proxmox</b> → <b>Shell</b>, puis collez ces deux commandes l’une après l’autre.</p>
+<p>1. Télécharger le programme d’écoute :</p>
+<pre style="white-space:pre-wrap;word-break:break-all">curl -fsS "{{ adresse }}/api/soupe/script?jeton={{ jeton }}" -o /usr/local/bin/soupe-ecoute && chmod 755 /usr/local/bin/soupe-ecoute</pre>
+<p>2. Le lancer en service (redémarre tout seul) :</p>
+<pre style="white-space:pre-wrap;word-break:break-all">printf '[Unit]\nDescription=Ecoute machine a soupe pour EO_Sevel\nAfter=network-online.target\n[Service]\nExecStart=/usr/bin/python3 /usr/local/bin/soupe-ecoute\nRestart=always\nRestartSec=10\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/soupe-ecoute.service && systemctl daemon-reload && systemctl enable --now soupe-ecoute</pre>
+<p>Vérifier : <code>systemctl status soupe-ecoute</code> — la phase doit s’afficher ici en quelques secondes. Le service ne fait que lire une copie du trafic USB : le PC Mega-feeder continue de piloter la machine normalement.</p>
+</details>
+{% endif %}
+{% endif %}
+<p><a href="/equipements">← Retour à Mes équipements</a></p>
+</div>
+{% if actif and etat %}<script>setTimeout(function () { if (!document.querySelector('details[open] pre')) location.reload(); }, 10000);</script>{% endif %}
+{% endblock %}

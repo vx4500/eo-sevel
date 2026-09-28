@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.39.3** —
+Version actuelle : **2.40.0** —
+
+### Version 2.40.0 — Machine à soupe (écoute seule) et menu Caméras
+
+Version Rust 2.40.0 : module facultatif « Machine à soupe » (Paramètres → Modules, `module_machine_soupe`, désactivé par défaut). Mes équipements → Machine à soupe (/equipements/soupe) : phase en direct, poids cuve, séquence/formule, vanne/consigne/contrôle/débit, repas des 7 derniers jours (prévu = consigne par vanne, distribué = différence du cumul machine), détail vanne par vanne, journal (phases + actions faites sur le PC). Alertes SMS via ambiance_alerte : `soupe_alerte` (phase 7 « alerte dosage ») et `soupe_silence` (> 10 min sans trame). Réception : POST /api/soupe/trames (jeton `soupe_jeton`, chemin public), service d'écoute Python servi par /api/soupe/script (scripts/soupe-ecoute.py, usbmon sur l'hôte Proxmox, lecture seule, contrôle vérifié). Migration 0024. Décodage : src/soupe.rs. Menu Mes équipements : ajout des entrées Caméras et Machine à soupe.
 
 ### Version 2.39.3 — Fusion carte de bande (2.38.1)
 

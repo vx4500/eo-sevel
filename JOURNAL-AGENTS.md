@@ -141,3 +141,19 @@ inventaire (inventairecase.dernier_transfert_id) et les corrections du flux.
 Emmanuel l'a vu. La 2.39.3 (master) fusionne `cameras` (2.38.1) et 2.39.2.
 **Règle : avant tout déploiement, fusionner master dans sa branche (ou
 travailler sur master), et comparer avec le binaire en ligne.**
+
+### 2026-09-28 — claude — 2.40.0 machine à soupe en écoute (branche `soupe`, partie de master 5dad9ef)
+Protocole Asserva Exa-Feeder décodé à partir de captures usbmon du câble FTDI
+de la VM 101 (Windows XP, Mega-feeder NT) : trames ASCII STX/SOH, adresse,
+commande, sous-commande, longueur 4 chiffres, champs « ; », contrôle =
+XOR des octets (3 chiffres) + dernier chiffre de la somme (vérifié sur 1500
+trames). Champs de l'état `c0` documentés dans src/soupe.rs, validés contre les
+écrans d'Exa-Feeder sur un repas complet (28/09 20:17-20:36). Le champ 10 n'est
+PAS le n° de passage (compté par EO_Sevel). EO_Sevel n'écrit JAMAIS sur la
+machine. Le service `soupe-ecoute` (hôte Proxmox 192.168.1.140) poste vers
+EO_Sevel ; Mosquitto n'écoute qu'en local, d'où l'HTTP + jeton.
+Emmanuel signalait « Caméras a disparu » : la carte existait, mais le menu
+déroulant Mes équipements ne l'avait jamais eue — ajoutée.
+Tests : les 10 échecs `dernier_transfert_id` (+ zigbee) préexistent sur master.
+Digiclim 6A (La Berru) : ne répond pas au protocole Exa-Feeder sur J19 (A = borne 1),
+en attente de la doc Asserva (mail en brouillon).

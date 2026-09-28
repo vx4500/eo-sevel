@@ -17,6 +17,7 @@ mod models;
 mod regul_core;
 mod routes;
 mod sms_free;
+mod soupe;
 mod tunnel;
 mod templates;
 mod vocal;
@@ -122,6 +123,12 @@ async fn main() -> anyhow::Result<()> {
     let sms_pool = pool.clone();
     tokio::spawn(async move {
         crate::sms_free::boucle(sms_pool).await;
+    });
+
+    // Machine à soupe : alerte quand le service d'écoute ne donne plus de nouvelles.
+    let soupe_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::soupe::boucle(soupe_pool).await;
     });
 
     // Tunnel Cloudflare (accès à distance), piloté depuis Mes équipements.

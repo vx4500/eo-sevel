@@ -289,7 +289,10 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
             && (path == "/commande"
                 || path.starts_with("/commande/")
                 || (path.starts_with("/vente-directe/produit/") && path.ends_with("/image"))
-                || path.starts_with("/desinscription/")));
+                || path.starts_with("/desinscription/")))
+        // Service d'écoute de la machine à soupe : authentifié par son jeton.
+        || path == "/api/soupe/trames"
+        || path == "/api/soupe/script";
     let session_id = cookie_value(request.headers(), "eo_session");
     let session = session_id
         .as_ref()
