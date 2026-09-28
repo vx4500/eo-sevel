@@ -124,3 +124,11 @@ Au passage : test `ameliorations` corrigé (inseminations() prend Query depuis
 Déploiement : binaire /var/tmp/eo-sevel-2.38.0, installation faite par Emmanuel
 (copie du service bloquée pour Claude). Branche `cameras` (worktree
 /var/tmp/eo-cameras) à fusionner dans master après le WIP en cours.
+
+### 2026-09-28 — claude — v2.38.1 carte de bande
+Remarques d'Emmanuel sur l'accueil (bande 3.40 en verraterie, IA 27/09) :
+1re tuile = truies inséminées ; l'« écho confirmée vide 03/09 » venait du
+cycle précédent (filtre date >= 1re IA) ; tuile verraterie = truies
+actuellement en verraterie (l'ancien compteur ne comptait que les sevrées
+transférées). Emplacements triés Engraissement 1 → 5. Les pages /bandes et
+/bande gardent l'ancien compteur « vers la verraterie » (flux après sevrage).

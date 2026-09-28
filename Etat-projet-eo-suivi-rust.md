@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.39.2** —
+Version actuelle : **2.39.3** —
+
+### Version 2.39.3 — Fusion carte de bande (2.38.1)
+
+Version Rust 2.39.3 : fusion de la branche cameras (2.38.1, carte de bande) avec 2.39.2, après un déploiement de 2.38.1 qui avait retiré 2.38–2.39.2.
 
 ### Version 2.39.2 — Production par bande
 
@@ -13,6 +17,10 @@ Version Rust 2.39.1 : inventairecase.dernier_transfert_id (MAX(transfert.id) à 
 ### Version 2.39.0 — Impression et cases incohérentes
 
 Version Rust 2.39.0 : impression de /inseminations (CSS print) ; cases_incoherentes() (mod.rs) partagée par l'alerte, /structure#cases-incoherentes, Mes salles et la fiche de salle (astérisque rouge).
+
+### Version 2.38.1 — Carte de bande (accueil)
+
+Version Rust 2.38.1 : tuile « Truies inséminées » (nombre + date de la 1re IA) en tête du flux ; l'écho affichée ne peut plus être antérieure à la 1re IA du cycle (une écho « vide » du cycle précédent s'affichait) ; « Truies → verraterie » remplacée par « Truies en verraterie » (truies de la bande logées dans une salle de verraterie, `flux.en_verraterie`) ; emplacements actuels triés par bâtiment puis ordre/nom de salle (Engraissement 1 → 5) au lieu de l'effectif.
 
 ### Version 2.38.0 — Caméras des salles
 

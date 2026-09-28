@@ -2468,10 +2468,18 @@ async fn band_reproduction_stats(pool: &SqlitePool, band: &Bande) -> AppResult<V
         let vides = echos_negatifs().fetch_one(pool).await?;
         (effectif.max(pleines + vides), pleines, vides)
     };
+    // Première IA du cycle : une écho plus ancienne appartient au cycle
+    // précédent et ne doit pas s'afficher comme résultat de la bande.
+    let date_ia: Option<String> =
+        sqlx::query_scalar("SELECT MIN(date) FROM evenement WHERE bande_id=? AND type='ia'")
+            .bind(band.id)
+            .fetch_one(pool)
+            .await?;
     let derniere_echo = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT date,resultat FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now') ORDER BY date DESC,id DESC LIMIT 1",
+        "SELECT date,resultat FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now') AND date>=COALESCE(?,'') ORDER BY date DESC,id DESC LIMIT 1",
     )
     .bind(band.id)
+    .bind(&date_ia)
     .fetch_optional(pool)
     .await?;
     let taux_pleine = (ia > 0).then(|| (100.0 * pleines as f64 / ia as f64 * 10.0).round() / 10.0);
@@ -2482,12 +2490,22 @@ async fn band_reproduction_stats(pool: &SqlitePool, band: &Bande) -> AppResult<V
         "vides": vides,
         "taux_pleine": taux_pleine,
         "taux_vide": taux_vide,
+        "inseminees": ia_evenements,
+        "date_ia": date_ia,
         "derniere_echo_date": derniere_echo.as_ref().map(|(date, _)| date),
         "derniere_echo_resultat": derniere_echo.as_ref().and_then(|(_, resultat)| resultat.clone()),
     }))
 }
 
 async fn band_flow_summary(pool: &SqlitePool, band: &Bande) -> AppResult<Value> {
+    // Truies de la bande actuellement logées dans une salle de verraterie.
+    let en_verraterie: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id JOIN salle s ON s.id=COALESCE(t.salle_id,c.salle_id) \
+         WHERE t.bande_code=? AND t.reformee=0 AND (lower(COALESCE(s.type,'')) LIKE '%verrater%' OR lower(COALESCE(s.nom,'')) LIKE '%verrater%')",
+    )
+    .bind(&band.code)
+    .fetch_one(pool)
+    .await?;
     let sow_flow = sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
         "WITH cycle_truies AS (SELECT DISTINCT truie_id FROM evenement WHERE bande_id=? AND truie_id IS NOT NULL UNION SELECT id FROM truie WHERE bande_code=?),sevragees AS (SELECT DISTINCT truie_id FROM evenement WHERE bande_id=? AND type='sevrage' AND truie_id IS NOT NULL),vers_verraterie AS (SELECT DISTINCT w.truie_id FROM sevragees w JOIN truie t ON t.id=w.truie_id WHERE t.reformee=0 AND (EXISTS(SELECT 1 FROM transfert m LEFT JOIN casesalle c ON c.id=m.case_dest_id JOIN salle s ON s.id=COALESCE(m.salle_dest_id,c.salle_id) WHERE m.truie_id=t.id AND m.date>=(SELECT MAX(e.date) FROM evenement e WHERE e.bande_id=? AND e.truie_id=t.id AND e.type='sevrage') AND (lower(COALESCE(s.type,'')) LIKE '%verrater%' OR lower(COALESCE(s.nom,'')) LIKE '%verrater%')) OR EXISTS(SELECT 1 FROM salle s WHERE s.id=COALESCE(t.salle_id,(SELECT c.salle_id FROM casesalle c WHERE c.id=t.case_id)) AND (lower(COALESCE(s.type,'')) LIKE '%verrater%' OR lower(COALESCE(s.nom,'')) LIKE '%verrater%')))) SELECT (SELECT COUNT(*) FROM cycle_truies),(SELECT COUNT(*) FROM vers_verraterie),(SELECT COUNT(*) FROM sevragees w JOIN truie t ON t.id=w.truie_id WHERE t.reformee=0 AND (t.bande_code IS NULL OR trim(t.bande_code)='' OR NOT EXISTS(SELECT 1 FROM bande nouvelle WHERE nouvelle.code=t.bande_code AND nouvelle.active=1)) AND NOT EXISTS(SELECT 1 FROM vers_verraterie v WHERE v.truie_id=t.id)),(SELECT COUNT(*) FROM cycle_truies c JOIN truie t ON t.id=c.truie_id WHERE t.reformee=1),(SELECT CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage')",
     )
@@ -2527,7 +2545,7 @@ async fn band_flow_summary(pool: &SqlitePool, band: &Bande) -> AppResult<Value> 
     .next()
     .unwrap_or_else(|| json!({"truies_mises_bas":0,"porcelets_nes":0,"moyenne_par_truie":0}));
     let location_rows = sqlx::query(
-        "WITH mouvements(salle_id,nombre) AS (SELECT COALESCE(t.salle_dest_id,cd.salle_id),COALESCE(t.nombre,0) FROM transfert t LEFT JOIN casesalle cd ON cd.id=t.case_dest_id WHERE t.bande_id=? AND t.espece='porc' UNION ALL SELECT COALESCE(t.salle_source_id,cs.salle_id),-COALESCE(t.nombre,0) FROM transfert t LEFT JOIN casesalle cs ON cs.id=t.case_source_id WHERE t.bande_id=? AND t.espece='porc'), porcs AS (SELECT salle_id,SUM(nombre) AS effectif FROM mouvements WHERE salle_id IS NOT NULL GROUP BY salle_id HAVING SUM(nombre)>0), truies AS (SELECT COALESCE(t.salle_id,c.salle_id) AS salle_id,COUNT(*) AS effectif FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.bande_code=? AND t.reformee=0 AND COALESCE(t.salle_id,c.salle_id) IS NOT NULL GROUP BY COALESCE(t.salle_id,c.salle_id)), animaux AS (SELECT salle_id,effectif,'Porcs' AS animaux FROM porcs UNION ALL SELECT salle_id,effectif,'Truies' AS animaux FROM truies) SELECT s.id AS salle_id,COALESCE(NULLIF(si.nom,''),si.code) AS batiment,s.nom AS salle,a.animaux,a.effectif FROM animaux a JOIN salle s ON s.id=a.salle_id JOIN site si ON si.id=s.site_id ORDER BY a.effectif DESC,batiment,salle,a.animaux",
+        "WITH mouvements(salle_id,nombre) AS (SELECT COALESCE(t.salle_dest_id,cd.salle_id),COALESCE(t.nombre,0) FROM transfert t LEFT JOIN casesalle cd ON cd.id=t.case_dest_id WHERE t.bande_id=? AND t.espece='porc' UNION ALL SELECT COALESCE(t.salle_source_id,cs.salle_id),-COALESCE(t.nombre,0) FROM transfert t LEFT JOIN casesalle cs ON cs.id=t.case_source_id WHERE t.bande_id=? AND t.espece='porc'), porcs AS (SELECT salle_id,SUM(nombre) AS effectif FROM mouvements WHERE salle_id IS NOT NULL GROUP BY salle_id HAVING SUM(nombre)>0), truies AS (SELECT COALESCE(t.salle_id,c.salle_id) AS salle_id,COUNT(*) AS effectif FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.bande_code=? AND t.reformee=0 AND COALESCE(t.salle_id,c.salle_id) IS NOT NULL GROUP BY COALESCE(t.salle_id,c.salle_id)), animaux AS (SELECT salle_id,effectif,'Porcs' AS animaux FROM porcs UNION ALL SELECT salle_id,effectif,'Truies' AS animaux FROM truies) SELECT s.id AS salle_id,COALESCE(NULLIF(si.nom,''),si.code) AS batiment,s.nom AS salle,a.animaux,a.effectif FROM animaux a JOIN salle s ON s.id=a.salle_id JOIN site si ON si.id=s.site_id ORDER BY batiment,s.ordre,length(s.nom),s.nom,a.animaux",
     )
     .bind(band.id)
     .bind(band.id)
@@ -2564,6 +2582,7 @@ async fn band_flow_summary(pool: &SqlitePool, band: &Bande) -> AppResult<Value> 
     Ok(json!({
         "truies_cycle": sow_flow.0,
         "verraterie": sow_flow.1,
+        "en_verraterie": en_verraterie,
         "attente": sow_flow.2,
         "reformees": sow_flow.3,
         "sevres": sow_flow.4,
