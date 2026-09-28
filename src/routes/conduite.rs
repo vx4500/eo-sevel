@@ -1237,6 +1237,7 @@ pub(super) async fn flux(
             }
             etapes.push(json!({
                 "libelle": libelle,
+                "court": match cle { 0 => "Gest.", 1 => "Mat.", 2 => "PS", _ => "Engr." },
                 "date": (date_mb + Duration::days(debut.max(age))).to_string(),
                 "occupation": pire,
             }));

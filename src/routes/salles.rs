@@ -273,9 +273,15 @@ pub(super) async fn liste(
     let lignes = sqlx::query(&format!("{SALLES_SQL} ORDER BY si.nom, s.ordre, s.nom"))
         .fetch_all(&state.pool)
         .await?;
+    let incoherentes = super::cases_incoherentes(&state.pool).await?;
     let mut salles = Vec::with_capacity(lignes.len());
     for ligne in &lignes {
         let mut salle = resume(&state.pool, ligne).await?;
+        let id_salle = salle.get("id").and_then(Value::as_i64).unwrap_or(0);
+        let nb = incoherentes.iter().filter(|c| c.1 == id_salle).count();
+        if let Some(objet) = salle.as_object_mut() {
+            objet.insert("cases_incoherentes".into(), json!(nb));
+        }
         let type_salle = salle.get("type").and_then(Value::as_str).unwrap_or("").to_string();
         let nom = salle.get("nom").and_then(Value::as_str).unwrap_or("").to_string();
         let (rang, titre) = stade(&type_salle, &nom);
@@ -324,6 +330,7 @@ pub(super) async fn fiche(
     .bind(id)
     .fetch_all(pool)
     .await?;
+    let incoherentes = super::cases_incoherentes(pool).await?;
     let mut cases = Vec::new();
     for (case_id, nom, max_porcs, max_truies) in cases_lignes {
         let truies = generic_rows_bind(
@@ -333,6 +340,7 @@ pub(super) async fn fiche(
         )
         .await?;
         cases.push(json!({
+            "incoherente": incoherentes.iter().any(|c| c.0 == case_id),
             "id": case_id,
             "nom": nom,
             "porcs": case_pig_count(pool, case_id).await?.max(0),

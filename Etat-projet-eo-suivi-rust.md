@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.37.2** —
+Version actuelle : **2.38.0** —
+
+### Version 2.38.0 — Impression et cases incohérentes
+
+Version Rust 2.38.0 : impression de /inseminations (CSS print) ; cases_incoherentes() (mod.rs) partagée par l'alerte, /structure#cases-incoherentes, Mes salles et la fiche de salle (astérisque rouge).
 
 ### Version 2.37.2 — Saisie par groupe
 

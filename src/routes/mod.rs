@@ -1375,6 +1375,18 @@ async fn api_alertes_elevage(State(state): State<AppState>) -> AppResult<axum::J
     Ok(axum::Json(farm_alerts(&state.pool).await?))
 }
 
+/// Cases dont l'effectif calculé (dernier inventaire + transferts − morts)
+/// est négatif ou dépasse la capacité, hors maternité (les porcelets y
+/// naissent sans transfert d'entrée) : (case, salle_id, salle, case_nom,
+/// effectif, capacité).
+pub(crate) async fn cases_incoherentes(pool: &SqlitePool) -> AppResult<Vec<(i64, i64, String, String, i64, i64)>> {
+    Ok(sqlx::query_as(
+        "WITH depart AS (SELECT c.id,c.nb_max_porcs,(SELECT i.date FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1) AS inv_date,COALESCE((SELECT i.nombre FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1),0) AS base FROM casesalle c),effectifs AS (SELECT d.id,d.nb_max_porcs,d.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=d.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=d.id OR t.case_source_id=d.id) AND (d.inv_date IS NULL OR t.date>d.inv_date)),0)-COALESCE((SELECT SUM(m.nombre) FROM declarationmort m WHERE m.case_id=d.id AND (d.inv_date IS NULL OR m.date>d.inv_date)),0) AS effectif FROM depart d) SELECT e.id,c.salle_id,s.nom,c.nom,e.effectif,COALESCE(e.nb_max_porcs,0) FROM effectifs e JOIN casesalle c ON c.id=e.id JOIN salle s ON s.id=c.salle_id WHERE lower(COALESCE(s.type,'')) NOT LIKE '%mater%' AND (e.effectif<0 OR (e.nb_max_porcs>0 AND e.effectif>e.nb_max_porcs)) ORDER BY s.ordre,s.nom,c.nom",
+    )
+    .fetch_all(pool)
+    .await?)
+}
+
 async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
     let mut alerts = Vec::new();
     for (kind, label) in [
@@ -1448,16 +1460,12 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         "/planning",
         "urgent",
     );
-    let case_anomalies: i64 = sqlx::query_scalar(
-        "WITH depart AS (SELECT c.id,c.nb_max_porcs,(SELECT i.date FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1) AS inv_date,COALESCE((SELECT i.nombre FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1),0) AS base FROM casesalle c),effectifs AS (SELECT d.id,d.nb_max_porcs,d.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=d.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=d.id OR t.case_source_id=d.id) AND (d.inv_date IS NULL OR t.date>d.inv_date)),0)-COALESCE((SELECT SUM(m.nombre) FROM declarationmort m WHERE m.case_id=d.id AND (d.inv_date IS NULL OR m.date>d.inv_date)),0) AS effectif FROM depart d) SELECT COUNT(*) FROM effectifs WHERE effectif<0 OR (nb_max_porcs>0 AND effectif>nb_max_porcs)",
-    )
-    .fetch_one(pool)
-    .await?;
+    let case_anomalies = cases_incoherentes(pool).await?.len() as i64;
     push_farm_alert(
         &mut alerts,
         case_anomalies,
         "Cases avec un effectif incohérent",
-        "/structure",
+        "/structure#cases-incoherentes",
         "urgent",
     );
     // Étapes des bandes à 10 jours et débordements de places prévus. Une
@@ -11340,6 +11348,11 @@ async fn structure(
         enrich_room_ventilation(object, &fans);
         object.insert("ventilateurs".into(), Value::Array(fans));
     }
+    let incoherentes: Vec<Value> = cases_incoherentes(&state.pool)
+        .await?
+        .into_iter()
+        .map(|(id, salle_id, salle, nom, effectif, max)| json!({"id": id, "salle_id": salle_id, "salle": salle, "nom": nom, "effectif": effectif, "max": max}))
+        .collect();
     let mut cases = generic_rows(&state.pool, "SELECT c.id,c.salle_id,c.nom,c.rfid,c.nb_max_porcs,c.nb_max_truies,c.nb_max_porcelets,c.num_vanne,c.surface_config,s.type AS type_salle,s.nom AS salle,COALESCE(si.nom,si.code) AS site,(SELECT COUNT(*) FROM truie t WHERE t.case_id=c.id AND t.reformee=0) AS truies_presentes,COALESCE((SELECT SUM(MAX(0,COALESCE(e.nes_vifs,0)-COALESCE((SELECT SUM(p.nb) FROM perteporcelet p WHERE p.evenement_id=e.id OR (p.evenement_id IS NULL AND p.truie_id=e.truie_id AND p.bande_id=e.bande_id)),0))) FROM evenement e WHERE e.type='mise_bas' AND e.case_id=c.id AND NOT EXISTS(SELECT 1 FROM evenement sv WHERE sv.type='sevrage' AND sv.truie_id=e.truie_id AND sv.bande_id=e.bande_id AND sv.date>=e.date)),0) AS porcelets_presents FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY COALESCE(si.nom,si.code),s.ordre,c.nom").await?;
     for case in &mut cases {
         let object = json_object_mut(case, "la capacité des cases")?;
@@ -11515,6 +11528,11 @@ async fn structure(
         Value::Array(comparaison_salles),
     );
     ctx.insert("comparaison_sites".into(), Value::Array(comparaison_sites));
+    ctx.insert(
+        "ids_incoherents".into(),
+        json!(incoherentes.iter().filter_map(|c| c["id"].as_i64()).collect::<Vec<_>>()),
+    );
+    ctx.insert("cases_incoherentes".into(), Value::Array(incoherentes));
     render(&state, "structure.html", Value::Object(ctx))
 }
 async fn structure_site(
@@ -13994,6 +14012,7 @@ async fn compatibility_fallback(
     if session.is_none() {
         return Redirect::to("/login").into_response();
     }
+    tracing::warn!(%path, methode = %request.method(), "route inconnue");
     (StatusCode::NOT_IMPLEMENTED,Html(format!("<!doctype html><meta charset='utf-8'><main style='font-family:sans-serif;max-width:760px;margin:60px auto'><h1>Fonction non encore portée</h1><p>La route <code>{path}</code> n’est pas encore reliée à une action Rust. Aucune donnée n’a été modifiée.</p><p><a href='/'>Retour à l’accueil</a></p></main>"))).into_response()
 }
 

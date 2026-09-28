@@ -7,9 +7,10 @@
 <h2 class="sl-stade">{{ s.stade }}</h2>
 <div class="sl-grille">{% endif %}
 <a class="sl-carte t-{{ (s.type or '')|lower|replace('_', '-') }}" href="/salles/{{ s.id }}">
-  <div class="tete"><h2>{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></div>
+  <div class="tete"><h2>{% if s.cases_incoherentes %}<span style="color:#b3261e" title="Case(s) avec un effectif incohérent">* </span>{% endif %}{{ s.nom }}</h2><span class="sl-type">{{ s.type or 'salle' }}{% if s.site %} · {{ s.site }}{% endif %}</span></div>
   <div class="sl-badges">
     {% if s.bande %}<span class="sl-badge">Bande {{ s.bande.code }} · jour {{ s.bande.jour }}</span>{% endif %}
+    {% if s.cases_incoherentes %}<span class="sl-badge rouge">* {{ s.cases_incoherentes }} case{% if s.cases_incoherentes > 1 %}s{% endif %} à effectif incohérent</span>{% endif %}
     {% if s.alertes %}<span class="sl-badge rouge">⚠ {{ s.alertes }} alerte{% if s.alertes > 1 %}s{% endif %}</span>{% endif %}
     {% if s.ambiance and not s.ambiance.sonde_ok %}<span class="sl-badge rouge">sonde en défaut</span>{% endif %}
     {% if not s.truies and not s.porcs %}<span class="sl-badge jaune">vide</span>{% endif %}
