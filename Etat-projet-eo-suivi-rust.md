@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.37.0** —
+Version actuelle : **2.37.1** —
+
+### Version 2.37.1 — Paramètres
+
+Version Rust 2.37.1 : retrait du bloc de renvoi « Aliment » de /parametres.
 
 ### Version 2.37.0 — Note de rentabilité
 

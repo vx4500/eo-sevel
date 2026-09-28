@@ -272,7 +272,7 @@ fn version_220_gere_bandes_causes_assistant_et_images() {
     assert!(settings.contains("/parametres/conduite-bandes"));
     assert!(include_str!("../templates/aliment_previsions.html").contains("/aliment-previsions/plan/{{ l.id }}/modifier"));
     assert!(include_str!("../templates/aliment_previsions.html").split("{% block content %}").nth(1).is_some_and(|c| c.contains("id=\"alimentation\"")));
-    assert!(settings.contains("/aliment-previsions#alimentation"));
+    assert!(!settings.contains("id=\"alimentation\""));
     assert!(quick.contains("/api/causes-perte"));
     assert!(assistant.contains("Question '+(index+1)+' sur '"));
     assert!(routes.contains("image_data,image_mime"));
