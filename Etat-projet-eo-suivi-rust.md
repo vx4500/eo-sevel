@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.39.0** —
+Version actuelle : **2.39.1** —
+
+### Version 2.39.1 — Effectif après inventaire
+
+Version Rust 2.39.1 : inventairecase.dernier_transfert_id (MAX(transfert.id) à la saisie) ; case_pig_count_conn et les deux CTE comptent les transferts du même jour d'id supérieur ; transfert case→même case neutre. Les anciens inventaires (NULL) gardent l'ancienne règle.
 
 ### Version 2.39.0 — Impression et cases incohérentes
 

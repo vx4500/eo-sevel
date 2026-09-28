@@ -1391,7 +1391,7 @@ async fn api_alertes_elevage(State(state): State<AppState>) -> AppResult<axum::J
 /// effectif, capacité).
 pub(crate) async fn cases_incoherentes(pool: &SqlitePool) -> AppResult<Vec<(i64, i64, String, String, i64, i64)>> {
     Ok(sqlx::query_as(
-        "WITH depart AS (SELECT c.id,c.nb_max_porcs,(SELECT i.date FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1) AS inv_date,COALESCE((SELECT i.nombre FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1),0) AS base FROM casesalle c),effectifs AS (SELECT d.id,d.nb_max_porcs,d.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=d.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=d.id OR t.case_source_id=d.id) AND (d.inv_date IS NULL OR t.date>d.inv_date)),0)-COALESCE((SELECT SUM(m.nombre) FROM declarationmort m WHERE m.case_id=d.id AND (d.inv_date IS NULL OR m.date>d.inv_date)),0) AS effectif FROM depart d) SELECT e.id,c.salle_id,s.nom,c.nom,e.effectif,COALESCE(e.nb_max_porcs,0) FROM effectifs e JOIN casesalle c ON c.id=e.id JOIN salle s ON s.id=c.salle_id WHERE lower(COALESCE(s.type,'')) NOT LIKE '%mater%' AND (e.effectif<0 OR (e.nb_max_porcs>0 AND e.effectif>e.nb_max_porcs)) ORDER BY s.ordre,s.nom,c.nom",
+        "WITH depart AS (SELECT c.id,c.nb_max_porcs,(SELECT i.date FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1) AS inv_date,(SELECT i.dernier_transfert_id FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1) AS inv_transfert,COALESCE((SELECT i.nombre FROM inventairecase i WHERE i.case_id=c.id ORDER BY i.date DESC,i.id DESC LIMIT 1),0) AS base FROM casesalle c),effectifs AS (SELECT d.id,d.nb_max_porcs,d.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=t.case_source_id THEN 0 WHEN t.case_dest_id=d.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=d.id OR t.case_source_id=d.id) AND (d.inv_date IS NULL OR t.date>d.inv_date OR (t.date=d.inv_date AND t.id>d.inv_transfert))),0)-COALESCE((SELECT SUM(m.nombre) FROM declarationmort m WHERE m.case_id=d.id AND (d.inv_date IS NULL OR m.date>d.inv_date)),0) AS effectif FROM depart d) SELECT e.id,c.salle_id,s.nom,c.nom,e.effectif,COALESCE(e.nb_max_porcs,0) FROM effectifs e JOIN casesalle c ON c.id=e.id JOIN salle s ON s.id=c.salle_id WHERE lower(COALESCE(s.type,'')) NOT LIKE '%mater%' AND (e.effectif<0 OR (e.nb_max_porcs>0 AND e.effectif>e.nb_max_porcs)) ORDER BY s.ordre,s.nom,c.nom",
     )
     .fetch_all(pool)
     .await?)
@@ -7615,23 +7615,25 @@ async fn case_pig_count_raw(pool: &SqlitePool, case_id: i64) -> AppResult<i64> {
 }
 
 async fn case_pig_count_conn(conn: &mut sqlx::SqliteConnection, case_id: i64) -> AppResult<i64> {
-    let inventory: Option<(String, i64)> = sqlx::query_as(
-        "SELECT date,nombre FROM inventairecase WHERE case_id=? ORDER BY date DESC,id DESC LIMIT 1",
+    let inventory: Option<(String, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT date,nombre,dernier_transfert_id FROM inventairecase WHERE case_id=? ORDER BY date DESC,id DESC LIMIT 1",
     )
     .bind(case_id)
     .fetch_optional(&mut *conn)
     .await?;
-    let (date, base) = inventory
-        .map(|(date, number)| (Some(date), number))
-        .unwrap_or((None, 0));
+    let (date, base, dernier) = inventory
+        .map(|(date, number, dernier)| (Some(date), number, dernier))
+        .unwrap_or((None, 0, None));
     let movements: i64 = sqlx::query_scalar(
-        "SELECT CAST(COALESCE(SUM(CASE WHEN case_dest_id=? THEN COALESCE(nombre,0) WHEN id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(nombre,0) END),0) AS INTEGER) FROM transfert WHERE espece='porc' AND (case_dest_id=? OR case_source_id=?) AND (? IS NULL OR date>?)",
+        "SELECT CAST(COALESCE(SUM(CASE WHEN case_dest_id=case_source_id THEN 0 WHEN case_dest_id=? THEN COALESCE(nombre,0) WHEN id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(nombre,0) END),0) AS INTEGER) FROM transfert WHERE espece='porc' AND (case_dest_id=? OR case_source_id=?) AND (? IS NULL OR date>? OR (date=? AND id>?))",
     )
     .bind(case_id)
     .bind(case_id)
     .bind(case_id)
     .bind(&date)
     .bind(&date)
+    .bind(&date)
+    .bind(dernier)
     .fetch_one(&mut *conn)
     .await?;
     let deaths: i64 = sqlx::query_scalar(
@@ -8155,7 +8157,7 @@ async fn effectifs_inventaire_case(
         .bind(&date)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par) VALUES(?,?,?,?,?)")
+    sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par,dernier_transfert_id) VALUES(?,?,?,?,?,(SELECT MAX(id) FROM transfert))")
         .bind(case_id)
         .bind(&date)
         .bind(number)
@@ -8195,7 +8197,7 @@ async fn etat_donnees(
         &session,
         "État des données",
         "Contrôles structurels en lecture seule. Une valeur à zéro signifie que le contrôle est conforme.",
-        "WITH effectif_case AS (SELECT c.id,c.nb_max_porcs,(SELECT date FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_date,COALESCE((SELECT nombre FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1),0) AS base FROM casesalle c),effectif_case2 AS (SELECT e.id,e.nb_max_porcs,e.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=e.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=e.id OR t.case_source_id=e.id) AND (e.inv_date IS NULL OR t.date>e.inv_date)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=e.id AND (e.inv_date IS NULL OR d.date>e.inv_date)),0) AS effectif FROM effectif_case e) SELECT 'Doublons de numéros de truies actives' AS controle,COUNT(*) AS anomalies FROM (SELECT num_travail FROM truie WHERE reformee=0 GROUP BY lower(trim(num_travail)) HAVING COUNT(*)>1) UNION ALL SELECT 'Événements sans truie',COUNT(*) FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id WHERE e.truie_id IS NOT NULL AND t.id IS NULL UNION ALL SELECT 'Événements sans bande',COUNT(*) FROM evenement e LEFT JOIN bande b ON b.id=e.bande_id WHERE e.bande_id IS NOT NULL AND b.id IS NULL UNION ALL SELECT 'Transferts vers une case absente',COUNT(*) FROM transfert t LEFT JOIN casesalle c ON c.id=t.case_dest_id WHERE t.case_dest_id IS NOT NULL AND c.id IS NULL UNION ALL SELECT 'Bandes actives sans date de mise-bas',COUNT(*) FROM bande WHERE active=1 AND (date_mb IS NULL OR trim(date_mb)='') UNION ALL SELECT 'Truies actives sans bande',COUNT(*) FROM truie WHERE reformee=0 AND (bande_code IS NULL OR trim(bande_code)='') UNION ALL SELECT 'Cases avec effectif calculé négatif',COUNT(*) FROM effectif_case2 WHERE effectif<0 UNION ALL SELECT 'Cases dépassant leur capacité déclarée',COUNT(*) FROM effectif_case2 WHERE nb_max_porcs IS NOT NULL AND nb_max_porcs>0 AND effectif>nb_max_porcs UNION ALL SELECT 'Déclarations de mortalité sans stade renseigné',COUNT(*) FROM declarationmort WHERE stade IS NULL OR trim(stade)='' UNION ALL SELECT 'Porcs charcutiers sans bande d''origine',COUNT(*) FROM porccharcutier WHERE bande_code IS NULL OR trim(bande_code)=''",
+        "WITH effectif_case AS (SELECT c.id,c.nb_max_porcs,(SELECT date FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_date,(SELECT dernier_transfert_id FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_transfert,COALESCE((SELECT nombre FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1),0) AS base FROM casesalle c),effectif_case2 AS (SELECT e.id,e.nb_max_porcs,e.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=t.case_source_id THEN 0 WHEN t.case_dest_id=e.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=e.id OR t.case_source_id=e.id) AND (e.inv_date IS NULL OR t.date>e.inv_date OR (t.date=e.inv_date AND t.id>e.inv_transfert))),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=e.id AND (e.inv_date IS NULL OR d.date>e.inv_date)),0) AS effectif FROM effectif_case e) SELECT 'Doublons de numéros de truies actives' AS controle,COUNT(*) AS anomalies FROM (SELECT num_travail FROM truie WHERE reformee=0 GROUP BY lower(trim(num_travail)) HAVING COUNT(*)>1) UNION ALL SELECT 'Événements sans truie',COUNT(*) FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id WHERE e.truie_id IS NOT NULL AND t.id IS NULL UNION ALL SELECT 'Événements sans bande',COUNT(*) FROM evenement e LEFT JOIN bande b ON b.id=e.bande_id WHERE e.bande_id IS NOT NULL AND b.id IS NULL UNION ALL SELECT 'Transferts vers une case absente',COUNT(*) FROM transfert t LEFT JOIN casesalle c ON c.id=t.case_dest_id WHERE t.case_dest_id IS NOT NULL AND c.id IS NULL UNION ALL SELECT 'Bandes actives sans date de mise-bas',COUNT(*) FROM bande WHERE active=1 AND (date_mb IS NULL OR trim(date_mb)='') UNION ALL SELECT 'Truies actives sans bande',COUNT(*) FROM truie WHERE reformee=0 AND (bande_code IS NULL OR trim(bande_code)='') UNION ALL SELECT 'Cases avec effectif calculé négatif',COUNT(*) FROM effectif_case2 WHERE effectif<0 UNION ALL SELECT 'Cases dépassant leur capacité déclarée',COUNT(*) FROM effectif_case2 WHERE nb_max_porcs IS NOT NULL AND nb_max_porcs>0 AND effectif>nb_max_porcs UNION ALL SELECT 'Déclarations de mortalité sans stade renseigné',COUNT(*) FROM declarationmort WHERE stade IS NULL OR trim(stade)='' UNION ALL SELECT 'Porcs charcutiers sans bande d''origine',COUNT(*) FROM porccharcutier WHERE bande_code IS NULL OR trim(bande_code)=''",
         &["controle", "anomalies"],
     )
     .await
@@ -12009,7 +12011,7 @@ async fn structure_case_supprimer(
             .execute(&mut *tx)
             .await?;
         if porcs_supprimee + porcs_cible > 0 {
-            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par) VALUES(?,?,?,?,?)")
+            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par,dernier_transfert_id) VALUES(?,?,?,?,?,(SELECT MAX(id) FROM transfert))")
                 .bind(cible)
                 .bind(today_iso())
                 .bind(porcs_supprimee + porcs_cible)

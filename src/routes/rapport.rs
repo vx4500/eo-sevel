@@ -574,6 +574,8 @@ async fn bandes_actives(pool: &SqlitePool) -> AppResult<(Vec<Value>, i64)> {
 /// relevé avant la période et le dernier relevé de la période. Un
 /// remplacement de compteur dans l'intervalle rend l'écart inexploitable : on
 /// le signale plutôt que d'afficher un chiffre faux.
+/// Consommation sur la période : du dernier relevé avant la période (ou, pour
+/// un compteur récent, du premier relevé de la période) au dernier relevé.
 async fn energie(pool: &SqlitePool, debut: &str, fin: &str) -> AppResult<Vec<Value>> {
     let compteurs = lignes(
         pool,
@@ -586,8 +588,10 @@ async fn energie(pool: &SqlitePool, debut: &str, fin: &str) -> AppResult<Vec<Val
         let id = compteur["id"].as_i64().unwrap_or_default().to_string();
         let bornes = une_ligne(
             pool,
-            "SELECT (SELECT valeur_index FROM releve_compteur WHERE compteur_id=?1 AND date_releve<?2 ORDER BY date_releve DESC,id DESC LIMIT 1) AS avant,\
-             (SELECT date_releve FROM releve_compteur WHERE compteur_id=?1 AND date_releve<?2 ORDER BY date_releve DESC,id DESC LIMIT 1) AS date_avant,\
+            "SELECT COALESCE((SELECT valeur_index FROM releve_compteur WHERE compteur_id=?1 AND date_releve<?2 ORDER BY date_releve DESC,id DESC LIMIT 1),\
+                (SELECT valeur_index FROM releve_compteur WHERE compteur_id=?1 AND date_releve>=?2 AND date_releve<=?3 ORDER BY date_releve,id LIMIT 1)) AS avant,\
+             COALESCE((SELECT date_releve FROM releve_compteur WHERE compteur_id=?1 AND date_releve<?2 ORDER BY date_releve DESC,id DESC LIMIT 1),\
+                (SELECT date_releve FROM releve_compteur WHERE compteur_id=?1 AND date_releve>=?2 AND date_releve<=?3 ORDER BY date_releve,id LIMIT 1)) AS date_avant,\
              (SELECT valeur_index FROM releve_compteur WHERE compteur_id=?1 AND date_releve<=?3 ORDER BY date_releve DESC,id DESC LIMIT 1) AS apres,\
              (SELECT date_releve FROM releve_compteur WHERE compteur_id=?1 AND date_releve<=?3 ORDER BY date_releve DESC,id DESC LIMIT 1) AS date_apres,\
              (SELECT COUNT(*) FROM releve_compteur WHERE compteur_id=?1 AND date_releve>=?2 AND date_releve<=?3 AND COALESCE(remplacement_compteur,0)=1) AS remplacements",

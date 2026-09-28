@@ -315,6 +315,9 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         ("salle", "plan_largeur", "REAL"),
         ("salle", "plan_hauteur", "REAL"),
         ("salle", "plan_rotation", "REAL NOT NULL DEFAULT 0"),
+        // Dernier transfert connu à la saisie de l'inventaire : les
+        // transferts du même jour enregistrés après lui sont comptés.
+        ("inventairecase", "dernier_transfert_id", "INTEGER"),
     ] {
         ensure_column(pool, table, column, definition).await?;
     }
