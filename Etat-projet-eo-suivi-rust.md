@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.40.1** —
+Version actuelle : **2.41.0** —
+
+### Version 2.41.0 — Ventilation des salles vides
+
+Version Rust 2.41.0 : réglage par salle « Ventilation salle vide (%) » (fiche salle → Ventilation et consignes, colonne `ambiance_salle.ventil_vide`, vide = désactivé). eo-regul : si réglé, qu'aucune truie ni aucun porc n'est compté dans la salle (comptage case par case comme l'application) et qu'aucune arrivée n'est préparée (préconditionnement), la ventilation est tenue à ce pourcentage (mode `vide`, `regul_core::salle_vide`), sans alerte de température/hygrométrie. Badge « salle vide · ventilation réduite » sur /ambiance, « (salle vide) » sur la fiche.
 
 ### Version 2.40.1 — Machine à soupe : données de synchronisation
 

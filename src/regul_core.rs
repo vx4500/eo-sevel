@@ -104,6 +104,8 @@ pub enum Mode {
     Securite,
     /// Salle non pilotée (configuration inactive).
     Arret,
+    /// Salle sans animaux : ventilation tenue au réglage « salle vide ».
+    Vide,
 }
 
 impl Mode {
@@ -112,6 +114,7 @@ impl Mode {
             Mode::Auto => "auto",
             Mode::Securite => "securite",
             Mode::Arret => "arret",
+            Mode::Vide => "vide",
         }
     }
 }
@@ -295,6 +298,18 @@ pub fn calculer(
     }
 }
 
+/// Salle vide : pas d'animaux à protéger, la ventilation est tenue au
+/// pourcentage « salle vide » pour économiser l'énergie, quelle que soit la
+/// température.
+pub fn salle_vide(ventil_vide: f64) -> Decision {
+    Decision {
+        ventil: arrondi_dixieme(borner(ventil_vide, 0.0, 100.0)),
+        mode: Mode::Vide,
+        sonde_ok: true,
+        message: Some("salle vide : ventilation réduite".to_string()),
+    }
+}
+
 /// Faut-il réécrire la sortie sur l'automate ?
 ///
 /// Écrire à chaque cycle sur treize salles, c'est saturer l'IPX pour rien et
@@ -384,6 +399,13 @@ mod tests {
     fn la_courbe_tient_les_extremes_sans_extrapoler() {
         assert!((consigne_courbe(&points(), -3).unwrap().t_cible - 28.0).abs() < 1e-9);
         assert!((consigne_courbe(&points(), 400).unwrap().t_cible - 24.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn une_salle_vide_tient_la_ventilation_reduite() {
+        let d = salle_vide(8.0);
+        assert_eq!((d.ventil, d.mode, d.mode.code()), (8.0, Mode::Vide, "vide"));
+        assert_eq!(salle_vide(150.0).ventil, 100.0);
     }
 
     #[test]

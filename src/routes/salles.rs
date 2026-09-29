@@ -619,7 +619,7 @@ pub(super) async fn fiche(
     }
     let reglages = sqlx::query(
         "SELECT actif, pilote, courbe_id, t_cible_fixe, plage, ventil_min, ventil_max, \
-                t_alerte_min, t_alerte_max, h_alerte_max FROM ambiance_salle WHERE salle_id=?",
+                t_alerte_min, t_alerte_max, h_alerte_max, ventil_vide FROM ambiance_salle WHERE salle_id=?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -636,6 +636,7 @@ pub(super) async fn fiche(
             "t_alerte_min": r.try_get::<Option<f64>, _>("t_alerte_min").ok().flatten(),
             "t_alerte_max": r.try_get::<Option<f64>, _>("t_alerte_max").ok().flatten(),
             "h_alerte_max": r.try_get::<Option<f64>, _>("h_alerte_max").ok().flatten(),
+            "ventil_vide": r.try_get::<Option<f64>, _>("ventil_vide").ok().flatten(),
         })
     });
     let courbes = generic_rows(pool, "SELECT id, nom FROM ambiance_courbe ORDER BY nom")
@@ -739,10 +740,11 @@ pub(super) async fn reglages(
     }
     sqlx::query(
         "INSERT INTO ambiance_salle(salle_id,courbe_id,t_cible_fixe,plage,ventil_min,ventil_max,\
-         t_alerte_min,t_alerte_max,h_alerte_max) VALUES(?,?,?,?,?,?,?,?,?) \
+         t_alerte_min,t_alerte_max,h_alerte_max,ventil_vide) VALUES(?,?,?,?,?,?,?,?,?,?) \
          ON CONFLICT(salle_id) DO UPDATE SET courbe_id=excluded.courbe_id, t_cible_fixe=excluded.t_cible_fixe, \
          plage=excluded.plage, ventil_min=excluded.ventil_min, ventil_max=excluded.ventil_max, \
-         t_alerte_min=excluded.t_alerte_min, t_alerte_max=excluded.t_alerte_max, h_alerte_max=excluded.h_alerte_max",
+         t_alerte_min=excluded.t_alerte_min, t_alerte_max=excluded.t_alerte_max, h_alerte_max=excluded.h_alerte_max, \
+         ventil_vide=excluded.ventil_vide",
     )
     .bind(id)
     .bind(form_i64(&form, "courbe_id"))
@@ -753,6 +755,7 @@ pub(super) async fn reglages(
     .bind(t_alerte_min)
     .bind(t_alerte_max)
     .bind(form_f64(&form, "h_alerte_max"))
+    .bind(form_f64(&form, "ventil_vide").map(|v| v.clamp(0.0, 100.0)))
     .execute(&state.pool)
     .await?;
     Ok(Redirect::to(&format!("/salles/{id}#reglages")).into_response())
@@ -808,7 +811,7 @@ mod tests {
         sqlx::raw_sql(
             "ALTER TABLE salle ADD COLUMN longueur REAL; ALTER TABLE salle ADD COLUMN largeur REAL; \
              ALTER TABLE salle ADD COLUMN hauteur REAL; ALTER TABLE salle ADD COLUMN mode_chauffage TEXT; \
-             ALTER TABLE ipx_point ADD COLUMN formule TEXT;",
+             ALTER TABLE ipx_point ADD COLUMN formule TEXT; ALTER TABLE ambiance_salle ADD COLUMN ventil_vide REAL;",
         )
         .execute(&state.pool)
         .await?;

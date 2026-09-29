@@ -50,7 +50,7 @@
   {% if ventilation or (ventil_etat and ventil_etat.ventil is not none) %}
   <div class="sl-mesures" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr));margin-bottom:10px">
     {% for v in ventilation %}<div><b>{% if v.arret %}arrêt{% elif v.valeur is not none %}{{ v.valeur|round|int }}{{ ' %' if (v.unite == '%' or not v.unite) else ' ' ~ v.unite }}{% else %}—{% endif %}</b><small>{{ v.nom }} — vitesse</small><small class="sl-mesure-le{% if v.vieille %} vieille{% endif %}">{% if v.mesure_le %}{{ v.mesure_le }}{% elif v.zigbee %}inconnue : le variateur l’envoie quand on la change{% else %}automate injoignable{% endif %}</small></div>{% endfor %}
-    {% if ventil_etat and ventil_etat.ventil is not none %}<div><b>{{ ventil_etat.ventil|round|int }} %</b><small>consigne calculée{% if ventil_etat.mode == 'securite' %} (repli){% endif %}</small></div>{% endif %}
+    {% if ventil_etat and ventil_etat.ventil is not none %}<div><b>{{ ventil_etat.ventil|round|int }} %</b><small>consigne calculée{% if ventil_etat.mode == 'securite' %} (repli){% elif ventil_etat.mode == 'vide' %} (salle vide){% endif %}</small></div>{% endif %}
   </div>
   {% else %}<p class="sl-vide" style="margin-top:0">Aucune sortie de ventilation rattachée à cette salle.</p>{% endif %}
   {% if session.peut_modifier %}
@@ -61,6 +61,7 @@
     <label>Plage (°C)<input name="plage" inputmode="decimal" value="{{ reglages.plage if reglages and reglages.plage is not none else 3 }}"></label>
     <label class="selon-courbe">Ventilation mini (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_min" inputmode="decimal" value="{{ reglages.ventil_min if reglages and reglages.ventil_min is not none else 20 }}"></label>
     <label class="selon-courbe">Ventilation maxi (%) <span class="par-courbe">— fixé par la courbe</span><input name="ventil_max" inputmode="decimal" value="{{ reglages.ventil_max if reglages and reglages.ventil_max is not none else 100 }}"></label>
+    <label>Ventilation salle vide (%)<input name="ventil_vide" inputmode="decimal" value="{{ reglages.ventil_vide if reglages and reglages.ventil_vide is not none else '' }}" placeholder="désactivé" title="Sans aucun animal dans la salle (ni arrivée préparée), la ventilation est tenue à ce pourcentage pour économiser l'énergie. Vide = régulation normale."></label>
     <label>Alerte sous (°C)<input name="t_alerte_min" inputmode="decimal" value="{{ reglages.t_alerte_min if reglages and reglages.t_alerte_min is not none else '' }}" placeholder="aucune"></label>
     <label>Alerte au-dessus (°C)<input name="t_alerte_max" inputmode="decimal" value="{{ reglages.t_alerte_max if reglages and reglages.t_alerte_max is not none else '' }}" placeholder="aucune"></label>
     <label>Alerte humidité au-dessus (%)<input name="h_alerte_max" inputmode="decimal" value="{{ reglages.h_alerte_max if reglages and reglages.h_alerte_max is not none else '' }}" placeholder="aucune"></label>

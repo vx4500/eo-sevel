@@ -550,6 +550,74 @@ async fn points_courbe(pool: &SqlitePool, courbe_id: i64) -> Result<Vec<PointCou
         .collect())
 }
 
+/// Réglage « ventilation salle vide » de la salle (NULL = désactivé). Lu à
+/// part pour que le régulateur tourne encore sur une base pas encore migrée.
+async fn ventil_vide(pool: &SqlitePool, salle_id: i64) -> Option<f64> {
+    sqlx::query_scalar::<_, Option<f64>>("SELECT ventil_vide FROM ambiance_salle WHERE salle_id=?")
+        .bind(salle_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
+/// Aucune truie ni aucun porc dans la salle. Les porcs se comptent case par
+/// case comme dans l'application : dernier inventaire, puis transferts
+/// entrants moins sortants, moins les morts déclarés.
+async fn salle_sans_animaux(pool: &SqlitePool, salle_id: i64) -> Result<bool> {
+    let truies: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id \
+         WHERE t.reformee=0 AND COALESCE(t.salle_id, c.salle_id)=?",
+    )
+    .bind(salle_id)
+    .fetch_one(pool)
+    .await?;
+    if truies > 0 {
+        return Ok(false);
+    }
+    let cases: Vec<i64> = sqlx::query_scalar("SELECT id FROM casesalle WHERE salle_id=?")
+        .bind(salle_id)
+        .fetch_all(pool)
+        .await?;
+    for case_id in cases {
+        let inventaire: Option<(String, i64, Option<i64>)> = sqlx::query_as(
+            "SELECT date,nombre,dernier_transfert_id FROM inventairecase WHERE case_id=? ORDER BY date DESC,id DESC LIMIT 1",
+        )
+        .bind(case_id)
+        .fetch_optional(pool)
+        .await
+        .or_else(|_| Ok::<_, sqlx::Error>(None))?;
+        let (date, base, dernier) = inventaire.map(|(d, n, t)| (Some(d), n, t)).unwrap_or((None, 0, None));
+        let mouvements: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(CASE WHEN case_dest_id=case_source_id THEN 0 WHEN case_dest_id=? THEN COALESCE(nombre,0) \
+             ELSE -COALESCE(nombre,0) END),0) AS INTEGER) FROM transfert WHERE espece='porc' AND (case_dest_id=? OR case_source_id=?) \
+             AND (? IS NULL OR date>? OR (date=? AND id>COALESCE(?,0)))",
+        )
+        .bind(case_id)
+        .bind(case_id)
+        .bind(case_id)
+        .bind(&date)
+        .bind(&date)
+        .bind(&date)
+        .bind(dernier)
+        .fetch_one(pool)
+        .await?;
+        let morts: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM declarationmort WHERE case_id=? AND (? IS NULL OR date>?)",
+        )
+        .bind(case_id)
+        .bind(&date)
+        .bind(&date)
+        .fetch_one(pool)
+        .await?;
+        if base + mouvements - morts > 0 {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 async fn traiter_salle(
     pool: &SqlitePool,
     client: &reqwest::Client,
@@ -624,7 +692,24 @@ async fn traiter_salle(
         etat.derniere_temperature = Some((valeur, ts));
     }
 
-    let decision = calculer(&reglages, consigne, temperature, humidite, gradient);
+    // Salle vide (aucune truie, aucun porc, pas d'arrivée préparée) : on tient
+    // la ventilation au réglage « salle vide » s'il est renseigné.
+    // Une bande peut encore être « en place » d'après son dernier transfert
+    // alors que les porcs sont partis : c'est le comptage qui décide. Une
+    // arrivée préparée (préconditionnement) garde la régulation normale.
+    let vide = match ventil_vide(pool, salle.salle_id).await {
+        Some(v)
+            if salle_sans_animaux(pool, salle.salle_id).await.unwrap_or(false)
+                && preconditionnement_en_attente(pool, salle.salle_id).await.unwrap_or(None).is_none() =>
+        {
+            Some(v)
+        }
+        _ => None,
+    };
+    let decision = match vide {
+        Some(v) => regul_core::salle_vide(v),
+        None => calculer(&reglages, consigne, temperature, humidite, gradient),
+    };
 
     // Écriture sur l'automate : seulement si la salle est déclarée pilotée, si
     // la consigne a bougé assez, et jamais en mode simulation.
@@ -703,11 +788,14 @@ async fn traiter_salle(
     // hors simulation. Sinon la ventilation réelle suit la régulation en place
     // et juger « l'effet » de notre commande n'a aucun sens.
     let commande_effective = salle.pilote && !acces.simulation;
+    // Salle vide : pas d'alerte de température ni d'hygrométrie (personne à
+    // protéger, et une salle vide qui refroidit est normale).
+    let vide = decision.mode == Mode::Vide;
     surveiller(
         pool,
         salle,
-        temperature.valeur,
-        humidite.valeur,
+        if vide { None } else { temperature.valeur },
+        if vide { None } else { humidite.valeur },
         &decision,
         commande_effective,
     )
@@ -1746,6 +1834,46 @@ mod preconditionnement_tests {
         .execute(&pool)
         .await?;
         assert!(bande_en_place(&pool, salle).await?.is_some());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod salle_vide_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn une_salle_est_vide_sans_truie_ni_porc_compte() -> Result<()> {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await?;
+        sqlx::raw_sql(include_str!("../../migrations/0001_schema.sql")).execute(&pool).await?;
+        sqlx::raw_sql("ALTER TABLE inventairecase ADD COLUMN dernier_transfert_id INTEGER;").execute(&pool).await.ok();
+        let site = sqlx::query("INSERT INTO site(code,nom) VALUES('S1','Site')").execute(&pool).await?.last_insert_rowid();
+        let salle = sqlx::query("INSERT INTO salle(site_id,nom,type,nb_cases,ordre) VALUES(?,'Engraissement 1','Engraissement',1,1)")
+            .bind(site)
+            .execute(&pool)
+            .await?
+            .last_insert_rowid();
+        let case = sqlx::query("INSERT INTO casesalle(salle_id,nom) VALUES(?,'C1')").bind(salle).execute(&pool).await?.last_insert_rowid();
+        assert!(salle_sans_animaux(&pool, salle).await?);
+
+        sqlx::query("INSERT INTO transfert(date,espece,nombre,case_dest_id) VALUES('2026-09-01','porc',30,?)")
+            .bind(case)
+            .execute(&pool)
+            .await?;
+        assert!(!salle_sans_animaux(&pool, salle).await?, "30 porcs arrivés");
+
+        sqlx::query("INSERT INTO transfert(date,espece,nombre,case_source_id) VALUES('2026-09-20','porc',30,?)")
+            .bind(case)
+            .execute(&pool)
+            .await?;
+        assert!(salle_sans_animaux(&pool, salle).await?, "tous repartis");
+
+        sqlx::query("INSERT INTO truie(num_travail,statut,reformee,salle_id) VALUES('T1','active',0,?)")
+            .bind(salle)
+            .execute(&pool)
+            .await?;
+        assert!(!salle_sans_animaux(&pool, salle).await?, "une truie présente");
         Ok(())
     }
 }

@@ -163,3 +163,11 @@ en attente de la doc Asserva (mail en brouillon).
 URL locale 192.168.1.186:8080). Mega-feeder n'envoie `c0` que fenêtre de
 supervision ouverte ; la synchro (capture 29/09 12:08) lit R/S/U/V/W/X/Y et « ` »,
 désormais stockés bruts dans soupe_donnee (décodage détaillé à faire).
+
+### 2026-09-29 — claude — 2.41.0 ventilation salle vide
+Demande d'Emmanuel : salles vides au mini de ventilation (économie), réglable.
+Par salle (ventil_vide, NULL = off). La bande « en place » (dernier transfert)
+ne suffit pas à dire qu'une salle est occupée : c'est le comptage des animaux
+qui décide ; le préconditionnement garde la régulation normale. eo-regul lit
+ventil_vide à part (tolère une base non migrée). eo-regul tourne toujours avec
+EO_REGUL_SIMULATION=1 : la consigne est calculée/affichée, rien n'est écrit.

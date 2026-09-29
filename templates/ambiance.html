@@ -84,6 +84,7 @@
       {% elif s.actif %}<span class="rust-badge">observation</span>
       {% else %}<span class="rust-badge">inactive</span>{% endif %}
       <span class="rust-badge danger js-mode-securite"{% if s.mode != 'securite' %} hidden{% endif %}>repli de sécurité</span>
+      <span class="rust-badge js-mode-vide"{% if s.mode != 'vide' %} hidden{% endif %}>salle vide · ventilation réduite</span>
     </h2>
     {% if s.actif %}<span class="ambiance-etat-pastille {{ etat }}">{% if etat == 'etat-repli' %}Ventilation en repli{% elif etat == 'etat-alerte' %}À surveiller{% else %}Normal{% endif %}</span>{% endif %}
   </div>
@@ -237,6 +238,8 @@
           if (repli) { repli.hidden = !!s.sonde_ok; }
           var mode = salle.querySelector('.js-mode-securite');
           if (mode) { mode.hidden = s.mode !== 'securite'; }
+          var vide = salle.querySelector('.js-mode-vide');
+          if (vide) { vide.hidden = s.mode !== 'vide'; }
           var ventil = salle.querySelector('.js-ventil-valeur');
           if (ventil) {
             ventil.parentElement.querySelector('.ambiance-tile-sub').textContent = !s.sonde_ok ? 'Repli à ' + s.ventil_securite + ' %' : 'entre ' + s.ventil_min + ' % et ' + s.ventil_max + ' %';
