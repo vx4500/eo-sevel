@@ -292,17 +292,6 @@ async fn fermer_alerte(pool: &SqlitePool, type_alerte: &str) -> Result<()> {
     Ok(())
 }
 
-async fn module_actif(pool: &SqlitePool) -> bool {
-    sqlx::query_scalar::<_, Option<String>>("SELECT valeur FROM parametre WHERE cle='module_machine_soupe'")
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .flatten()
-        .as_deref()
-        == Some("1")
-}
-
 /// La machine ne parle au PC que pendant ses cycles : son silence est normal
 /// et ne donne pas d'alerte. Seule l'alerte de sécurité (phase 7) prévient.
 /// On ferme ici une éventuelle ancienne alerte « plus aucune nouvelle ».

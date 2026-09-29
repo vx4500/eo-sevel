@@ -1,0 +1,3 @@
+{% if soupe %}<a href="/equipements/soupe" class="acc-carte acc-soupe" style="text-decoration:none;color:inherit"><div class="l1"><b>Machine à soupe</b><span class="acc-pastille{% if not soupe.en_cours %} gris{% endif %}">{{ soupe.phase }}</span></div>
+{% if soupe.poids is defined %}<div class="val"><span><small>Cuve</small><b>{{ soupe.poids }} kg</b></span><span><small>Distribué</small><b>{{ soupe.cumul }} kg</b></span></div>{% endif %}
+<small>Alerte uniquement en cas de sécurité (alerte dosage).</small></a>{% endif %}

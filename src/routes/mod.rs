@@ -22,6 +22,7 @@ use sqlx::{Column, Row, SqlitePool, TypeInfo, ValueRef};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+mod accueil;
 mod adoptions;
 mod acces;
 mod ambiance;
@@ -2779,6 +2780,13 @@ async fn dashboard(
         "stats".into(),
         json!({"band_configured": bandes_configurees, "band_active": bands.len(), "truies": truies, "sevres": sevres, "marge": vente-aliment-veto-semence-genetique,"porcs_vendus_annee":year_sales.0,"prix_ht_kg":if year_sales.1>0.0{Some(year_sales.2/year_sales.1)}else{None},"prix_dernieres_ventes":if latest_average.1>0.0{Some(latest_average.0/latest_average.1)}else{None},"morts_annee":year_deaths}),
     );
+    let style_accueil = accueil::style(&state.pool).await?;
+    if style_accueil != "classique" {
+        let bandes = ctx.remove("bandes").and_then(|v| v.as_array().cloned()).unwrap_or_default();
+        accueil::enrichir(&state.pool, &mut ctx, bandes).await?;
+        let page = format!("accueil_{style_accueil}.html");
+        return Ok(render(&state, &page, Value::Object(ctx))?.into_response());
+    }
     Ok(render(&state, "dashboard.html", Value::Object(ctx))?.into_response())
 }
 

@@ -1092,6 +1092,7 @@ pub(super) async fn parametres_maj(
         "nas_path",
         "cloud_path",
         "mail_sauvegarde",
+        "accueil_style",
     ];
     let mut tx = state.pool.begin().await?;
     for key in allowed {

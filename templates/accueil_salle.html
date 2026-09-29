@@ -1,0 +1,5 @@
+<a href="/salles/{{ s.id }}" class="acc-carte acc-salle{% if s.hors_consigne %} hors{% endif %}">
+<div class="l1"><b>{{ s.nom }}</b>{% if s.ecart is not none %}<span class="acc-pastille{% if s.hors_consigne %} mal{% endif %}">{% if s.ecart > 0 %}+{% endif %}{{ s.ecart|decimal1 }} °C</span>{% elif not s.sonde_ok %}<span class="acc-pastille mal">Sonde en défaut</span>{% else %}<span class="acc-pastille gris">sans consigne</span>{% endif %}</div>
+<div><span class="acc-temp">{% if s.t is not none %}{{ s.t|decimal1 }}<small> °C</small>{% else %}—{% endif %}</span><span class="acc-hyg">{% if s.h is not none %}{{ s.h|decimal1 }} %{% endif %}</span></div>
+<svg class="acc-courbe band-climat-courbe" data-salle="{{ s.id }}" data-grandeur="t" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+<div class="acc-pied"><span>{% if s.effectif %}{{ s.effectif }} animaux · {{ s.bandes }}{% else %}Vide{% endif %}</span><span>{% if s.ventil is not none %}Ventil {{ s.ventil|round|int }} %{% endif %}</span></div></a>

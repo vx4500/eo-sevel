@@ -1,0 +1,8 @@
+<section class="acc-kpis" aria-label="Indicateurs principaux">
+<div><small>Truies actives</small><b>{{ stats.truies }}</b></div>
+<div><small>Porcs vendus {{ annee }}</small><b>{{ stats.porcs_vendus_annee }}</b></div>
+<div><small>Prix HT {{ annee }}</small><b>{% if stats.prix_ht_kg is not none %}{{ stats.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</b></div>
+<div><small>Moyenne 5 ventes</small><b>{% if stats.prix_dernieres_ventes is not none %}{{ stats.prix_dernieres_ventes|decimal3 }} €{% else %}—{% endif %}</b></div>
+<div><small>Pertes déclarées {{ annee }}</small><b>{{ stats.morts_annee }}</b></div>
+<div><small>Marge partielle</small><b{% if stats.marge < 0 %} class="acc-neg"{% endif %}>{{ stats.marge|euro }}</b></div>
+</section>

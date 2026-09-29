@@ -52,6 +52,18 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         "dashboard.html",
         include_str!("../templates/dashboard.html"),
     )?;
+    env.add_template("accueil_cockpit.html", include_str!("../templates/accueil_cockpit.html"))?;
+    env.add_template("accueil_tournee.html", include_str!("../templates/accueil_tournee.html"))?;
+    env.add_template("accueil_flux.html", include_str!("../templates/accueil_flux.html"))?;
+    env.add_template("accueil_style.html", include_str!("../templates/accueil_style.html"))?;
+    env.add_template("accueil_script.html", include_str!("../templates/accueil_script.html"))?;
+    env.add_template("accueil_kpis.html", include_str!("../templates/accueil_kpis.html"))?;
+    env.add_template("accueil_alertes.html", include_str!("../templates/accueil_alertes.html"))?;
+    env.add_template("accueil_salle.html", include_str!("../templates/accueil_salle.html"))?;
+    env.add_template("accueil_frise.html", include_str!("../templates/accueil_frise.html"))?;
+    env.add_template("accueil_interventions.html", include_str!("../templates/accueil_interventions.html"))?;
+    env.add_template("accueil_soupe.html", include_str!("../templates/accueil_soupe.html"))?;
+    env.add_template("accueil_saisie.html", include_str!("../templates/accueil_saisie.html"))?;
     env.add_template("bandes.html", include_str!("../templates/bandes.html"))?;
     env.add_template("bande.html", include_str!("../templates/bande.html"))?;
     env.add_template("truies.html", include_str!("../templates/truies.html"))?;

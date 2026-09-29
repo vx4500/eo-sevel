@@ -182,3 +182,10 @@ Saisie groupée des inséminations (bande ou verraterie) : 3e choix « Pas venue
 en chaleur » (evenement.type = sans_chaleur, note « Truie N pas venue en
 chaleur »). Visible dans l’historique de la truie, celui de la bande et la
 colonne Chaleurs de l’état des inséminations. Non compté comme chaleur/retour.
+
+### 2026-09-29 — claude — 2.43.0 page d’accueil au choix
+Paramètres → Page d’accueil (parametre accueil_style, pour toute l’exploitation) :
+classique (dashboard.html inchangé), cockpit, tournee, flux. src/routes/accueil.rs
+enrichit le contexte du tableau de bord (ambiance_etat, farm_alerts, soupe_etat,
+frise 18 mois des bandes) ; gabarits accueil_*.html (morceaux partagés par include).
+Essai : EO_TEST_BASE=… cargo test -- --ignored accueils_sur_copie (écrit les 4 pages).

@@ -1,0 +1,52 @@
+{% extends "base.html" %}{% block content %}{% include "accueil_style.html" %}
+<style>
+.acc-tour{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}@media(max-width:1000px){.acc-tour{grid-template-columns:1fr}}
+.acc-etapes{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.acc-etapes a{display:flex;align-items:center;gap:8px;border:1px solid var(--acc-trait);background:var(--acc-fond);border-radius:30px;padding:6px 14px 6px 6px;font-weight:600;text-decoration:none;color:inherit;min-height:44px;box-sizing:border-box}
+.acc-num{width:30px;height:30px;border-radius:50%;background:var(--acc-doux);display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+.acc-arret{display:grid;grid-template-columns:44px minmax(0,1fr) 250px;gap:18px;scroll-margin-top:90px}@media(max-width:760px){.acc-arret{grid-template-columns:1fr}}
+.acc-arret .acc-num{width:44px;height:44px;font-size:18px}.acc-arret.hors{border:2px solid #e0735f}
+.acc-arret h2{font-size:22px}.acc-arret .sous{color:var(--acc-gris)}
+.acc-mesure{background:var(--acc-doux);border-radius:12px;padding:12px 14px}.acc-arret.hors .acc-mesure{background:var(--acc-rose)}
+.acc-actions{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px}.acc-actions a,.acc-actions button{border:1px solid var(--acc-trait);background:var(--acc-fond);color:var(--acc-vert);border-radius:10px;padding:0 14px;min-height:44px;font:inherit;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}
+.acc-progres{background:var(--acc-vert);color:#fff;border-radius:14px;padding:20px}.acc-progres b{font-size:40px;display:block}.acc-progres .barre{height:8px;background:#ffffff33;border-radius:4px;margin:10px 0 14px}.acc-progres .barre i{display:block;height:8px;background:#f2c38b;border-radius:4px}
+.acc-progres a{display:flex;justify-content:center;align-items:center;min-height:44px;background:#fff;color:var(--acc-vert);border-radius:10px;font-weight:700;text-decoration:none}
+</style>
+{% set occupees = salles_suivies|selectattr("effectif")|list %}
+<div class="acc">
+<div><span class="acc-sur">{{ aujourd_hui|date_fr }} · ma tournée</span><h1>Bonjour{% if session.nom %} {{ session.nom }}{% endif %}, voici votre tournée</h1>
+<p style="margin:6px 0 0;color:var(--acc-gris);font-size:17px">{{ occupees|length }} salle(s) occupée(s) · {{ salles_suivies|selectattr("hors_consigne")|list|length }} écart(s) d’ambiance · {{ alertes_elevage.total }} alerte(s)</p></div>
+<nav class="acc-etapes" aria-label="Étapes de la tournée">{% for s in occupees %}<a href="#arret-{{ s.id }}"><span class="acc-num">{{ loop.index }}</span>{{ s.nom }}</a>{% endfor %}{% if soupe %}<a href="#arret-soupe"><span class="acc-num">{{ occupees|length + 1 }}</span>Machine à soupe</a>{% endif %}</nav>
+<div class="acc-tour"><div class="acc-grille">
+{% for s in occupees %}
+<section id="arret-{{ s.id }}" class="acc-carte acc-arret{% if s.hors_consigne %} hors{% endif %}">
+<span class="acc-num">{{ loop.index }}</span>
+<div style="display:flex;flex-direction:column;gap:8px;min-width:0"><div><h2>{{ s.nom }}</h2><span class="sous">{{ s.effectif }} animaux · bande(s) {{ s.bandes }}</span></div>
+<div class="acc-taches">
+{% if s.hors_consigne %}<label><input type="checkbox"> <span>Température {{ s.t|decimal1 }} °C pour {{ s.consigne|decimal1 }} °C de consigne : vérifier la ventilation</span></label>{% endif %}
+{% if not s.sonde_ok %}<label><input type="checkbox"> <span>Sonde en défaut : vérifier le capteur</span></label>{% endif %}
+{% for b in bandes %}{% if b.code in s.bandes_liste %}<label><input type="checkbox"> <span>Bande <b>{{ b.code }}</b> ({{ b.stade }}) : {{ b.prochaine }}{% if b.prochaine_date %} le {{ b.prochaine_date|date_fr }}{% if b.prochaine_delai %} ({{ b.prochaine_delai }}){% endif %}{% endif %}</span></label>{% endif %}{% endfor %}
+<label><input type="checkbox"> <span>Animaux, eau, aliment : contrôle visuel</span></label>
+</div>
+<div class="acc-actions"><button type="button" onclick="accSaisie('chaleur')">Chaleur / IA</button><button type="button" onclick="accSaisie('perte_bande')">Déclarer une perte</button>{% for b in bandes %}{% if b.code in s.bandes_liste %}<a href="/bande/{{ b.id }}">Fiche {{ b.code }}</a>{% endif %}{% endfor %}</div></div>
+<div class="acc-mesure"><div style="display:flex;gap:16px"><div><small class="sous">Température</small><div class="acc-temp" style="font-size:26px{% if s.hors_consigne %};color:var(--acc-rouge){% endif %}">{% if s.t is not none %}{{ s.t|decimal1 }} °C{% else %}—{% endif %}</div></div><div><small class="sous">Hygro.</small><div class="acc-temp" style="font-size:26px">{% if s.h is not none %}{{ s.h|decimal1 }} %{% else %}—{% endif %}</div></div></div>
+<svg class="acc-courbe band-climat-courbe" data-salle="{{ s.id }}" data-grandeur="t" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"></svg>
+<small class="sous">Consigne {% if s.consigne %}{{ s.consigne|decimal1 }} °C{% else %}—{% endif %} · ventilation {% if s.ventil is not none %}{{ s.ventil|round|int }} %{% else %}—{% endif %}</small></div>
+</section>
+{% else %}<p class="acc-vide">Aucune salle occupée suivie par la régulation.</p>{% endfor %}
+{% if soupe %}<section id="arret-soupe" class="acc-carte acc-arret"><span class="acc-num">{{ occupees|length + 1 }}</span><div><h2>Machine à soupe</h2><p class="sous" style="margin:6px 0 0">{{ soupe.phase }}. Alerte uniquement en cas de sécurité (alerte dosage).</p><div class="acc-actions"><a href="/equipements/soupe">Ouvrir la machine à soupe</a></div></div><div class="acc-mesure">{% if soupe.poids is defined %}<small class="sous">Cuve</small><div class="acc-temp" style="font-size:26px">{{ soupe.poids }} kg</div><small class="sous">Distribué : {{ soupe.cumul }} kg</small>{% endif %}</div></section>{% endif %}
+</div>
+<aside class="acc-grille">
+<section class="acc-progres"><span class="acc-sur" style="color:#ffffffcc">Avancement de la tournée</span><b id="acc-compte">0 / 0</b><div class="barre"><i id="acc-barre" style="width:0"></i></div><a href="/quotidien">Valider le contrôle quotidien</a></section>
+{% if alertes_elevage.total > 0 %}<section class="acc-carte" style="background:var(--acc-rose);border-color:#f0c4bb"><h2 style="color:var(--acc-rouge);margin-bottom:8px">Alertes ({{ alertes_elevage.total }})</h2><ul class="acc-liste">{% for a in alertes_elevage.alertes %}<li style="padding:8px 0"><a href="{{ a.url }}">{{ a.message }}{% if a.nombre > 1 %} ({{ a.nombre }}){% endif %}</a></li>{% endfor %}</ul></section>{% endif %}
+<section class="acc-carte"><h2 style="margin-bottom:6px">À venir</h2>{% set max_interventions = 5 %}{% include "accueil_interventions.html" %}</section>
+<section class="acc-carte" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+<div><small class="sous">Truies actives</small><b style="display:block;font-size:20px">{{ stats.truies }}</b></div><div><small class="sous">Porcs vendus {{ annee }}</small><b style="display:block;font-size:20px">{{ stats.porcs_vendus_annee }}</b></div>
+<div><small class="sous">Pertes {{ annee }}</small><b style="display:block;font-size:20px">{{ stats.morts_annee }}</b></div><div><small class="sous">Marge partielle</small><b style="display:block;font-size:20px"{% if stats.marge < 0 %} class="acc-neg"{% endif %}>{{ stats.marge|euro }}</b></div></section>
+</aside></div></div>
+<script>
+(function(){var cases=document.querySelectorAll('.acc-arret input[type=checkbox]'),cle='acc-tournee-'+new Date().toISOString().slice(0,10);
+var ok={};try{ok=JSON.parse(localStorage.getItem(cle)||'{}')}catch(e){}
+function maj(){var n=0;cases.forEach(function(c){if(c.checked)n++});document.getElementById('acc-compte').textContent=n+' / '+cases.length;document.getElementById('acc-barre').style.width=(cases.length?n/cases.length*100:0)+'%'}
+cases.forEach(function(c,i){c.checked=!!ok[i];c.addEventListener('change',function(){ok[i]=c.checked;try{localStorage.setItem(cle,JSON.stringify(ok))}catch(e){}maj()})});maj();})();
+</script>
+{% include "accueil_script.html" %}{% endblock %}
