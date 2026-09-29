@@ -94,6 +94,20 @@ pub(super) async fn page(
                 .await?,
             ),
         );
+        let produits = crate::soupe::produits(pool).await;
+        if let Some(Value::Object(e)) = ctx.get_mut("etat") {
+            let n = e.get("produit").and_then(Value::as_u64).unwrap_or(0) as usize;
+            if let Some(nom) = produits.get(n) {
+                e.insert("produit_nom".into(), json!(nom));
+            }
+        }
+        ctx.insert("produits".into(), json!(produits.iter().enumerate().take(16).filter(|(_, p)| p.chars().any(char::is_alphabetic) && p.as_str() != "Nc" && !p.starts_with("Produit_")).map(|(i, p)| json!({"n": i, "nom": p})).collect::<Vec<_>>()));
+        ctx.insert(
+            "synchro".into(),
+            json!(sqlx::query_scalar::<_, Option<String>>("SELECT strftime('%d/%m/%Y %H:%M', MAX(ts), 'unixepoch', 'localtime') FROM soupe_donnee")
+                .fetch_one(pool)
+                .await?),
+        );
         if session.est_admin() {
             ctx.insert("jeton".into(), json!(jeton(pool).await?));
             ctx.insert("adresse".into(), json!(adresse(&headers)));

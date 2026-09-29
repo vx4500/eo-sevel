@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.40.0** —
+Version actuelle : **2.40.1** —
+
+### Version 2.40.1 — Machine à soupe : données de synchronisation
+
+Version Rust 2.40.1 : les réponses de synchronisation du PC (R fiches vannes, S plans, U horaires, V système, W relais, X produits, Y formules…) sont gardées dans `soupe_donnee` (dernière réponse par commande) ; la page affiche la date de dernière synchronisation, les noms de produits (X, 16 premiers champs) et le nom du produit en dosage. Bloc « En direct » en grille. Constat : Mega-feeder n'interroge l'état (`c0`) que quand sa fenêtre de supervision est ouverte.
 
 ### Version 2.40.0 — Machine à soupe (écoute seule) et menu Caméras
 

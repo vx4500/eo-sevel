@@ -14,7 +14,7 @@
 
 {% if etat %}
 <section class="card"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
-<div class="sl-blocs" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
   <div><small>Phase</small><br><b style="font-size:1.3em{% if etat.phase == 7 %};color:#c0392b{% endif %}">{{ etat.libelle }}</b></div>
   <div><small>Poids cuve</small><br><b style="font-size:1.3em">{{ etat.poids }} kg</b></div>
   <div><small>Séquence · formule</small><br><b>{{ etat.sequence }} · {{ etat.formule }}</b></div>
@@ -25,13 +25,22 @@
   <div><small>Débit</small><br><b>{{ etat.debit }}</b></div>
   {% endif %}
   {% if etat.phase in [1, 7, 9] %}
-  <div><small>Produit {{ etat.produit }}{% if etat.produit == 0 %} (eau){% endif %}</small><br><b>doit {{ etat.doit }} · seuil {{ etat.seuil }}</b></div>
+  <div><small>{{ etat.produit_nom or ('Produit ' ~ etat.produit) }}</small><br><b>doit {{ etat.doit }} · seuil {{ etat.seuil }}</b></div>
   {% endif %}
   <div><small>Distribué ce repas</small><br><b>{{ etat.cumul }} kg</b></div>
 </div></section>
 {% else %}
 <section class="card"><p>Aucune trame reçue pour l’instant. Installez le service d’écoute sur l’hôte Proxmox (ci-dessous).</p></section>
 {% endif %}
+
+{% if etat.age_s > 120 %}<p class="muted">Le PC Mega-feeder n’interroge la machine que lorsque la fenêtre de supervision d’Exa-Feeder est ouverte : laissez-la ouverte sur le PC pour un suivi en continu.</p>{% endif %}
+
+<section class="card"><h2>Données de la machine</h2>
+{% if synchro %}<p>Dernière synchronisation du PC avec la machine : <b>{{ synchro }}</b>.</p>
+{% if produits %}<p>Produits : {% for p in produits %}<span class="sl-badge">{{ p.n }} · {{ p.nom }}</span> {% endfor %}</p>{% endif %}
+<p class="muted">Fiches vannes, plans d’alimentation, horaires, formules et stocks sont enregistrés à chaque synchronisation ; leur affichage détaillé viendra au fur et à mesure du décodage.</p>
+{% else %}<p class="muted">Pas encore de synchronisation reçue : dans Exa-Feeder, lancez la mise à jour des données du PC depuis le contrôleur.</p>{% endif %}
+</section>
 
 <section class="card"><h2>Repas des 7 derniers jours</h2>
 <div class="rust-scroll"><table><thead><tr><th>Jour</th><th>Heure</th><th>Séquence</th><th>Formule</th><th>Vannes</th><th>Prévu (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>

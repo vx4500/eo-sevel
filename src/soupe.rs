@@ -97,6 +97,17 @@ pub fn libelle_phase(phase: i64) -> String {
     }
 }
 
+/// Noms des produits (réponse `X`, dans l'ordre des numéros de produit, 0 = eau).
+pub async fn produits(pool: &SqlitePool) -> Vec<String> {
+    sqlx::query_scalar::<_, String>("SELECT contenu FROM soupe_donnee WHERE commande='X'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|c| c.split(';').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default()
+}
+
 /// Découpe une trame (sans STX/SOH ni CR, contrôle compris) :
 /// (sens, commande, sous-commande, champs du contenu).
 fn decouper(trame: &str) -> Option<(char, char, Vec<&str>)> {
@@ -136,6 +147,23 @@ pub async fn recevoir(pool: &SqlitePool, lot: &str) -> Result<usize> {
                     traiter_etat(pool, ts, etat).await?;
                     traitees += 1;
                 }
+            }
+            // Autres réponses (synchronisation du PC) : gardées telles quelles,
+            // par commande et sous-commande (« R1 » = fiche vanne 1…).
+            ("<", c, _) if c != 'c' && c.is_ascii_alphabetic() => {
+                let cle = match c {
+                    'R' | 'S' => format!("{c}{}", champs.first().copied().unwrap_or("")),
+                    _ => c.to_string(),
+                };
+                sqlx::query(
+                    "INSERT INTO soupe_donnee(commande,ts,contenu) VALUES(?,?,?) \
+                     ON CONFLICT(commande) DO UPDATE SET ts=excluded.ts, contenu=excluded.contenu",
+                )
+                .bind(cle)
+                .bind(ts)
+                .bind(champs.join(";"))
+                .execute(pool)
+                .await?;
             }
             (">", 'c', '2') => evenement(pool, ts, None, "Alarme acquittée depuis le PC").await?,
             (">", 'c', '1') => evenement(pool, ts, None, "Formule annulée depuis le PC").await?,

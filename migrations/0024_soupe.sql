@@ -45,3 +45,12 @@ CREATE TABLE IF NOT EXISTS soupe_evenement (
     message TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_soupe_evenement_ts ON soupe_evenement(ts);
+
+-- Dernière réponse brute de la machine pour chaque commande de lecture
+-- (fiches vannes R, plans S, horaires U, système V, relais W, produits X,
+-- formules Y…), relevée quand le PC synchronise ses données.
+CREATE TABLE IF NOT EXISTS soupe_donnee (
+    commande TEXT PRIMARY KEY,
+    ts INTEGER NOT NULL,
+    contenu TEXT NOT NULL
+);

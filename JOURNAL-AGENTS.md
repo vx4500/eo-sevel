@@ -157,3 +157,9 @@ déroulant Mes équipements ne l'avait jamais eue — ajoutée.
 Tests : les 10 échecs `dernier_transfert_id` (+ zigbee) préexistent sur master.
 Digiclim 6A (La Berru) : ne répond pas au protocole Exa-Feeder sur J19 (A = borne 1),
 en attente de la doc Asserva (mail en brouillon).
+
+### 2026-09-29 — claude — 2.40.1 machine à soupe
+Écoute en service sur l'hôte Proxmox depuis le 28/09 21:08 (systemd soupe-ecoute,
+URL locale 192.168.1.186:8080). Mega-feeder n'envoie `c0` que fenêtre de
+supervision ouverte ; la synchro (capture 29/09 12:08) lit R/S/U/V/W/X/Y et « ` »,
+désormais stockés bruts dans soupe_donnee (décodage détaillé à faire).
