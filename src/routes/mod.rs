@@ -4814,7 +4814,7 @@ async fn inseminations(
             sqlx::query(
                 "SELECT t.id AS truie_id,t.num_travail,t.rang,t.reformee,t.bande_code,e.type,e.date,e.creneaux_ia,e.produit,e.note \
                  FROM truie t JOIN salle s ON s.id=t.salle_id \
-                 LEFT JOIN evenement e ON e.truie_id=t.id AND e.type IN ('ia','chaleur') AND e.date>=date('now','-21 day') \
+                 LEFT JOIN evenement e ON e.truie_id=t.id AND e.type IN ('ia','chaleur','sans_chaleur') AND e.date>=date('now','-21 day') \
                  WHERE t.reformee=0 AND lower(s.nom) LIKE 'verrat%' \
                  ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail,e.date,e.id",
             )
@@ -4857,12 +4857,12 @@ async fn inseminations(
         sqlx::query(
             "WITH ia AS (SELECT MIN(date) AS debut,MAX(date) AS fin FROM evenement WHERE bande_id=?1 AND type='ia'),\
              truies AS (SELECT t.id FROM truie t WHERE (t.reformee=0 AND t.bande_code=?2) \
-               OR EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('ia','chaleur'))) \
+               OR EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('ia','chaleur','sans_chaleur'))) \
              SELECT t.id AS truie_id,t.num_travail,t.rang,t.reformee,e.type,e.date,e.creneaux_ia,e.produit,e.note \
              FROM truie t JOIN truies USING(id) LEFT JOIN ia \
              LEFT JOIN evenement e ON e.truie_id=t.id AND ( \
                (e.type='ia' AND e.bande_id=?1) OR \
-               (e.type='chaleur' AND (e.bande_id=?1 OR (ia.debut IS NOT NULL AND e.date BETWEEN date(ia.debut,'-10 day') AND ia.fin)))) \
+               (e.type IN ('chaleur','sans_chaleur') AND (e.bande_id=?1 OR (ia.debut IS NOT NULL AND e.date BETWEEN date(ia.debut,'-10 day') AND ia.fin)))) \
              ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail,e.date,e.id",
         )
         .bind(bande_id)
@@ -4946,6 +4946,11 @@ async fn etat_inseminations(
         let ligne = json!({"date": ev["date"], "periode": periode, "produit": ev["produit"], "note": ev["note"]});
         match ev["type"].as_str() {
             Some("chaleur") => truie["chaleurs"].as_array_mut().expect("tableau").push(ligne),
+            Some("sans_chaleur") => {
+                let mut ligne = ligne;
+                ligne["periode"] = json!("pas venue en chaleur");
+                truie["chaleurs"].as_array_mut().expect("tableau").push(ligne);
+            }
             Some("ia") => {
                 let n = ev["creneaux_ia"].as_str().filter(|p| !p.is_empty()).map(|p| p.split(',').count()).unwrap_or(1);
                 truie["passages"] = json!(truie["passages"].as_i64().unwrap_or(0) + n as i64);
@@ -4975,18 +4980,36 @@ async fn inseminations_chaleurs(
         return Err(AppError::Invalid("Sélectionne au moins une truie".into()));
     }
     let date = form_date_or_today(&form, "date")?;
-    let slots = ia_slots(&form);
+    // « Pas venue en chaleur » : même saisie groupée, sans moment ; le n° de
+    // la truie va dans la note pour l'historique de la bande.
+    let sans_chaleur = form.get("saisie_type").map(String::as_str) == Some("sans_chaleur");
+    let slots = if sans_chaleur { Vec::new() } else { ia_slots(&form) };
     let slot_text = (!slots.is_empty()).then(|| slots.join(","));
     let gestation = load_band_schedule(&state.pool).await?.gestation;
     let mut tx = state.pool.begin().await?;
     for id in ids {
         let band_id = bande_pour_ia(&mut tx, id, &date, gestation).await?;
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,creneaux_ia,note,suivi_actif) VALUES('chaleur',?,?,?,?,?,0)")
+        let note = if sans_chaleur {
+            let num: Option<String> = sqlx::query_scalar("SELECT num_travail FROM truie WHERE id=?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten();
+            let mut n = format!("Truie {} pas venue en chaleur", num.unwrap_or_default());
+            if let Some(t) = form_text(&form, "note") {
+                n = format!("{n} — {t}");
+            }
+            Some(n)
+        } else {
+            form_text(&form, "note")
+        };
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,creneaux_ia,note,suivi_actif) VALUES(?,?,?,?,?,?,0)")
+            .bind(if sans_chaleur { "sans_chaleur" } else { "chaleur" })
             .bind(&date)
             .bind(id)
             .bind(band_id)
             .bind(&slot_text)
-            .bind(form_text(&form, "note"))
+            .bind(note)
             .execute(&mut *tx)
             .await?;
     }

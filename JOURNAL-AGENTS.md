@@ -176,3 +176,9 @@ EO_REGUL_SIMULATION=1 : la consigne est calculée/affichée, rien n'est écrit.
 Demande d'Emmanuel : la machine ne parle que quand elle sert, donc plus
 d'alerte « plus aucune nouvelle » (soupe_silence, fermée au démarrage).
 Seule l'alerte de sécurité (phase 7, alerte dosage) reste, envoyée par SMS.
+
+### 2026-09-29 — claude — 2.42.0 truies pas venues en chaleur
+Saisie groupée des inséminations (bande ou verraterie) : 3e choix « Pas venue
+en chaleur » (evenement.type = sans_chaleur, note « Truie N pas venue en
+chaleur »). Visible dans l’historique de la truie, celui de la bande et la
+colonne Chaleurs de l’état des inséminations. Non compté comme chaleur/retour.
