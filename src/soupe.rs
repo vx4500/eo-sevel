@@ -21,7 +21,6 @@ use sqlx::SqlitePool;
 use std::sync::Mutex;
 
 /// Sans trame depuis ce délai, le PC Mega-feeder ou le câble est muet.
-pub const SILENCE_S: i64 = 10 * 60;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Etat {
@@ -304,31 +303,12 @@ async fn module_actif(pool: &SqlitePool) -> bool {
         == Some("1")
 }
 
-/// Surveillance : alerte si la machine ne donne plus de nouvelles alors
-/// qu'elle en donnait (PC Mega-feeder arrêté, câble ou service débranché).
+/// La machine ne parle au PC que pendant ses cycles : son silence est normal
+/// et ne donne pas d'alerte. Seule l'alerte de sécurité (phase 7) prévient.
+/// On ferme ici une éventuelle ancienne alerte « plus aucune nouvelle ».
 pub async fn boucle(pool: SqlitePool) {
-    loop {
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-        if !module_actif(&pool).await {
-            continue;
-        }
-        let dernier: Option<i64> = sqlx::query_scalar("SELECT ts FROM soupe_etat WHERE id=1")
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten();
-        if let Some(ts) = dernier {
-            let muette = chrono::Utc::now().timestamp() - ts;
-            if muette > SILENCE_S {
-                let message = format!(
-                    "Machine à soupe : plus aucune nouvelle depuis {} min (PC Mega-feeder, câble ou service d'écoute)",
-                    muette / 60
-                );
-                if let Err(e) = ouvrir_alerte(&pool, "soupe_silence", &message).await {
-                    tracing::warn!(error = %e, "alerte machine à soupe impossible");
-                }
-            }
-        }
+    if let Err(e) = fermer_alerte(&pool, "soupe_silence").await {
+        tracing::warn!(error = %e, "fermeture alerte machine à soupe impossible");
     }
 }
 

@@ -171,3 +171,8 @@ ne suffit pas à dire qu'une salle est occupée : c'est le comptage des animaux
 qui décide ; le préconditionnement garde la régulation normale. eo-regul lit
 ventil_vide à part (tolère une base non migrée). eo-regul tourne toujours avec
 EO_REGUL_SIMULATION=1 : la consigne est calculée/affichée, rien n'est écrit.
+
+### 2026-09-29 — claude — 2.41.1 machine à soupe sans alerte de silence
+Demande d'Emmanuel : la machine ne parle que quand elle sert, donc plus
+d'alerte « plus aucune nouvelle » (soupe_silence, fermée au démarrage).
+Seule l'alerte de sécurité (phase 7, alerte dosage) reste, envoyée par SMS.
