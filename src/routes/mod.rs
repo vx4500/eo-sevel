@@ -9425,6 +9425,15 @@ async fn pdf_analyser_bytes(
             }
             Err(error) => Err(error),
         };
+        // Copie du PDF et du texte lu (couche texte ou reconnaissance), pour
+        // pouvoir comprendre après coup une facture mal lue.
+        if let Some(dossier) = state.config.db_path.parent().map(|d| d.join("imports")) {
+            let nom = contenu_sha256(&bytes);
+            if std::fs::create_dir_all(&dossier).is_ok() {
+                let _ = std::fs::write(dossier.join(format!("{nom}.pdf")), &bytes);
+                let _ = std::fs::write(dossier.join(format!("{nom}.txt")), texte.as_deref().unwrap_or_else(|e| e.as_str()));
+            }
+        }
         let parsed = texte.and_then(|text| economic_import::parse_document(&text));
         match parsed {
             Ok(parsed) => documents.push((filename, contenu_sha256(&bytes), parsed)),
