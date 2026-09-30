@@ -3,6 +3,8 @@
 {% block content %}{% include "workflow_ui.html" %}
 <div class="workflow">
 <header class="hero"><h1>Vérifier puis importer</h1><p>{{ nom_fichier }} · {{ type_document }} · Étape 2 sur 2</p></header>
+{% if precedent_ok is not none %}<section class="card" role="status"><b>Facture précédente enregistrée ({{ precedent_ok }} ligne(s)).</b> Passons à la suivante.</section>{% endif %}
+{% if en_attente > 1 %}<section class="card" role="status"><b>{{ en_attente }} factures attendent votre confirmation</b>, celle-ci comprise : après « Confirmer l’import », la suivante s’ouvre directement.</section>{% endif %}
 {% if resume.avertissements %}<section class="card"><h2>Points à vérifier</h2><ul>{% for avertissement in resume.avertissements %}<li>{{ avertissement }}</li>{% endfor %}</ul></section>{% endif %}
 <p><strong>{{ resume.ajouter or 0 }} ligne(s) à ajouter</strong>{% if resume.remplacer %} · <strong>{{ resume.remplacer }} déjà présente(s)</strong>, à remplacer ligne par ligne si le document a été corrigé{% endif %}{% if resume.erreur %} · <strong class="danger">{{ resume.erreur }} ligne(s) illisible(s), laissée(s) de côté</strong>{% endif %}. Les lignes illisibles ne bloquent pas les autres. Rien n’est enregistré définitivement avant votre validation.</p>
 <form method="post" action="/economique/import/{{ token }}/confirmer">

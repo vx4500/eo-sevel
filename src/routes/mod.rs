@@ -1459,6 +1459,9 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         .await?;
         push_farm_alert(&mut alerts, count, message, "/bandes", "information");
     }
+    if let (Some(token), n) = import_en_attente(pool).await? {
+        push_farm_alert(&mut alerts, n, "Factures importées à confirmer", &format!("/economique/import/{token}"), "attention");
+    }
     let steriles = improductives::a_signaler(pool).await?;
     push_farm_alert(&mut alerts, steriles, "Truies improductives depuis plus de 2 mois : à déclarer stériles", "/truies/improductives", "attention");
     let schedule = load_band_schedule(pool).await?;
@@ -9482,7 +9485,8 @@ async fn pdf_analyser_bytes(
     } else {
         format!("&ecartes={}", encode_query(&rejected.join(" · ")))
     };
-    if tokens.len() == 1 && rejected.is_empty() {
+    if rejected.is_empty() {
+        // Plusieurs documents : les aperçus s'enchaînent, du premier au dernier.
         Ok(Redirect::to(&format!("/economique/import/{}", tokens[0])).into_response())
     } else {
         Ok(Redirect::to(&format!(
@@ -9497,6 +9501,7 @@ async fn economique_import_apercu(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
     Path(token): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
     require_economic_import(&session)?;
     let journal = sqlx::query_as::<_,(String,Option<String>,Option<String>,Option<i64>)>("SELECT type_import,nom_fichier,resume,cree_par FROM importjournal WHERE token=? AND statut='apercu' AND type_import LIKE 'economique:%'")
@@ -9548,6 +9553,8 @@ async fn economique_import_apercu(
     ctx.insert("resume".into(), summary);
     ctx.insert("lignes".into(), Value::Array(rows));
     ctx.insert("bandes".into(), Value::Array(bands));
+    ctx.insert("en_attente".into(), json!(import_en_attente(&state.pool).await?.1));
+    ctx.insert("precedent_ok".into(), json!(query.get("precedent_ok")));
     render(&state, "economique_import_apercu.html", Value::Object(ctx))
 }
 
@@ -9636,6 +9643,17 @@ async fn synchronise_sortie_abattoir(
         }
     }
     Ok(())
+}
+
+/// Prochain import de facture analysé mais pas encore confirmé (le plus
+/// ancien d'abord) et nombre d'imports en attente.
+async fn import_en_attente(pool: &SqlitePool) -> AppResult<(Option<String>, i64)> {
+    let tokens: Vec<String> = sqlx::query_scalar(
+        "SELECT token FROM importjournal WHERE statut='apercu' AND type_import LIKE 'economique:%' ORDER BY cree_le,rowid",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok((tokens.first().cloned(), tokens.len() as i64))
 }
 
 async fn economique_import_confirmer(
@@ -9902,6 +9920,9 @@ async fn economique_import_confirmer(
         "/economique/import/confirmer",
     )
     .await;
+    if let (Some(suivant), _) = import_en_attente(&state.pool).await? {
+        return Ok(Redirect::to(&format!("/economique/import/{suivant}?precedent_ok={applied}")).into_response());
+    }
     Ok(Redirect::to(&format!(
         "/economique?import_ok={applied}&liaisons={auto_linked}&ignorees={}",
         ignored + skipped
@@ -9934,6 +9955,9 @@ async fn economique_import_annuler(
         .execute(&mut *transaction)
         .await?;
     transaction.commit().await?;
+    if let (Some(suivant), _) = import_en_attente(&state.pool).await? {
+        return Ok(Redirect::to(&format!("/economique/import/{suivant}")).into_response());
+    }
     Ok(Redirect::to("/economique").into_response())
 }
 

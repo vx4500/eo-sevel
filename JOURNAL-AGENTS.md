@@ -210,3 +210,10 @@ Demande d’Emmanuel : une truie hors bande en cours attend sa remise en bande
 improductive_max_jours, 60 par défaut), bouton « Signaler stérile »
 (evenement.type = sterile, visible dans l’historique), alerte d’élevage,
 État des données compte ces truies au lieu de « Truies actives sans bande ».
+
+### 2026-09-30 — claude — 2.44.2 factures importées à confirmer
+Emmanuel ne trouvait pas 2 factures aliment : restées en statut « apercu »
+(jamais confirmées). Désormais : envoi de plusieurs PDF → le premier aperçu
+s’ouvre, puis chaque confirmation/annulation ouvre le suivant ; bandeau en haut
+de /economique avec lien par facture ; alerte d’élevage « Factures importées à
+confirmer ». Helper import_en_attente().
