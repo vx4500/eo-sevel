@@ -228,3 +228,10 @@ Aperçu d’import (aliment, véto, semence, génétique, vente) : bandes prése
 la date de livraison (affectation::cycle_present, au stade de l’aliment si
 reconnu) cochées d’office, autres bandes dans « Autres bandes ». Cases cochées
 → affectation manuelle verrouillée ; vente : une seule bande (plus petit id coché).
+
+### 2026-09-30 — claude — 2.45.1 factures scannées
+Facture véto Cooperl scannée 226092028222 : tesseract (mode par défaut) mélangeait
+les colonnes → 1 ligne sur 3 et 32178 € au lieu de 32,78 €. OCR désormais
+--psm 6 + preserve_interword_spaces, « | » retirés ; code TVA toléré (4 lu « a »)
+; avertissement si total des lignes ≠ HORS TAXES. Test sur le texte OCR réel.
+Réparé le test ventes (Query ajouté en 2.44.2). 10 échecs préexistants inchangés.

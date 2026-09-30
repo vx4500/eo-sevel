@@ -359,6 +359,7 @@ mod tests {
             State(state.clone()),
             Extension(session()),
             Path("test".into()),
+            Query(HashMap::new()),
         )
         .await?;
         assert!(preview.contains("value=\"1\" selected"));

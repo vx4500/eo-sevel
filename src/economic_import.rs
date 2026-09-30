@@ -121,11 +121,15 @@ fn ocr_dans_dossier(bytes: &[u8], dossier: &std::path::Path) -> Result<String, S
         let page = std::process::Command::new("tesseract")
             .arg(&image)
             .arg("stdout")
-            .args(["-l", "fra"])
+            // --psm 6 + espaces conservés : chaque ligne d'un tableau de
+            // facture reste sur une seule ligne (sinon les colonnes quantité,
+            // désignation, prix et montant sortent en blocs séparés).
+            .args(["-l", "fra", "--psm", "6", "-c", "preserve_interword_spaces=1"])
             .output()
             .map_err(|error| error.to_string())?;
         if page.status.success() {
-            texte.push_str(&String::from_utf8_lossy(&page.stdout));
+            // Les filets verticaux du tableau sont lus comme « | » : retirés.
+            texte.push_str(&String::from_utf8_lossy(&page.stdout).replace('|', " "));
             texte.push('\n');
         }
     }
@@ -429,7 +433,8 @@ fn parse_veto(text: &str) -> Result<ImportDocument, String> {
         .or_else(|| capture(text, r"(?i)FACT\.?\s*([0-9]{2}/[0-9]{2}/[0-9]{2,4})", 1))
         .and_then(|value| iso_date(&value));
     let regex = Regex::new(
-        r"(?m)^\s*([0-9]+)\s+([A-ZÀ-ÖØ-Þ].+?)\s+[1-9]\s+[0-9 ]+?\s+([0-9.,]+)\s+([0-9.,]+)(-?)\s*$",
+        // Code TVA : un seul caractère (un scan lit parfois « 4 » comme « a »).
+        r"(?m)^\s*([0-9]+)\s+([A-ZÀ-ÖØ-Þ].+?)\s+[1-9a-zâà]\s+[0-9 ]+?\s+([0-9.,]+)\s+([0-9.,]+)(-?)\s*$",
     )
     .map_err(|error| format!("analyse vétérinaire indisponible: {error}"))?;
     let credit = document_sign(text);
@@ -468,7 +473,16 @@ fn parse_veto(text: &str) -> Result<ImportDocument, String> {
             }),
         });
     }
-    finish_document("vétérinaire", lines, reference, date)
+    let total_lignes: f64 = lines.iter().filter_map(|l| l.amount).sum();
+    let mut doc = finish_document("vétérinaire", lines, reference, date)?;
+    if let Some(total) = labeled_amount(text, &["HORS TAXES", "TOTAL HT"]) {
+        if (total.abs() - total_lignes.abs()).abs() > 0.05 {
+            doc.warnings.push(format!(
+                "Le total des lignes lues ({total_lignes:.2} €) ne correspond pas au total hors taxes de la facture ({total:.2} €) : une ligne manque ou a été mal lue, vérifiez avant de confirmer."
+            ));
+        }
+    }
+    Ok(doc)
 }
 
 fn is_semence(upper: &str) -> bool {
@@ -1866,4 +1880,67 @@ mod tests {
             canonical_label("+ VALUE CHARTE QUALITÉ RÉGIONALE")
         );
     }
+    #[test]
+    fn facture_veto_scannee_cooperl_lue_ligne_par_ligne() {
+        // Texte réel de tesseract --psm 6 sur la facture 226092028222 (scan).
+        let text = r#"Cooperl Arc Atlantique
+2 Ter Rue Sébastien Coupé - 22400 LAMBALLE-ARMOR
+Tél. 02 96 30 70 00 - Fax 02 96 34 77 58
+Email cooperlgp@cooperlcom Web www.cooperl.com : RCS SAINT-BRIEUC
+Société coopérative à capital variable - Agrément ministériel 10458- Siret 383 986 874 0035
+n/10 : »r60382986814 FACTURE N° 226092028222
+EI ORY EMMANUEL
+FACTURE DE PRODUITS VETERINAIRES                      33 LA MELTIERE
+DOIT       CHAPELLE-ERBREE (LA)         
+N° COMPTE    16961            LE 12/09/26
+V/ID : FRO6510329899                        35500 CHAPELLE-ERBREE (LA)     
+LIVRAISON DU                      N* BON
+IDENTIFIC.
+ee memes [RE ee Pen  
+                                                           
+Pack n°? 31215                                                       
+Bon n° 24063 du 10/09/26 Mail
+Livré Chez    ELFA ORY EMMANUEL        302 LA BASSE CHEYRIE               
+1    ERYSENG PARVO   FL 25D             4    24063              32,78       32,78
+1    SUIGEN ENTERO 3 FL 50ML/25D       a    24063              99,27        99,27
+ 
+                    
+Pack n? 31216                                                      
+Bon n° 24072 du 10/09/26 Mail                                           
+Livré £hez     ELFA ORY EMMANUEL        302 LA BASSE CHEVRIE
+1   VIRBAGEST FL 900ML           4   24072           99,33      99,33
+                                               t                   
+ 
+                   1
+                    
+                                                                   
+                                                                  
+!                                              !                   
+                                               !
+                                                
+                                                 
+               
+Voir Conditions de Vente au Verso
+[BASE H.T.  TVA] TAUX   MONTANT T.V.A.   TOTAL T.T.C                TOTAL
+HORS TAXES              231,38
+            
+                                                             TOTAL T.V.A.               46,28
+231,38   4/120,0%       46,28     277,66          TOTAL T.T.C.        277,66
+             
+TAXE
+PARAFISCALE
+YA joindre à-votre- réglement --- Merck -------«                          F          
+N° COMPTE 16961   N° PFACT. 226092028222: MODE DE REGLEMENT =       NET À PAYER          277,66€
+DATE FACT, 12/09/26                 D nn a mm mm mm mm me
+DATE ECH. 27/09/26 nowTANT     277,66 VALEUR EN NOTRE TRAITE AU 27/09/26
+! PRELEVEMENT AUTOMATIQUE SUR V/COMPTE À L'ECHEANCE
+RE AU ZZ([([€[€[€[€[€1€1€1€1U1UUU
+"#;
+        let doc = parse_veto(text).unwrap();
+        let montants: Vec<f64> = doc.lines.iter().filter_map(|l| l.amount).collect();
+        assert_eq!(montants, vec![32.78, 99.27, 99.33]);
+        assert!(doc.lines[0].label.starts_with("ERYSENG PARVO"));
+        assert!(doc.warnings.iter().all(|w| !w.contains("total des lignes")), "{:?}", doc.warnings);
+    }
+
 }
