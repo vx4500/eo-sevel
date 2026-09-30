@@ -9820,6 +9820,32 @@ async fn economique_import_confirmer(
                 {
                     sqlx::query("INSERT INTO affectationfacturecontrole(categorie,facture_id,verrou_manuel) VALUES(?,?,1)").bind(&line.kind).bind(inserted).execute(&mut *transaction).await?;
                 }
+                // Plusieurs bandes cochées (« bandes_ligne_<n>_<id> ») : le HT
+                // est réparti entre elles, comme un choix manuel fait depuis
+                // Pilotage économique (affectation verrouillée).
+                let prefixe = format!("bandes_ligne_{number}_");
+                let mut multi: Vec<i64> = form
+                    .keys()
+                    .filter_map(|k| k.strip_prefix(&prefixe).and_then(|id| id.parse::<i64>().ok()))
+                    .collect();
+                multi.sort_unstable();
+                if !multi.is_empty() && !explicitly_without_band {
+                    let mut valides = Vec::new();
+                    for id in &multi {
+                        let ok = sqlx::query("INSERT INTO affectationfacturebande(categorie,facture_id,bande_id,automatique) SELECT ?,?,?,0 WHERE EXISTS(SELECT 1 FROM bande WHERE id=?)")
+                            .bind(&line.kind).bind(inserted).bind(id).bind(id).execute(&mut *transaction).await?;
+                        if ok.rows_affected() == 1 {
+                            valides.push(id.to_string());
+                        }
+                    }
+                    if !valides.is_empty() {
+                        sqlx::query("INSERT INTO affectationfacturecontrole(categorie,facture_id,verrou_manuel,modifie_le) VALUES(?,?,1,CURRENT_TIMESTAMP) ON CONFLICT(categorie,facture_id) DO UPDATE SET verrou_manuel=1,modifie_le=CURRENT_TIMESTAMP")
+                            .bind(&line.kind).bind(inserted).execute(&mut *transaction).await?;
+                        let table = if line.kind == "aliment" { "livraisonaliment" } else { "achatveto" };
+                        sqlx::query(&format!("UPDATE {table} SET bande_id=?,bandes=? WHERE id=?"))
+                            .bind(valides[0].parse::<i64>().ok()).bind(valides.join(",")).bind(inserted).execute(&mut *transaction).await?;
+                    }
+                }
             }
             "semence" => {
                 let id: Option<i64> = sqlx::query_scalar("SELECT id FROM achatsemence WHERE COALESCE(num_facture,'')=? ORDER BY id LIMIT 1").bind(reference).fetch_optional(&mut *transaction).await?;

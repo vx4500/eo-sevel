@@ -217,3 +217,8 @@ Emmanuel ne trouvait pas 2 factures aliment : restées en statut « apercu »
 s’ouvre, puis chaque confirmation/annulation ouvre le suivant ; bandeau en haut
 de /economique avec lien par facture ; alerte d’élevage « Factures importées à
 confirmer ». Helper import_en_attente().
+
+### 2026-09-30 — claude — 2.44.3 import facture : plusieurs bandes par ligne
+Aperçu d’import (aliment, véto) : « Répartir sur plusieurs bandes » (cases
+bandes_ligne_<n>_<id>) → affectationfacturebande manuelle + verrou, bandes=liste,
+comme l’affectation manuelle de Pilotage économique. Essayé sur copie (2 bandes).
