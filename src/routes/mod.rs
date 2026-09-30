@@ -39,6 +39,7 @@ mod feuille_mise_bas;
 mod genetique_import;
 mod gte_periode;
 mod historique_truie;
+mod improductives;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
@@ -283,6 +284,9 @@ pub fn router(state: AppState) -> Router {
         .route("/archives", get(archives))
         .route("/truies", get(truies))
         .route("/truies/ajouter", post(truie_ajouter))
+        .route("/truies/improductives", get(improductives::page))
+        .route("/truies/improductives/delai", post(improductives::regler))
+        .route("/truie/{id}/sterile", post(improductives::signaler))
         .route("/truies/modele.csv", get(truies_modele_csv))
         .route("/truies/import", post(truies_import))
         .route("/truies/import/confirmer", post(truies_import_confirmer))
@@ -1455,6 +1459,8 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         .await?;
         push_farm_alert(&mut alerts, count, message, "/bandes", "information");
     }
+    let steriles = improductives::a_signaler(pool).await?;
+    push_farm_alert(&mut alerts, steriles, "Truies improductives depuis plus de 2 mois : à déclarer stériles", "/truies/improductives", "attention");
     let schedule = load_band_schedule(pool).await?;
     let missing_weaning: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM bande b WHERE b.active=1 AND b.date_mb IS NOT NULL AND date(b.date_mb,printf('+%d day',?))<date('now') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage')",
@@ -8292,6 +8298,13 @@ async fn etat_donnees(
     for row in rows.iter_mut() {
         if row["controle"] == "Cases avec effectif calculé négatif" && row["anomalies"].as_i64().unwrap_or(0) > 0 {
             row["lien"] = json!("/etat-donnees/cases");
+        }
+        // Une truie hors bande attend sa remise en bande : ce n'est une
+        // anomalie qu'au-delà du délai (voir Truies improductives).
+        if row["controle"] == "Truies actives sans bande" {
+            row["controle"] = json!("Truies improductives à déclarer stériles");
+            row["anomalies"] = json!(improductives::a_signaler(&state.pool).await?);
+            row["lien"] = json!("/truies/improductives");
         }
     }
     render_list_page(

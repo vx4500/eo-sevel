@@ -202,3 +202,11 @@ en maternité (porcelets nés sans transfert d’entrée, sortis au sevrage) : f
 alerte, le contrôle exclut désormais les maternités comme cases_incoherentes().
 Nouvelle page /etat-donnees/cases (inventaire par case, retour sur la page),
 liée depuis la ligne du contrôle quand il y a des anomalies.
+
+### 2026-09-30 — claude — 2.44.0 truies improductives
+Demande d’Emmanuel : une truie hors bande en cours attend sa remise en bande
+(normal) ; au-delà de 2 mois elle est « à déclarer stérile ». Page
+/truies/improductives (menu Mes animaux), délai réglable (parametre
+improductive_max_jours, 60 par défaut), bouton « Signaler stérile »
+(evenement.type = sterile, visible dans l’historique), alerte d’élevage,
+État des données compte ces truies au lieu de « Truies actives sans bande ».

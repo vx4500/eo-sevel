@@ -125,6 +125,6 @@
 </script>
 {% endif %}</section>
 <div class="rust-grid">
-<section class="card"><h2>Événements</h2>{% for e in evenements %}<p>{{ e.date|date_fr }} — <b>{{ 'Pas venue en chaleur' if e.type == 'sans_chaleur' else e.type }}</b>{% if e.note %} — {{ e.note }}{% endif %}</p>{% else %}<p class="muted">Aucun événement.</p>{% endfor %}</section>
+<section class="card"><h2>Événements</h2>{% for e in evenements %}<p>{{ e.date|date_fr }} — <b>{{ 'Pas venue en chaleur' if e.type == 'sans_chaleur' else ('Signalée stérile' if e.type == 'sterile' else e.type) }}</b>{% if e.note %} — {{ e.note }}{% endif %}</p>{% else %}<p class="muted">Aucun événement.</p>{% endfor %}</section>
 </div>
 {% endblock %}

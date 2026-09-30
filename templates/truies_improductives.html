@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block content %}
+<h1>Truies improductives</h1>
+<p>Truies actives qui ne sont dans aucune bande en cours : elles attendent d’être remises en bande (après un sevrage, une écho vide…). C’est normal un temps. Au-delà de <b>{{ delai }} jours</b> sans remise en bande, la truie est signalée <b>à déclarer stérile</b> : signalez-la, puis réformez-la depuis sa fiche si vous le décidez.</p>
+{% set trop = truies|selectattr("trop_long")|list %}
+<p><b>{{ truies|length }}</b> truie(s) en attente{% if trop %} · <b style="color:#a3361a">{{ trop|length }} depuis plus de {{ delai }} jours</b>{% endif %}</p>
+<div class="rust-scroll"><table><thead><tr><th>Truie</th><th>Rang</th><th>Salle</th><th>En attente depuis</th><th>Jours</th><th>Dernier événement</th><th>État</th><th></th></tr></thead><tbody>
+{% for t in truies %}<tr{% if t.trop_long %} style="background:#fbe0dc55"{% endif %}><td><a href="/truie/{{ t.id }}"><b>{{ t.num_travail }}</b></a></td><td>{{ t.rang or '—' }}</td><td>{{ t.salle or '—' }}</td><td>{% if t.depuis %}{{ t.depuis|date_fr }}{% else %}—{% endif %}</td><td><b{% if t.trop_long %} style="color:#a3361a"{% endif %}>{{ t.jours if t.jours is not none else '—' }}</b></td>
+<td>{% if t.dernier == 'sevrage' %}Sevrage{% elif t.dernier in ['echo','echographie'] %}Écho{% if t.dernier_echo %} {{ t.dernier_echo|lower }}{% endif %}{% elif t.dernier == 'mise_bas' %}Mise-bas{% elif t.dernier == 'ia' %}IA{% elif t.dernier == 'avortement' %}Avortement{% else %}Entrée{% endif %}</td>
+<td>{% if t.signalee %}<span style="color:#a3361a;font-weight:700">Signalée stérile le {{ t.signalee|date_fr }}</span>{% elif t.trop_long %}<span style="color:#a3361a;font-weight:700">À déclarer stérile</span>{% else %}En attente de remise en bande{% endif %}</td>
+<td>{% if session.peut_modifier and t.trop_long and not t.signalee %}<form method="post" action="/truie/{{ t.id }}/sterile"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button>Signaler stérile</button></form>{% elif t.signalee %}<a href="/truie/{{ t.id }}">Réformer depuis la fiche</a>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="rust-empty">Aucune truie en attente : toutes sont dans une bande.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if session.est_admin %}<form method="post" action="/truies/improductives/delai" class="rust-actions" style="margin-top:16px"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Délai avant de signaler stérile (jours)<input type="number" name="jours" min="7" max="365" value="{{ delai }}" required style="width:6em"></label><button class="ghost">Enregistrer le délai</button></form>{% endif %}
+{% endblock %}
