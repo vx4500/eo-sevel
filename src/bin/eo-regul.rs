@@ -949,8 +949,11 @@ async fn surveiller(
         let _ = fermer_alerte(pool, salle.salle_id, "liaison").await;
     }
 
+    // Hystérésis de 0,5 °C : une alerte de température ne se ferme qu'une fois
+    // la mesure nettement revenue, sinon elle s'ouvre et se ferme à chaque
+    // relevé autour du seuil (et envoie autant de SMS).
     match (temperature, salle.t_alerte_max) {
-        (Some(valeur), Some(seuil)) if valeur >= seuil => {
+        (Some(valeur), Some(seuil)) if valeur > seuil => {
             let _ = ouvrir_alerte(
                 pool,
                 salle.salle_id,
@@ -960,12 +963,13 @@ async fn surveiller(
             )
             .await;
         }
+        (Some(valeur), Some(seuil)) if valeur > seuil - 0.5 => {}
         _ => {
             let _ = fermer_alerte(pool, salle.salle_id, "t_haute").await;
         }
     }
     match (temperature, salle.t_alerte_min) {
-        (Some(valeur), Some(seuil)) if valeur <= seuil => {
+        (Some(valeur), Some(seuil)) if valeur < seuil => {
             let _ = ouvrir_alerte(
                 pool,
                 salle.salle_id,
@@ -975,6 +979,7 @@ async fn surveiller(
             )
             .await;
         }
+        (Some(valeur), Some(seuil)) if valeur < seuil + 0.5 => {}
         _ => {
             let _ = fermer_alerte(pool, salle.salle_id, "t_basse").await;
         }

@@ -189,3 +189,9 @@ classique (dashboard.html inchangé), cockpit, tournee, flux. src/routes/accueil
 enrichit le contexte du tableau de bord (ambiance_etat, farm_alerts, soupe_etat,
 frise 18 mois des bandes) ; gabarits accueil_*.html (morceaux partagés par include).
 Essai : EO_TEST_BASE=… cargo test -- --ignored accueils_sur_copie (écrit les 4 pages).
+
+### 2026-09-30 — claude — 2.43.2 tour du logiciel
+Parcours automatique de 900 pages sur une copie (utilisateur audit, SMS/tunnel
+retirés de la copie) : aucune erreur 500/501. Corrigé : Structure « None m² » ;
+eo-regul alertes température strictes (> / <) + hystérésis 0,5 °C (Mater 1/2
+ouvraient t_basse à 20,0 pour seuil 20,0, 13 fois en 3 jours).
