@@ -13,7 +13,7 @@
 {% else %}
 
 {% if etat %}
-<section class="card"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
+<section class="card" id="soupe-direct"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
   <div><small>Phase</small><br><b style="font-size:1.3em{% if etat.phase == 7 %};color:#c0392b{% endif %}">{{ etat.libelle }}</b></div>
   <div><small>Poids cuve</small><br><b style="font-size:1.3em">{{ etat.poids }} kg</b></div>
@@ -42,7 +42,7 @@
 {% else %}<p class="muted">Pas encore de synchronisation reçue : dans Exa-Feeder, lancez la mise à jour des données du PC depuis le contrôleur.</p>{% endif %}
 </section>
 
-<section class="card"><h2>Repas des 7 derniers jours</h2>
+<section class="card" id="soupe-repas"><h2>Repas des 7 derniers jours</h2>
 <div class="rust-scroll"><table><thead><tr><th>Jour</th><th>Heure</th><th>Séquence</th><th>Formule</th><th>Vannes</th><th>Prévu (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>
 {% for t in totaux %}<tr><td>{{ t.jour|date_fr }}</td><td>{{ t.debut }} → {{ t.fin }}</td><td>{{ t.sequence }}</td><td>{{ t.formule }}</td><td>{{ t.vannes }}</td><td>{{ t.consigne }}</td><td>{{ t.distribue }}</td></tr>
 {% else %}<tr><td colspan="7" class="rust-empty">Aucune distribution enregistrée</td></tr>{% endfor %}
@@ -56,7 +56,7 @@
 {% else %}<tr><td colspan="7" class="rust-empty">—</td></tr>{% endfor %}
 </tbody></table></div></details>
 
-<section class="card"><h2>Journal</h2>
+<section class="card" id="soupe-journal"><h2>Journal</h2>
 <div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Événement</th></tr></thead><tbody>
 {% for e in evenements %}<tr><td>{{ e.heure }}</td><td{% if e.phase == 7 %} style="color:#c0392b;font-weight:bold"{% endif %}>{{ e.message }}</td></tr>
 {% else %}<tr><td colspan="2" class="rust-empty">—</td></tr>{% endfor %}
@@ -77,5 +77,32 @@
 {% endif %}
 <p><a href="/equipements">← Retour à Mes équipements</a></p>
 </div>
-{% if actif and etat %}<script>setTimeout(function () { if (!document.querySelector('details[open] pre')) location.reload(); }, 10000);</script>{% endif %}
+{% if actif and etat %}<script>
+// Mise à jour en place toutes les 10 s : seuls les blocs « En direct »,
+// « Repas » et « Journal » sont remplacés, sans recharger la page (la
+// lecture et la position dans la page ne bougent pas). Pause quand l'onglet
+// est caché ou qu'un texte est sélectionné.
+(function () {
+  var ids = ['soupe-direct', 'soupe-repas', 'soupe-journal'];
+  setInterval(function () {
+    if (document.hidden) { return; }
+    var sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length) { return; }
+    fetch(location.href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        ids.forEach(function (id) {
+          var ancien = document.getElementById(id), nouveau = doc.getElementById(id);
+          if (!ancien || !nouveau) { return; }
+          ancien.querySelectorAll('details[id]').forEach(function (d) {
+            var n = nouveau.querySelector('details#' + d.id); if (n) { n.open = d.open; }
+          });
+          ancien.replaceWith(nouveau);
+        });
+      })
+      .catch(function () {});
+  }, 10000);
+})();
+</script>{% endif %}
 {% endblock %}
