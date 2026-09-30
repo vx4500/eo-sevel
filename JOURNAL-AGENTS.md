@@ -235,3 +235,9 @@ les colonnes → 1 ligne sur 3 et 32178 € au lieu de 32,78 €. OCR désormais
 --psm 6 + preserve_interword_spaces, « | » retirés ; code TVA toléré (4 lu « a »)
 ; avertissement si total des lignes ≠ HORS TAXES. Test sur le texte OCR réel.
 Réparé le test ventes (Query ajouté en 2.44.2). 10 échecs préexistants inchangés.
+
+### 2026-09-30 — claude — 2.45.3 résultat par bande : plus-values et retenues
+Économie → Résultat par bande : colonnes Plus-values (plus_value €/kg de
+l’apport × poids des lots de la bande, déjà dans les recettes) et Retenues
+(total_retenues de l’apport, dédoublonné par num_apport, réparti au poids des
+lots ; déduit de la marge) + ligne Total (totaux calculés côté Rust).
