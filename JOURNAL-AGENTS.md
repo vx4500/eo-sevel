@@ -222,3 +222,9 @@ confirmer ». Helper import_en_attente().
 Aperçu d’import (aliment, véto) : « Répartir sur plusieurs bandes » (cases
 bandes_ligne_<n>_<id>) → affectationfacturebande manuelle + verrou, bandes=liste,
 comme l’affectation manuelle de Pilotage économique. Essayé sur copie (2 bandes).
+
+### 2026-09-30 — claude — 2.45.0 bandes proposées à l’import
+Aperçu d’import (aliment, véto, semence, génétique, vente) : bandes présentes à
+la date de livraison (affectation::cycle_present, au stade de l’aliment si
+reconnu) cochées d’office, autres bandes dans « Autres bandes ». Cases cochées
+→ affectation manuelle verrouillée ; vente : une seule bande (plus petit id coché).

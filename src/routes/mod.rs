@@ -9535,7 +9535,22 @@ async fn economique_import_apercu(
         let detected_stage = (line.kind == "aliment").then(|| {
             crate::affectation::feed_stage(import_detail_str(&line, "produit").unwrap_or_default())
         });
-        rows.push(json!({"stade_detecte":detected_stage,"sites_suggeres":factures::suggest_sites(import_detail_str(&line,"destination"),&sites),"details":line.details.clone(),"suggested_band":suggested_band,"suggestion_note":suggestion_note,"lot_ref":import_detail_str(&line,"frappe"),"ligne":number,"action":action,"anomalie":anomaly,"type":line.kind,"date":line.date,"reference":line.reference,"libelle":line.label,"quantite":line.quantity,"prix_unitaire":line.unit_price,"montant":line.amount}));
+        // Bandes présentes à la date de livraison (ou de la facture), au
+        // stade de l'aliment quand il est reconnu : proposées pré-cochées.
+        let date_ref = import_detail_str(&line, "date_livraison")
+            .map(str::to_string)
+            .or_else(|| line.date.clone());
+        let stade = match detected_stage {
+            Some(s) if !matches!(s, "inconnu" | "auto") => s,
+            _ => "tous",
+        };
+        let propositions: Vec<i64> = match (date_ref.as_deref(), line.kind.as_str()) {
+            (Some(d), "aliment" | "veto" | "semence" | "genetique" | "vente") => {
+                crate::affectation::cycle_present(&state.pool, d, &[], stade).await.unwrap_or_default()
+            }
+            _ => Vec::new(),
+        };
+        rows.push(json!({"propositions":propositions,"date_proposition":date_ref,"stade_detecte":detected_stage,"sites_suggeres":factures::suggest_sites(import_detail_str(&line,"destination"),&sites),"details":line.details.clone(),"suggested_band":suggested_band,"suggestion_note":suggestion_note,"lot_ref":import_detail_str(&line,"frappe"),"ligne":number,"action":action,"anomalie":anomaly,"type":line.kind,"date":line.date,"reference":line.reference,"libelle":line.label,"quantite":line.quantity,"prix_unitaire":line.unit_price,"montant":line.amount}));
     }
     let summary = journal
         .2
@@ -9729,6 +9744,15 @@ async fn economique_import_confirmer(
                     || AppError::Invalid(format!("Bande invalide à la ligne {number}")),
                 )?),
             };
+        let band_id = if line.kind == "vente" {
+            let prefixe = format!("bandes_ligne_{number}_");
+            form.keys()
+                .filter_map(|k| k.strip_prefix(&prefixe).and_then(|id| id.parse::<i64>().ok()))
+                .min()
+                .or(band_id)
+        } else {
+            band_id
+        };
         let band_code: Option<String> = if let Some(id) = band_id {
             Some(
                 sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
@@ -9904,6 +9928,40 @@ async fn economique_import_confirmer(
                 }
             }
             _ => return Err(AppError::Invalid("Type de ligne non pris en charge".into())),
+        }
+        // Bandes cochées pour la semence et la génétique (l'aliment et le
+        // véto sont traités dans leur branche).
+        if matches!(line.kind.as_str(), "semence" | "genetique") {
+            let prefixe = format!("bandes_ligne_{number}_");
+            let mut multi: Vec<i64> = form
+                .keys()
+                .filter_map(|k| k.strip_prefix(&prefixe).and_then(|id| id.parse::<i64>().ok()))
+                .collect();
+            multi.sort_unstable();
+            let table = if line.kind == "semence" { "achatsemence" } else { "achatgenetique" };
+            let facture: Option<i64> = sqlx::query_scalar(&format!("SELECT id FROM {table} WHERE COALESCE(num_facture,'')=? ORDER BY id LIMIT 1"))
+                .bind(reference).fetch_optional(&mut *transaction).await?;
+            if let (Some(facture), false) = (facture, multi.is_empty()) {
+                sqlx::query("DELETE FROM affectationfacturebande WHERE categorie=? AND facture_id=?")
+                    .bind(&line.kind).bind(facture).execute(&mut *transaction).await?;
+                let mut premier = None;
+                for id in &multi {
+                    let ok = sqlx::query("INSERT INTO affectationfacturebande(categorie,facture_id,bande_id,automatique) SELECT ?,?,?,0 WHERE EXISTS(SELECT 1 FROM bande WHERE id=?)")
+                        .bind(&line.kind).bind(facture).bind(id).bind(id).execute(&mut *transaction).await?;
+                    if ok.rows_affected() == 1 && premier.is_none() {
+                        premier = Some(*id);
+                    }
+                }
+                if let Some(premier) = premier {
+                    sqlx::query("INSERT INTO affectationfacturecontrole(categorie,facture_id,verrou_manuel,modifie_le) VALUES(?,?,1,CURRENT_TIMESTAMP) ON CONFLICT(categorie,facture_id) DO UPDATE SET verrou_manuel=1,modifie_le=CURRENT_TIMESTAMP")
+                        .bind(&line.kind).bind(facture).execute(&mut *transaction).await?;
+                    if line.kind == "semence" {
+                        sqlx::query("UPDATE achatsemence SET bande_id=? WHERE id=?").bind(premier).bind(facture).execute(&mut *transaction).await?;
+                    } else {
+                        sqlx::query("UPDATE achatgenetique SET bande_code=(SELECT code FROM bande WHERE id=?) WHERE id=?").bind(premier).bind(facture).execute(&mut *transaction).await?;
+                    }
+                }
+            }
         }
         applied += 1;
     }
