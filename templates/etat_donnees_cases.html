@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}
+<p><a href="/etat-donnees">← État des données</a></p>
+<h1>Cases avec un effectif négatif</h1>
+<p>Le logiciel calcule l’effectif de chaque case : dernier inventaire + porcs entrés − porcs sortis − morts déclarés. Un résultat négatif veut dire qu’un mouvement ou un inventaire manque. Comptez les porcs présents dans la case et saisissez le nombre : le calcul repart de ce comptage. Une case vide se saisit à 0. Les maternités ne sont pas contrôlées : les porcelets y naissent sans transfert d’entrée.</p>
+{% if cases %}<div class="rust-scroll"><table><thead><tr><th>Salle</th><th>Case</th><th>Effectif calculé</th><th>Dernier inventaire</th><th>Porcs comptés aujourd’hui</th></tr></thead><tbody>
+{% for c in cases %}<tr><td><a href="/salles/{{ c.salle_id }}">{{ c.salle }}</a></td><td>{{ c.case_nom }}</td><td><b style="color:#a3361a">{{ c.effectif }}</b></td><td>{% if c.dernier_inventaire %}{{ c.dernier_inventaire|date_fr }} · {{ c.dernier_nombre }} porcs{% else %}aucun{% endif %}</td>
+<td>{% if session.peut_modifier %}<form method="post" action="/effectifs/inventaire-case" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="case_id" value="{{ c.case_id }}"><input type="hidden" name="retour" value="/etat-donnees/cases"><input type="hidden" name="note" value="Correction depuis État des données"><label style="margin:0">Date <input type="date" name="date" value="{{ aujourd_hui }}" required></label><label style="margin:0">Porcs <input type="number" name="nombre" min="0" required style="width:6em" aria-label="Porcs comptés dans {{ c.salle }} {{ c.case_nom }}"></label><button>Enregistrer</button></form>{% else %}—{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="rust-empty">Aucune case négative : tous les effectifs sont cohérents.</p>{% endif %}
+{% endblock %}

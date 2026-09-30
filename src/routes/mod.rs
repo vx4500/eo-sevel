@@ -396,6 +396,7 @@ pub fn router(state: AppState) -> Router {
             post(effectifs_inventaire_case),
         )
         .route("/etat-donnees", get(etat_donnees))
+        .route("/etat-donnees/cases", get(etat_donnees_cases))
         .route("/api/bandes-actives", get(api_bandes_actives))
         .route("/api/bandes", get(api_bandes))
         .route("/api/truies", get(api_truies))
@@ -8251,9 +8252,32 @@ async fn effectifs_inventaire_case(
             value
                 .strip_prefix("/bande/")
                 .is_some_and(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+                || value == "/etat-donnees/cases"
         })
         .unwrap_or_else(|| "/structure".into());
     Ok(Redirect::to(&target).into_response())
+}
+
+/// Cases dont l'effectif calculé est négatif (même calcul que « État des
+/// données »), hors maternité où les porcelets naissent sans transfert
+/// d'entrée (voir `cases_incoherentes`), chacune avec un formulaire d'inventaire qui repart d'un
+/// comptage réel.
+async fn etat_donnees_cases(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    if session.role == "salarie" {
+        return Err(AppError::Forbidden);
+    }
+    let cases = generic_rows(
+        &state.pool,
+        "WITH effectif_case AS (SELECT c.id,c.nb_max_porcs,(SELECT date FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_date,(SELECT dernier_transfert_id FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_transfert,COALESCE((SELECT nombre FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1),0) AS base FROM casesalle c),effectif_case2 AS (SELECT e.id,e.nb_max_porcs,e.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=t.case_source_id THEN 0 WHEN t.case_dest_id=e.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=e.id OR t.case_source_id=e.id) AND (e.inv_date IS NULL OR t.date>e.inv_date OR (t.date=e.inv_date AND t.id>e.inv_transfert))),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=e.id AND (e.inv_date IS NULL OR d.date>e.inv_date)),0) AS effectif FROM effectif_case e) SELECT e.id AS case_id,e.effectif,c.nom AS case_nom,s.id AS salle_id,s.nom AS salle,(SELECT date FROM inventairecase WHERE case_id=e.id ORDER BY date DESC,id DESC LIMIT 1) AS dernier_inventaire,(SELECT nombre FROM inventairecase WHERE case_id=e.id ORDER BY date DESC,id DESC LIMIT 1) AS dernier_nombre FROM effectif_case2 e JOIN casesalle c ON c.id=e.id JOIN salle s ON s.id=c.salle_id WHERE e.effectif<0 AND lower(COALESCE(s.type,'')||' '||s.nom) NOT LIKE '%mater%' ORDER BY s.ordre,s.nom,length(c.nom),c.nom",
+    )
+    .await?;
+    let mut ctx = context(&session);
+    ctx.insert("cases".into(), Value::Array(cases));
+    ctx.insert("aujourd_hui".into(), json!(today_iso()));
+    render(&state, "etat_donnees_cases.html", Value::Object(ctx))
 }
 
 async fn etat_donnees(
@@ -8263,15 +8287,21 @@ async fn etat_donnees(
     if session.role == "salarie" {
         return Err(AppError::Forbidden);
     }
-    list_page(
+    let mut rows = generic_rows(&state.pool, "WITH effectif_case AS (SELECT c.id,c.nb_max_porcs,(SELECT date FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_date,(SELECT dernier_transfert_id FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_transfert,COALESCE((SELECT nombre FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1),0) AS base FROM casesalle c),effectif_case2 AS (SELECT e.id,e.nb_max_porcs,e.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=t.case_source_id THEN 0 WHEN t.case_dest_id=e.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=e.id OR t.case_source_id=e.id) AND (e.inv_date IS NULL OR t.date>e.inv_date OR (t.date=e.inv_date AND t.id>e.inv_transfert))),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=e.id AND (e.inv_date IS NULL OR d.date>e.inv_date)),0) AS effectif FROM effectif_case e) SELECT 'Doublons de numéros de truies actives' AS controle,COUNT(*) AS anomalies FROM (SELECT num_travail FROM truie WHERE reformee=0 GROUP BY lower(trim(num_travail)) HAVING COUNT(*)>1) UNION ALL SELECT 'Événements sans truie',COUNT(*) FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id WHERE e.truie_id IS NOT NULL AND t.id IS NULL UNION ALL SELECT 'Événements sans bande',COUNT(*) FROM evenement e LEFT JOIN bande b ON b.id=e.bande_id WHERE e.bande_id IS NOT NULL AND b.id IS NULL UNION ALL SELECT 'Transferts vers une case absente',COUNT(*) FROM transfert t LEFT JOIN casesalle c ON c.id=t.case_dest_id WHERE t.case_dest_id IS NOT NULL AND c.id IS NULL UNION ALL SELECT 'Bandes actives sans date de mise-bas',COUNT(*) FROM bande WHERE active=1 AND (date_mb IS NULL OR trim(date_mb)='') UNION ALL SELECT 'Truies actives sans bande',COUNT(*) FROM truie WHERE reformee=0 AND (bande_code IS NULL OR trim(bande_code)='') UNION ALL SELECT 'Cases avec effectif calculé négatif',COUNT(*) FROM effectif_case2 WHERE effectif<0 AND id NOT IN (SELECT c.id FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE lower(COALESCE(s.type,'')||' '||s.nom) LIKE '%mater%') UNION ALL SELECT 'Cases dépassant leur capacité déclarée',COUNT(*) FROM effectif_case2 WHERE nb_max_porcs IS NOT NULL AND nb_max_porcs>0 AND effectif>nb_max_porcs UNION ALL SELECT 'Déclarations de mortalité sans stade renseigné',COUNT(*) FROM declarationmort WHERE stade IS NULL OR trim(stade)='' UNION ALL SELECT 'Porcs charcutiers sans bande d''origine',COUNT(*) FROM porccharcutier WHERE bande_code IS NULL OR trim(bande_code)=''").await?;
+    // Chaque contrôle corrigeable renvoie vers sa page de correction.
+    for row in rows.iter_mut() {
+        if row["controle"] == "Cases avec effectif calculé négatif" && row["anomalies"].as_i64().unwrap_or(0) > 0 {
+            row["lien"] = json!("/etat-donnees/cases");
+        }
+    }
+    render_list_page(
         &state,
         &session,
         "État des données",
-        "Contrôles structurels en lecture seule. Une valeur à zéro signifie que le contrôle est conforme.",
-        "WITH effectif_case AS (SELECT c.id,c.nb_max_porcs,(SELECT date FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_date,(SELECT dernier_transfert_id FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1) AS inv_transfert,COALESCE((SELECT nombre FROM inventairecase WHERE case_id=c.id ORDER BY date DESC,id DESC LIMIT 1),0) AS base FROM casesalle c),effectif_case2 AS (SELECT e.id,e.nb_max_porcs,e.base+COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=t.case_source_id THEN 0 WHEN t.case_dest_id=e.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=e.id OR t.case_source_id=e.id) AND (e.inv_date IS NULL OR t.date>e.inv_date OR (t.date=e.inv_date AND t.id>e.inv_transfert))),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=e.id AND (e.inv_date IS NULL OR d.date>e.inv_date)),0) AS effectif FROM effectif_case e) SELECT 'Doublons de numéros de truies actives' AS controle,COUNT(*) AS anomalies FROM (SELECT num_travail FROM truie WHERE reformee=0 GROUP BY lower(trim(num_travail)) HAVING COUNT(*)>1) UNION ALL SELECT 'Événements sans truie',COUNT(*) FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id WHERE e.truie_id IS NOT NULL AND t.id IS NULL UNION ALL SELECT 'Événements sans bande',COUNT(*) FROM evenement e LEFT JOIN bande b ON b.id=e.bande_id WHERE e.bande_id IS NOT NULL AND b.id IS NULL UNION ALL SELECT 'Transferts vers une case absente',COUNT(*) FROM transfert t LEFT JOIN casesalle c ON c.id=t.case_dest_id WHERE t.case_dest_id IS NOT NULL AND c.id IS NULL UNION ALL SELECT 'Bandes actives sans date de mise-bas',COUNT(*) FROM bande WHERE active=1 AND (date_mb IS NULL OR trim(date_mb)='') UNION ALL SELECT 'Truies actives sans bande',COUNT(*) FROM truie WHERE reformee=0 AND (bande_code IS NULL OR trim(bande_code)='') UNION ALL SELECT 'Cases avec effectif calculé négatif',COUNT(*) FROM effectif_case2 WHERE effectif<0 UNION ALL SELECT 'Cases dépassant leur capacité déclarée',COUNT(*) FROM effectif_case2 WHERE nb_max_porcs IS NOT NULL AND nb_max_porcs>0 AND effectif>nb_max_porcs UNION ALL SELECT 'Déclarations de mortalité sans stade renseigné',COUNT(*) FROM declarationmort WHERE stade IS NULL OR trim(stade)='' UNION ALL SELECT 'Porcs charcutiers sans bande d''origine',COUNT(*) FROM porccharcutier WHERE bande_code IS NULL OR trim(bande_code)=''",
+        "Contrôles structurels en lecture seule. Une valeur à zéro signifie que le contrôle est conforme. Un contrôle souligné ouvre sa page de correction.",
+        rows,
         &["controle", "anomalies"],
     )
-    .await
 }
 
 async fn energie(

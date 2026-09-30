@@ -195,3 +195,10 @@ Parcours automatique de 900 pages sur une copie (utilisateur audit, SMS/tunnel
 retirés de la copie) : aucune erreur 500/501. Corrigé : Structure « None m² » ;
 eo-regul alertes température strictes (> / <) + hystérésis 0,5 °C (Mater 1/2
 ouvraient t_basse à 20,0 pour seuil 20,0, 13 fois en 3 jours).
+
+### 2026-09-30 — claude — 2.43.3 cases négatives
+Les 22 « cases avec effectif calculé négatif » d’État des données étaient toutes
+en maternité (porcelets nés sans transfert d’entrée, sortis au sevrage) : fausse
+alerte, le contrôle exclut désormais les maternités comme cases_incoherentes().
+Nouvelle page /etat-donnees/cases (inventaire par case, retour sur la page),
+liée depuis la ligne du contrôle quand il y a des anomalies.
