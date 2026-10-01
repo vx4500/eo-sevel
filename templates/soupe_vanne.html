@@ -6,8 +6,8 @@
 {% if controle %}<section class="card"><h2>Contrôle</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
 <div><small>Âge (jours de vie)</small><br><b>{{ controle.age }}</b></div><div><small>Cumul soupe</small><br><b>{{ controle.cumul }} kg</b></div><div><small>Ration du jour</small><br><b>{{ controle.ration }}</b></div></div></section>{% endif %}
 {% if fiche %}<section class="card"><h2>Consignes</h2>
-<form method="post" action="/equipements/soupe/vanne/{{ n }}/fiche"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<form method="post" action="/equipements/soupe/vanne/{{ n }}/fiche" onsubmit="return confirm('Envoyer la fiche de la vanne {{ n }} à la machine ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
 <div class="rust-grid">{% for c in champs %}<label>{{ c.libelle }}<input type="number" name="{{ c.cle }}" value="{{ fiche[c.cle] }}" min="0" required{% if not session.peut_modifier %} disabled{% endif %}></label>{% endfor %}</div>
-{% if session.peut_modifier %}<p><label><input type="checkbox" name="confirme" value="1" required> Je confirme l’envoi de cette fiche à Mega-feeder</label></p><button>Envoyer à la machine</button>{% endif %}
+{% if session.peut_modifier %}<input type="hidden" name="confirme" value="1"><button>Envoyer à la machine</button>{% endif %}
 </form><p class="help">Seuls les champs modifiés sont notés au journal (ancienne → nouvelle valeur).</p></section>{% endif %}
 {% endblock %}
