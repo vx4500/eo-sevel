@@ -268,3 +268,10 @@ tableaux existants (plus de saisie libre), et cochettes / truies à l’IA /
 gestantes / allaitantes sont réunies dans un seul tableau (chaque stade garde
 son J0 et sa frise). Nouvelle catégorie `truie_ia` (J0 = sevrage). Les quatre
 stades s’affichent même vides. Testé sur copie de la base (port 18231).
+
+### 2026-10-01 — claude — 2.47.3 plans d’alimentation : frise unique des truies
+Emmanuel veut « toute la vie alimentaire sur le même tableau, comme les
+porcelets » : cochettes → IA → gestation → maternité sont mis bout à bout sur
+une seule frise et une seule liste (plans_aliment::fusionner). Chaque stade
+garde son J0 ; un stade sans aliment ni durée connue n’apparaît qu’une fois
+qu’on y ajoute un aliment.

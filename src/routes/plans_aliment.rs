@@ -228,8 +228,102 @@ pub(super) fn tableaux(plans: &[Value], c: BandSchedule) -> Vec<Value> {
     }
     sortie
         .into_iter()
-        .map(|(libelle, plans)| json!({"libelle": libelle, "plans": plans}))
+        .map(|(libelle, plans)| {
+            let choix: Vec<Value> = plans
+                .iter()
+                .map(|g| json!({"code": g["code"], "libelle": g["libelle"]}))
+                .collect();
+            let plans = if plans.len() > 1 {
+                vec![fusionner(&libelle, &plans)]
+            } else {
+                plans
+            };
+            json!({"libelle": libelle, "plans": plans, "choix": choix})
+        })
         .collect()
+}
+
+/// Met bout à bout les stades d'un même animal sur une seule frise : chaque
+/// stade garde son jour 0, placé à la suite de la fin du stade précédent.
+fn fusionner(libelle: &str, plans: &[Value]) -> Value {
+    let mut depart = 0_i64;
+    let mut stades: Vec<(String, String, i64, i64)> = Vec::new();
+    let mut vides: Vec<String> = Vec::new();
+    let mut lignes: Vec<(i64, i64, String, Value)> = Vec::new();
+    let mut alertes: Vec<String> = Vec::new();
+    for g in plans {
+        let nom = g["libelle"].as_str().unwrap_or_default().to_string();
+        let du_stade = g["lignes"].as_array().cloned().unwrap_or_default();
+        let bornes: Vec<(i64, i64)> = du_stade
+            .iter()
+            .map(|p| {
+                let debut = p["jour_debut"].as_i64().unwrap_or(0);
+                (debut, p["jour_fin"].as_i64().unwrap_or(debut).max(debut))
+            })
+            .collect();
+        let Some(dernier) = bornes
+            .iter()
+            .map(|(_, f)| *f)
+            .chain(g["fin_attendue"].as_i64())
+            .max()
+        else {
+            vides.push(nom);
+            continue;
+        };
+        for (p, (debut, fin)) in du_stade.into_iter().zip(bornes) {
+            lignes.push((depart + debut, depart + fin, nom.clone(), p));
+        }
+        for a in g["alertes"].as_array().into_iter().flatten() {
+            alertes.push(format!("{nom} : {}", a.as_str().unwrap_or_default()));
+        }
+        let reference = g["reference"].as_str().unwrap_or_default().to_string();
+        stades.push((nom, reference, depart, dernier + 1));
+        depart += dernier + 1;
+    }
+    let echelle = depart.max(1) as f64;
+    let pct = |v: i64| (100.0 * v as f64 / echelle * 10.0).round() / 10.0;
+    let pas: i64 = if echelle > 120.0 { 28 } else if echelle > 40.0 { 14 } else { 7 };
+    let reperes: Vec<Value> = stades
+        .iter()
+        .flat_map(|(_, _, debut, duree)| {
+            (0..*duree)
+                .step_by(pas as usize)
+                .filter(move |j| *j == 0 || duree - j >= pas / 2)
+                .map(move |j| (j, debut + j))
+        })
+        .map(|(j, position)| json!({"jour": j, "gauche": pct(position)}))
+        .collect();
+    let lignes: Vec<Value> = lignes
+        .into_iter()
+        .enumerate()
+        .map(|(i, (debut, fin, stade, mut ligne))| {
+            if let Some(objet) = ligne.as_object_mut() {
+                objet.insert("gauche".into(), json!(pct(debut)));
+                objet.insert("largeur".into(), json!(pct(fin - debut + 1)));
+                objet.insert("couleur".into(), json!(i % 8));
+                objet.insert("stade".into(), json!(stade));
+            }
+            ligne
+        })
+        .collect();
+    let stades: Vec<Value> = stades
+        .into_iter()
+        .map(|(nom, reference, debut, duree)| {
+            json!({"libelle": nom, "reference": reference, "gauche": pct(debut), "largeur": pct(duree)})
+        })
+        .collect();
+    json!({
+        "code": "",
+        "libelle": libelle,
+        "reference": "stades à la suite, chacun avec son J0",
+        "fin_attendue": null,
+        "attendu_gauche": null,
+        "lignes": lignes,
+        "alertes": alertes,
+        "reperes": reperes,
+        "stades": stades,
+        "vides": vides,
+    })
 }
 
 /// Catégories connues qui n'ont encore aucun tableau affiché.
@@ -269,10 +363,17 @@ mod tests {
         // Triés par jour de début, pas par ordre de saisie.
         assert_eq!(groupe("porcelet")["lignes"][0]["aliment"], "A");
         assert_eq!(libelle("post_sevrage"), "Post sevrage");
-        // Un seul tableau pour cochettes, IA, gestantes et allaitantes, même vides.
+        // Un seul tableau pour cochettes, IA, gestantes et allaitantes.
         let tableaux = tableaux(&plans, BandSchedule::default());
         assert_eq!(tableaux[0]["libelle"], "Truies et cochettes");
-        assert_eq!(tableaux[0]["plans"].as_array().unwrap().len(), 4);
+        assert_eq!(tableaux[0]["choix"].as_array().unwrap().len(), 4);
+        // Une seule frise : gestation (J0 à J109) puis maternité à la suite.
+        let cycle = &tableaux[0]["plans"][0];
+        assert_eq!(tableaux[0]["plans"].as_array().unwrap().len(), 1);
+        assert_eq!(cycle["stades"].as_array().unwrap().len(), 2);
+        assert_eq!(cycle["vides"].as_array().unwrap().len(), 2);
+        assert_eq!(cycle["lignes"][0]["stade"], "Truies gestantes");
+        assert_eq!(cycle["stades"][1]["libelle"], "Truies allaitantes");
         assert_eq!(tableaux[1]["libelle"], "Porcelets et porcs");
         assert_eq!(categories_sans_plan(&plans).len(), 2);
         // Gestantes : attendu jusqu'à l'entrée en maternité (J109).
