@@ -54,6 +54,7 @@ mod scan;
 mod sevrage;
 mod sms;
 mod soupe;
+mod soupe_pilotage;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
@@ -137,6 +138,13 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/sms/test", post(sms::test))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
+        .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))
+        .route("/equipements/soupe/pilotage/adresse", post(soupe_pilotage::regler))
+        .route("/equipements/soupe/vanne/{n}", get(soupe_pilotage::vanne))
+        .route("/equipements/soupe/vanne/{n}/rapide", post(soupe_pilotage::rapide))
+        .route("/equipements/soupe/vanne/{n}/fiche", post(soupe_pilotage::fiche_maj))
+        .route("/equipements/soupe/alarme", post(soupe_pilotage::alarme))
+        .route("/equipements/soupe/mouvement", post(soupe_pilotage::mouvement))
         .route("/api/soupe/trames", post(soupe::trames))
         .route("/api/soupe/script", get(soupe::script))
         .route("/equipements/cameras/{id}/supprimer", post(cameras::supprimer))

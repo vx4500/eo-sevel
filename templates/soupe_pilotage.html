@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block content %}
+<p><a href="/equipements/soupe">← Machine à soupe</a></p>
+<h1>Pilotage de la machine à soupe</h1>
+<p class="muted">Lecture et modifications directement dans Mega-feeder (PC de la machine). Chaque modification est confirmée et inscrite au journal.</p>
+{% if ok %}<section class="card" role="status"><b>{{ ok }}</b></section>{% endif %}
+{% if erreur %}<section class="card" role="alert"><b>{{ erreur }}</b><p>Adresse utilisée : {{ url }}</p></section>{% endif %}
+{% if synoptique %}
+<section class="card"><h2>État</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
+<div><small>Automate</small><br><b style="font-size:1.3em{% if synoptique.alarme %};color:#c0392b{% endif %}">{% if synoptique.alarme %}DÉFAUT{% else %}{{ synoptique.etat }}{% endif %}</b></div>
+<div><small>Séquence · formule</small><br><b>{{ synoptique.sequence }} · {{ synoptique.formule }}</b></div>
+<div><small>Cuve 1</small><br><b>{{ synoptique.cuve1 }} kg</b></div>
+<div><small>Cuve 2</small><br><b>{{ synoptique.cuve2 }} kg</b></div>
+</div>
+{% if synoptique.alarme %}<div style="margin-top:14px;padding:12px;border-radius:10px;background:#fbe0dc"><b style="color:#8f2d1f">Alarme : {{ synoptique.alarme }}</b>
+{% if session.peut_modifier %}<form method="post" action="/equipements/soupe/alarme" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label><input type="checkbox" name="confirme" value="1" required> J’ai vérifié sur place que la machine peut reprendre</label> <button>Acquitter l’alarme</button></form>{% endif %}</div>{% endif %}
+</section>
+{% endif %}
+{% if cycles %}<section class="card"><h2>Distributions du jour</h2><div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Séquence</th><th>Formule</th><th>État</th></tr></thead><tbody>
+{% for c in cycles %}<tr><td><b>{{ c.Heure }}</b></td><td>{{ c.Sequence }}</td><td>{{ c.Formule }} · {{ c.NomFormule }}</td><td>{% if c.Effectue == '1' %}<span style="color:#1f654b;font-weight:700">Effectuée</span>{% else %}À venir{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+{% if vannes %}<section class="card"><h2>Vannes : animaux et % ration</h2>
+<p class="help">Modifiez une ligne, cochez « confirmer » puis Envoyer : la valeur part directement dans Mega-feeder. « Fiche » ouvre tous les réglages de la vanne.</p>
+<div class="rust-scroll"><table><thead><tr><th>Vanne</th><th>Ration</th><th>Animaux</th><th>% ration</th><th></th></tr></thead><tbody>
+{% for v in vannes %}<tr id="vanne-{{ v.ConsigneRapideNumeroVanne }}"><td><a href="/equipements/soupe/vanne/{{ v.ConsigneRapideNumeroVanne }}"><b>{{ v.ConsigneRapideNumeroVanne }}</b></a></td><td>{{ v.ConsigneRapideRation }}</td>
+{% if session.peut_modifier %}<td colspan="3"><form method="post" action="/equipements/soupe/vanne/{{ v.ConsigneRapideNumeroVanne }}/rapide" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="number" name="animaux" min="0" max="999" value="{{ v.ConsigneRapideNombreAnimaux }}" style="width:5em" aria-label="Animaux vanne {{ v.ConsigneRapideNumeroVanne }}"><input type="number" name="ration" min="0" max="300" value="{{ v.ConsigneRapideModulationRation }}" style="width:5em" aria-label="% ration vanne {{ v.ConsigneRapideNumeroVanne }}"> %<label style="margin:0"><input type="checkbox" name="confirme" value="1" required> confirmer</label><button>Envoyer</button> <a href="/equipements/soupe/vanne/{{ v.ConsigneRapideNumeroVanne }}">Fiche</a></form></td>
+{% else %}<td>{{ v.ConsigneRapideNombreAnimaux }}</td><td>{{ v.ConsigneRapideModulationRation }} %</td><td></td>{% endif %}</tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+{% if synoptique and session.peut_modifier %}<section class="card"><h2>Entrée / sortie d’animaux</h2>
+<form method="post" action="/equipements/soupe/mouvement" class="rust-grid"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label>Action<select name="action"><option value="ActionEntree">Entrée</option><option value="ActionSortie">Sortie</option><option value="ActionVente">Vente</option><option value="ActionPerte">Perte</option></select></label>
+<label>Vanne<input type="number" name="vanne" min="1" required></label><label>Nombre<input type="number" name="nombre" min="1" required></label><label>Poids total (kg)<input type="number" name="poids_total" min="0" value="0" required></label>
+<label><input type="checkbox" name="confirme" value="1" required> Confirmer l’envoi à Mega-feeder</label><button>Valider</button></form></section>{% endif %}
+{% if session.est_admin %}<details class="card"><summary>Adresse du service Mega-feeder</summary><form method="post" action="/equipements/soupe/pilotage/adresse" class="rust-actions"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Adresse<input name="url" value="{{ url }}" style="min-width:28em"></label><button class="ghost">Enregistrer</button></form><p class="help">Mega-feeder → Communications externes : port 251 sur le PC 192.168.1.195. Le port doit être autorisé dans le pare-feu Windows.</p></details>{% endif %}
+{% endblock %}

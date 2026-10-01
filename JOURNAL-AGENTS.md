@@ -252,3 +252,12 @@ Mega-feeder, SOAP POST /soap/IExafeeder sur le PC (port 8080) : GetSynoptique
 (EtatAutomate, NumSequence, Numservice, PoidCuve1, Alarme), ListeCycleEffectueGetList,
 FicheVanneGetConsigne/GetControle, ConsigneRapideGetList ; écritures
 (FicheVannePutConsigne, AcquitterAlarme, EntreeSortieValidation) à NE PAS appeler.
+
+### 2026-10-01 — claude — 2.47.0 pilotage à distance de la machine à soupe
+Emmanuel a activé Mega-feeder → Communications externes (port 251, VM 101 =
+192.168.1.195, pare-feu XP ouvert). Service SOAP Delphi (WSDL /wsdl/IExafeeder).
+src/routes/soupe_pilotage.rs : /equipements/soupe/pilotage (état, distributions
+du jour, vannes animaux/% ration), /equipements/soupe/vanne/{n} (fiche complète),
+écritures FicheVannePutConsigne / AcquitterAlarme / EntreeSortieValidation avec
+case de confirmation obligatoire + db::journal (ancienne → nouvelle valeur).
+URL réglable (parametre soupe_soap_url). Écriture demandée explicitement par Emmanuel.
