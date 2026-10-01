@@ -12,38 +12,54 @@ struct Categorie {
     code: &'static str,
     libelle: &'static str,
     reference: &'static str,
+    /// Tableau d'affichage : les stades d'un même animal partagent un tableau.
+    tableau: &'static str,
 }
 
-const CATEGORIES: [Categorie; 6] = [
+const TRUIES: &str = "Truies et cochettes";
+
+const CATEGORIES: [Categorie; 7] = [
+    Categorie {
+        code: "cochette",
+        libelle: "Cochettes",
+        reference: "J0 = entrée",
+        tableau: TRUIES,
+    },
+    Categorie {
+        code: "truie_ia",
+        libelle: "Truies à l’IA",
+        reference: "J0 = sevrage",
+        tableau: TRUIES,
+    },
     Categorie {
         code: "truie_gestante",
         libelle: "Truies gestantes",
         reference: "J0 = insémination",
+        tableau: TRUIES,
     },
     Categorie {
         code: "truie_allaitante",
         libelle: "Truies allaitantes",
         reference: "J0 = mise-bas",
+        tableau: TRUIES,
     },
     Categorie {
         code: "porcelet",
         libelle: "Porcelets et porcs",
         reference: "J0 = naissance",
-    },
-    Categorie {
-        code: "cochette",
-        libelle: "Cochettes",
-        reference: "J0 = entrée",
-    },
-    Categorie {
-        code: "verrat",
-        libelle: "Verrats",
-        reference: "",
+        tableau: "",
     },
     Categorie {
         code: "engraissement",
         libelle: "Porcs charcutiers",
         reference: "J0 = naissance",
+        tableau: "",
+    },
+    Categorie {
+        code: "verrat",
+        libelle: "Verrats",
+        reference: "",
+        tableau: "",
     },
 ];
 
@@ -102,6 +118,13 @@ pub(super) fn grouper(plans: &[Value], c: BandSchedule) -> Vec<Value> {
     let mut codes: Vec<String> = plans
         .iter()
         .filter_map(|p| p["categorie"].as_str().map(str::to_string))
+        // Les stades des truies sont toujours proposés, même encore vides.
+        .chain(
+            CATEGORIES
+                .iter()
+                .filter(|c| c.tableau == TRUIES)
+                .map(|c| c.code.to_string()),
+        )
         .collect();
     codes.sort_by_key(|code| {
         (
@@ -178,6 +201,7 @@ pub(super) fn grouper(plans: &[Value], c: BandSchedule) -> Vec<Value> {
                 "code": code,
                 "libelle": libelle(&code),
                 "reference": info.map(|x| x.reference).unwrap_or(""),
+                "tableau": info.map(|x| x.tableau).filter(|t| !t.is_empty()),
                 "fin_attendue": attendue,
                 "attendu_gauche": attendue.map(|f| (100.0 * (f + 1) as f64 / echelle * 10.0).round() / 10.0),
                 "lignes": lignes_json,
@@ -188,9 +212,32 @@ pub(super) fn grouper(plans: &[Value], c: BandSchedule) -> Vec<Value> {
         .collect()
 }
 
-pub(super) fn categories_connues() -> Vec<Value> {
+/// Regroupe les plans par tableau d'affichage (les stades des truies ensemble).
+pub(super) fn tableaux(plans: &[Value], c: BandSchedule) -> Vec<Value> {
+    let mut sortie: Vec<(String, Vec<Value>)> = Vec::new();
+    for groupe in grouper(plans, c) {
+        let nom = groupe["tableau"]
+            .as_str()
+            .or(groupe["libelle"].as_str())
+            .unwrap_or_default()
+            .to_string();
+        match sortie.iter_mut().find(|(n, _)| *n == nom) {
+            Some((_, liste)) => liste.push(groupe),
+            None => sortie.push((nom, vec![groupe])),
+        }
+    }
+    sortie
+        .into_iter()
+        .map(|(libelle, plans)| json!({"libelle": libelle, "plans": plans}))
+        .collect()
+}
+
+/// Catégories connues qui n'ont encore aucun tableau affiché.
+pub(super) fn categories_sans_plan(plans: &[Value]) -> Vec<Value> {
     CATEGORIES
         .iter()
+        .filter(|c| c.tableau != TRUIES)
+        .filter(|c| !plans.iter().any(|p| p["categorie"].as_str() == Some(c.code)))
         .map(|c| json!({"code": c.code, "libelle": c.libelle}))
         .collect()
 }
@@ -217,13 +264,19 @@ mod tests {
             json!({"id":3,"categorie":"porcelet","jour_debut":0,"jour_fin":28,"aliment":"A"}),
         ];
         let groupes = grouper(&plans, BandSchedule::default());
-        assert_eq!(groupes[0]["libelle"], "Truies gestantes");
-        assert_eq!(groupes[1]["libelle"], "Porcelets et porcs");
+        let groupe = |code: &str| groupes.iter().find(|g| g["code"] == code).unwrap();
+        assert_eq!(groupe("truie_gestante")["libelle"], "Truies gestantes");
         // Triés par jour de début, pas par ordre de saisie.
-        assert_eq!(groupes[1]["lignes"][0]["aliment"], "A");
+        assert_eq!(groupe("porcelet")["lignes"][0]["aliment"], "A");
         assert_eq!(libelle("post_sevrage"), "Post sevrage");
+        // Un seul tableau pour cochettes, IA, gestantes et allaitantes, même vides.
+        let tableaux = tableaux(&plans, BandSchedule::default());
+        assert_eq!(tableaux[0]["libelle"], "Truies et cochettes");
+        assert_eq!(tableaux[0]["plans"].as_array().unwrap().len(), 4);
+        assert_eq!(tableaux[1]["libelle"], "Porcelets et porcs");
+        assert_eq!(categories_sans_plan(&plans).len(), 2);
         // Gestantes : attendu jusqu'à l'entrée en maternité (J109).
-        assert!(groupes[0]["alertes"][0]
+        assert!(groupe("truie_gestante")["alertes"][0]
             .as_str()
             .unwrap()
             .contains("J85 à J109"));

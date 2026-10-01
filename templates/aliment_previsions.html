@@ -14,8 +14,10 @@
 {% if session.est_admin %}<section class="card" id="alimentation">
 <style>
 #alimentation .pa-groupe{border:1px solid #e1e8e3;border-radius:12px;padding:14px 16px;margin:12px 0;background:#fff}
+#alimentation .pa-groupe h4.pa-titre{margin:18px 0 0;padding-top:12px;border-top:1px solid #e1e8e3;font-size:1rem}
+#alimentation .pa-groupe h3,#alimentation .pa-groupe h4.pa-titre{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
 #alimentation .pa-groupe h3{margin:0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-#alimentation .pa-groupe h3 small{font-weight:400;color:#5f7268;font-size:.85rem}
+#alimentation .pa-groupe h3 small,#alimentation .pa-groupe h4 small{font-weight:400;color:#5f7268;font-size:.85rem}
 #alimentation .pa-frise{position:relative;margin:14px 0 6px;padding-top:4px}
 #alimentation .pa-piste{position:relative;height:26px;margin:3px 0;background:#f3f6f4;border-radius:6px}
 #alimentation .pa-barre{position:absolute;top:0;bottom:0;border-radius:6px;color:#fff;font-size:.74rem;font-weight:700;padding:5px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:6px}
@@ -33,16 +35,18 @@
 #alimentation details.pa-modif summary::-webkit-details-marker{display:none}
 #alimentation .pa-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 12px;align-items:end;padding:10px 0}
 #alimentation .pa-form label{display:flex;flex-direction:column;gap:3px;font-size:.85rem;font-weight:600}
-#alimentation .pa-form input{width:100%;min-width:0}
+#alimentation .pa-form input,#alimentation .pa-form select{width:100%;min-width:0}
 #alimentation .pa-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 <h2>Plans d’alimentation</h2>
 <h3>Réglages aliment</h3><form class="rust-actions" method="post" action="/reglages/maj"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="aliment">{% for r in reglages_aliment %}<label>{{ r.libelle }}<input type="number" min="0" name="{{ r.cle }}" value="{{ r.valeur }}"></label>{% endfor %}<button>Enregistrer</button></form>
-<p class="muted">Un plan par catégorie d’animaux. La frise montre ce qui est distribué jour après jour : deux barres superposées = aliments donnés en même temps (transition) ; une zone vide = rien de prévu. Le trait rouge pointillé marque la fin de période attendue d’après la conduite.</p>
-<datalist id="pa-categories">{% for c in categories_aliment %}<option value="{{ c.code }}">{{ c.libelle }}</option>{% endfor %}</datalist>
-{% for g in plans_groupes %}
+<p class="muted">Un plan par catégorie d’animaux ; les stades des truies (cochettes, IA, gestantes, allaitantes) sont réunis dans un même tableau. La frise montre ce qui est distribué jour après jour : deux barres superposées = aliments donnés en même temps (transition) ; une zone vide = rien de prévu. Le trait rouge pointillé marque la fin de période attendue d’après la conduite.</p>
+{% for t in plans_tableaux %}
 <div class="pa-groupe">
-  <h3>{{ g.libelle }} <small>{{ g.reference }}{% if g.fin_attendue is not none %} · jusqu’à J{{ g.fin_attendue }}{% endif %} · {{ g.lignes|length }} aliment(s)</small></h3>
+  {% if t.plans|length > 1 %}<h3>{{ t.libelle }}</h3>{% endif %}
+  {% for g in t.plans %}
+  <h{% if t.plans|length > 1 %}4{% else %}3{% endif %} class="pa-titre">{{ g.libelle }} <small>{{ g.reference }}{% if g.fin_attendue is not none %} · jusqu’à J{{ g.fin_attendue }}{% endif %} · {{ g.lignes|length }} aliment(s)</small></h{% if t.plans|length > 1 %}4{% else %}3{% endif %}>
+  {% if not g.lignes %}<p class="muted">Aucun aliment saisi pour ce stade.</p>{% else %}
   <div class="pa-frise">
     {% for l in g.lignes %}<div class="pa-piste"><div class="pa-barre pa-c{{ l.couleur }}" style="left:{{ l.gauche }}%;width:{{ l.largeur }}%" title="{{ l.aliment or 'Sans nom' }} · {{ l.jours }}">{{ l.aliment or '—' }}</div></div>{% endfor %}
     {% if g.attendu_gauche is not none %}<div class="pa-attendu" style="left:0;width:{{ g.attendu_gauche }}%" title="Fin attendue : J{{ g.fin_attendue }}"></div>{% endif %}
@@ -59,7 +63,7 @@
         <form method="post" action="/aliment-previsions/plan/{{ l.id }}/modifier" class="pa-form">
           <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
           <input type="hidden" name="ordre" value="{{ l.ordre }}">
-          <label>Catégorie<input name="categorie" value="{{ l.categorie }}" list="pa-categories" required></label>
+          <label>Catégorie<select name="categorie" required>{% for t in plans_tableaux %}{% if t.plans|length > 1 %}<optgroup label="{{ t.libelle }}">{% endif %}{% for g in t.plans %}<option value="{{ g.code }}"{% if g.code == l.categorie %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}{% if t.plans|length > 1 %}</optgroup>{% endif %}{% endfor %}{% for c in categories_aliment %}<option value="{{ c.code }}">{{ c.libelle }} (nouveau tableau)</option>{% endfor %}</select></label>
           <label>Du jour<input type="number" name="jour_debut" min="0" value="{{ l.jour_debut }}"></label>
           <label>Au jour<input type="number" name="jour_fin" min="0" value="{{ l.jour_fin }}"></label>
           <label>Aliment<input name="aliment" value="{{ l.aliment or '' }}"></label>
@@ -73,12 +77,14 @@
     </td></tr>
   {% endfor %}
   </tbody></table>
+  {% endif %}
+  {% endfor %}
 </div>
 {% else %}<p class="muted">Aucun plan d’alimentation enregistré.</p>{% endfor %}
 <datalist id="pa-unites"><option value="kg/j"><option value="à volonté"><option value="g/j"><option value="L/j"></datalist>
 <details class="pa-groupe"><summary><b>+ Ajouter un aliment à un plan</b></summary>
 <form class="pa-form" method="post" action="/aliment-previsions/plan/ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
-  <label>Catégorie<input name="categorie" list="pa-categories" placeholder="ex. porcelet" required></label>
+  <label>Catégorie<select name="categorie" required><option value="">— choisir —</option>{% for t in plans_tableaux %}{% if t.plans|length > 1 %}<optgroup label="{{ t.libelle }}">{% endif %}{% for g in t.plans %}<option value="{{ g.code }}">{{ g.libelle }}</option>{% endfor %}{% if t.plans|length > 1 %}</optgroup>{% endif %}{% endfor %}{% for c in categories_aliment %}<option value="{{ c.code }}">{{ c.libelle }} (nouveau tableau)</option>{% endfor %}</select></label>
   <label>Du jour<input type="number" name="jour_debut" min="0" required></label>
   <label>Au jour<input type="number" name="jour_fin" min="0" required></label>
   <label>Aliment<input name="aliment" required></label>

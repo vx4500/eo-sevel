@@ -13302,12 +13302,12 @@ async fn aliment_previsions(
         let feed = generic_rows(&state.pool, "SELECT id,categorie,jour_debut,jour_fin,aliment,quantite,unite,note,ordre FROM planaliment ORDER BY ordre,categorie,jour_debut").await?;
         let calendrier = load_band_schedule(&state.pool).await?;
         ctx.insert(
-            "plans_groupes".into(),
-            Value::Array(plans_aliment::grouper(&feed, calendrier)),
+            "plans_tableaux".into(),
+            Value::Array(plans_aliment::tableaux(&feed, calendrier)),
         );
         ctx.insert(
             "categories_aliment".into(),
-            json!(plans_aliment::categories_connues()),
+            json!(plans_aliment::categories_sans_plan(&feed)),
         );
         ctx.insert(
             "reglages_aliment".into(),

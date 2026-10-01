@@ -261,3 +261,10 @@ du jour, vannes animaux/% ration), /equipements/soupe/vanne/{n} (fiche complète
 écritures FicheVannePutConsigne / AcquitterAlarme / EntreeSortieValidation avec
 case de confirmation obligatoire + db::journal (ancienne → nouvelle valeur).
 URL réglable (parametre soupe_soap_url). Écriture demandée explicitement par Emmanuel.
+
+### 2026-10-01 — claude — 2.47.2 plans d’alimentation : tableau « Truies et cochettes »
+Demande d’Emmanuel : la catégorie du formulaire d’ajout doit être une liste des
+tableaux existants (plus de saisie libre), et cochettes / truies à l’IA /
+gestantes / allaitantes sont réunies dans un seul tableau (chaque stade garde
+son J0 et sa frise). Nouvelle catégorie `truie_ia` (J0 = sevrage). Les quatre
+stades s’affichent même vides. Testé sur copie de la base (port 18231).
