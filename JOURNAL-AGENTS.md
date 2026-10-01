@@ -241,3 +241,14 @@ Réparé le test ventes (Query ajouté en 2.44.2). 10 échecs préexistants inch
 l’apport × poids des lots de la bande, déjà dans les recettes) et Retenues
 (total_retenues de l’apport, dédoublonné par num_apport, réparti au poids des
 lots ; déduit de la marge) + ligne Total (totaux calculés côté Rust).
+
+### 2026-10-01 — claude — 2.46.0 synoptique machine à soupe
+Synoptique SVG animé en tête de « En direct » (/equipements/soupe) : phase,
+arrivée produit/eau (dosage), cuve remplie au poids (échelle 1500 kg),
+mélangeur qui tourne selon %rpm, pompe + circuit animés en distribution,
+vanne en cours avec contrôle/consigne. Rafraîchi en place (2.44.1).
+Drive « Disk_Exafeeder » (01/10) : www/index.html = web-app Asserva de
+Mega-feeder, SOAP POST /soap/IExafeeder sur le PC (port 8080) : GetSynoptique
+(EtatAutomate, NumSequence, Numservice, PoidCuve1, Alarme), ListeCycleEffectueGetList,
+FicheVanneGetConsigne/GetControle, ConsigneRapideGetList ; écritures
+(FicheVannePutConsigne, AcquitterAlarme, EntreeSortieValidation) à NE PAS appeler.

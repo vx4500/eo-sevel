@@ -14,6 +14,56 @@
 
 {% if etat %}
 <section class="card" id="soupe-direct"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
+{% set cuve_max = 1500 %}{% set niveau = [[(etat.poids or 0) / cuve_max, 0]|max, 1]|min %}{% set dosage = etat.phase in [1, 7, 31, 49] %}{% set circuit = etat.phase in [15, 23, 24, 25, 26, 27, 28, 29, 35, 45] %}{% set alerte = etat.phase == 7 %}
+<style>
+.syn{width:100%;max-width:760px;height:auto;display:block;margin:0 auto 14px}
+.syn text{font-family:inherit;fill:var(--text,#1c2420)}
+.syn .muet{fill:#8a948e}
+.syn .tube{fill:none;stroke:#b9c2bc;stroke-width:9;stroke-linecap:round}
+.syn .tube.on{stroke:#d98b52}
+.syn .flux{fill:none;stroke:#fff;stroke-width:3;stroke-dasharray:8 10;opacity:.0}
+.syn .flux.on{opacity:.9;animation:syn-flux .7s linear infinite}
+@keyframes syn-flux{to{stroke-dashoffset:-18}}
+.syn .pales{transform-origin:200px 214px;transform-box:view-box}
+.syn .pales.on{animation:syn-tourne var(--duree,1.2s) linear infinite}
+@keyframes syn-tourne{to{transform:rotate(360deg)}}
+.syn .pompe.on circle{fill:#d98b52}
+@media (prefers-reduced-motion:reduce){.syn .flux.on,.syn .pales.on{animation:none}}
+</style>
+<svg class="syn" viewBox="0 0 760 330" role="img" aria-label="Synoptique de la machine à soupe : {{ etat.libelle }}, cuve {{ etat.poids }} kg">
+  <!-- bandeau de phase -->
+  <rect x="0" y="0" width="760" height="34" rx="8" fill="{{ '#c0392b' if alerte else '#1f4d3a' }}"/>
+  <text x="14" y="23" style="fill:#fff;font-weight:700;font-size:16px">{{ etat.libelle }}</text>
+  <text x="746" y="23" text-anchor="end" style="fill:#fff;font-size:14px">Séquence {{ etat.sequence }} · formule {{ etat.formule }} · {{ etat.temps_min }} min</text>
+  <!-- arrivée produits / eau -->
+  <rect x="40" y="56" width="110" height="46" rx="8" fill="{{ '#fbeee2' if dosage else '#f1f3ef' }}" stroke="{{ '#d98b52' if dosage else '#c9cec9' }}"/>
+  <text x="95" y="76" text-anchor="middle" style="font-size:12px;font-weight:700">{% if etat.produit == 0 %}Eau{% else %}{{ etat.produit_nom or ('Produit ' ~ etat.produit) }}{% endif %}</text>
+  <text x="95" y="93" text-anchor="middle" class="muet" style="font-size:11px">{% if dosage %}doit {{ etat.doit }} · seuil {{ etat.seuil }}{% else %}dosage{% endif %}</text>
+  <path class="tube {{ 'on' if dosage }}" d="M150 79 H200 V112"/><path class="flux {{ 'on' if dosage }}" d="M150 79 H200 V112"/>
+  <!-- cuve -->
+  <clipPath id="syn-cuve"><path d="M130 112 H270 V240 L220 290 H180 L130 240 Z"/></clipPath>
+  <path d="M130 112 H270 V240 L220 290 H180 L130 240 Z" fill="#f6f7f3" stroke="#56625b" stroke-width="3"/>
+  <rect x="120" y="{{ 290 - 178 * niveau }}" width="160" height="{{ 178 * niveau + 2 }}" fill="#c9a26b" opacity=".75" clip-path="url(#syn-cuve)"/>
+  <!-- mélangeur -->
+  <line x1="200" y1="100" x2="200" y2="232" stroke="#56625b" stroke-width="4"/>
+  <rect x="184" y="92" width="32" height="14" rx="3" fill="#56625b"/>
+  <g class="pales {{ 'on' if (etat.rpm or 0) > 0 }}" style="--duree:{{ (60 / [etat.rpm or 1, 1]|max)|round(2) }}s"><rect x="168" y="211" width="64" height="6" rx="3" fill="#56625b"/><rect x="197" y="200" width="6" height="28" rx="3" fill="#56625b"/></g>
+  <text x="200" y="160" text-anchor="middle" style="font-size:24px;font-weight:800">{{ etat.poids }} kg</text>
+  <text x="200" y="180" text-anchor="middle" class="muet" style="font-size:12px">mélangeur {{ etat.rpm }} %rpm</text>
+  <!-- pompe et circuit -->
+  <path class="tube {{ 'on' if circuit }}" d="M200 290 V308 H330"/><path class="flux {{ 'on' if circuit }}" d="M200 290 V308 H330"/>
+  <g class="pompe {{ 'on' if circuit }}"><circle cx="350" cy="308" r="18" fill="#b9c2bc"/><text x="350" y="313" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#fff">P</text></g>
+  <path class="tube {{ 'on' if circuit }}" d="M368 308 H560 V150 H700"/><path class="flux {{ 'on' if circuit }}" d="M368 308 H560 V150 H700"/>
+  <text x="575" y="290" class="muet" style="font-size:12px">circuit</text>
+  <!-- vanne en cours -->
+  <rect x="592" y="60" width="150" height="74" rx="10" fill="{{ '#fbeee2' if etat.phase in [35, 45] else '#f1f3ef' }}" stroke="{{ '#d98b52' if etat.phase in [35, 45] else '#c9cec9' }}"/>
+  <text x="667" y="82" text-anchor="middle" style="font-size:13px;font-weight:700">{% if etat.vanne %}Vanne {{ etat.vanne }}{% else %}Aucune vanne{% endif %}</text>
+  <text x="667" y="102" text-anchor="middle" style="font-size:13px">{{ etat.controle }} / {{ etat.consigne }} kg</text>
+  <rect x="608" y="112" width="118" height="8" rx="4" fill="#dfe3dd"/>
+  <rect x="608" y="112" width="{{ (118 * ([[(etat.controle or 0) / ([etat.consigne or 0, 0.1]|max), 0]|max, 1]|min))|round(1) }}" height="8" rx="4" fill="#d98b52"/>
+  <text x="667" y="174" text-anchor="middle" class="muet" style="font-size:12px">débit {{ etat.debit }} · passage {{ etat.passage }}</text>
+  <text x="667" y="196" text-anchor="middle" style="font-size:13px;font-weight:700">Distribué : {{ etat.cumul }} kg</text>
+</svg>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
   <div><small>Phase</small><br><b style="font-size:1.3em{% if etat.phase == 7 %};color:#c0392b{% endif %}">{{ etat.libelle }}</b></div>
   <div><small>Poids cuve</small><br><b style="font-size:1.3em">{{ etat.poids }} kg</b></div>
