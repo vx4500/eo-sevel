@@ -28,7 +28,7 @@ const CATEGORIES: [Categorie; 7] = [
     Categorie {
         code: "truie_ia",
         libelle: "Truies à l’IA",
-        reference: "J0 = sevrage",
+        reference: "J0 = insémination",
         tableau: TRUIES,
     },
     Categorie {
@@ -114,6 +114,21 @@ fn trous(lignes: &[(i64, i64)], fin: Option<i64>) -> Vec<(i64, i64)> {
     sortie
 }
 
+fn messages_trous(bornes: &[(i64, i64)], attendue: Option<i64>) -> Vec<String> {
+    trous(bornes, attendue)
+        .into_iter()
+        .map(|(debut, fin)| {
+            if Some(fin) == attendue && debut > 0 {
+                format!(
+                    "Rien de prévu de J{debut} à J{fin} (fin de période attendue d’après la conduite)"
+                )
+            } else {
+                format!("Rien de prévu {}", if debut == fin { format!("le J{debut}") } else { format!("de J{debut} à J{fin}") })
+            }
+        })
+        .collect()
+}
+
 pub(super) fn grouper(plans: &[Value], c: BandSchedule) -> Vec<Value> {
     let mut codes: Vec<String> = plans
         .iter()
@@ -180,18 +195,7 @@ pub(super) fn grouper(plans: &[Value], c: BandSchedule) -> Vec<Value> {
                     ligne
                 })
                 .collect();
-            let alertes: Vec<String> = trous(&bornes, attendue)
-                .into_iter()
-                .map(|(debut, fin)| {
-                    if Some(fin) == attendue && debut > 0 {
-                        format!(
-                            "Rien de prévu de J{debut} à J{fin} (fin de période attendue d’après la conduite)"
-                        )
-                    } else {
-                        format!("Rien de prévu {}", if debut == fin { format!("le J{debut}") } else { format!("de J{debut} à J{fin}") })
-                    }
-                })
-                .collect();
+            let alertes = messages_trous(&bornes, attendue);
             let reperes: Vec<Value> = (0..=(echelle as i64))
                 .step_by(if echelle > 120.0 { 28 } else if echelle > 40.0 { 14 } else { 7 })
                 .map(|j| json!({"jour": j, "gauche": (100.0 * j as f64 / echelle * 10.0).round() / 10.0}))
@@ -243,49 +247,86 @@ pub(super) fn tableaux(plans: &[Value], c: BandSchedule) -> Vec<Value> {
         .collect()
 }
 
-/// Met bout à bout les stades d'un même animal sur une seule frise : chaque
-/// stade garde son jour 0, placé à la suite de la fin du stade précédent.
+/// Met bout à bout les stades d'un même animal sur une seule frise. L'IA et
+/// la gestation comptent leurs jours depuis la même insémination : elles
+/// partagent le même J0 (IA J0 à J20, gestation J21 à J115 par exemple).
 fn fusionner(libelle: &str, plans: &[Value]) -> Value {
+    let axe = |g: &Value| match g["code"].as_str().unwrap_or_default() {
+        "truie_ia" | "truie_gestante" => "insemination".to_string(),
+        code => code.to_string(),
+    };
+    let mut troncons: Vec<Vec<&Value>> = Vec::new();
+    for g in plans {
+        match troncons.last_mut() {
+            Some(t) if axe(t[0]) == axe(g) => t.push(g),
+            _ => troncons.push(vec![g]),
+        }
+    }
     let mut depart = 0_i64;
     let mut stades: Vec<(String, String, i64, i64)> = Vec::new();
+    let mut durees: Vec<(i64, i64)> = Vec::new();
     let mut vides: Vec<String> = Vec::new();
     let mut lignes: Vec<(i64, i64, String, Value)> = Vec::new();
     let mut alertes: Vec<String> = Vec::new();
-    for g in plans {
-        let nom = g["libelle"].as_str().unwrap_or_default().to_string();
-        let du_stade = g["lignes"].as_array().cloned().unwrap_or_default();
-        let bornes: Vec<(i64, i64)> = du_stade
-            .iter()
-            .map(|p| {
-                let debut = p["jour_debut"].as_i64().unwrap_or(0);
-                (debut, p["jour_fin"].as_i64().unwrap_or(debut).max(debut))
-            })
-            .collect();
-        let Some(dernier) = bornes
-            .iter()
-            .map(|(_, f)| *f)
-            .chain(g["fin_attendue"].as_i64())
-            .max()
-        else {
-            vides.push(nom);
+    for troncon in troncons {
+        let mut etiquettes: Vec<(String, String, i64)> = Vec::new();
+        let mut du_troncon: Vec<(i64, i64, String, Value)> = Vec::new();
+        let mut attendue: Option<i64> = None;
+        let mut couvert = -1_i64;
+        for g in troncon {
+            let nom = g["libelle"].as_str().unwrap_or_default().to_string();
+            let du_stade = g["lignes"].as_array().cloned().unwrap_or_default();
+            let fin_stade = g["fin_attendue"].as_i64();
+            if du_stade.is_empty() && fin_stade.is_none() {
+                vides.push(nom);
+                continue;
+            }
+            let bornes: Vec<(i64, i64)> = du_stade
+                .iter()
+                .map(|p| {
+                    let debut = p["jour_debut"].as_i64().unwrap_or(0);
+                    (debut, p["jour_fin"].as_i64().unwrap_or(debut).max(debut))
+                })
+                .collect();
+            let debut_stade = if etiquettes.is_empty() {
+                0
+            } else {
+                bornes.iter().map(|b| b.0).min().unwrap_or(couvert + 1)
+            };
+            let reference = g["reference"].as_str().unwrap_or_default().to_string();
+            etiquettes.push((nom.clone(), reference, debut_stade));
+            couvert = bornes.iter().map(|b| b.1).fold(couvert, i64::max);
+            attendue = attendue.max(fin_stade);
+            for (p, (debut, fin)) in du_stade.into_iter().zip(bornes) {
+                du_troncon.push((debut, fin, nom.clone(), p));
+            }
+        }
+        if etiquettes.is_empty() {
             continue;
-        };
-        for (p, (debut, fin)) in du_stade.into_iter().zip(bornes) {
-            lignes.push((depart + debut, depart + fin, nom.clone(), p));
         }
-        for a in g["alertes"].as_array().into_iter().flatten() {
-            alertes.push(format!("{nom} : {}", a.as_str().unwrap_or_default()));
+        du_troncon.sort_by_key(|l| (l.0, l.1));
+        let bornes: Vec<(i64, i64)> = du_troncon.iter().map(|l| (l.0, l.1)).collect();
+        let noms: Vec<&str> = etiquettes.iter().map(|e| e.0.as_str()).collect();
+        for message in messages_trous(&bornes, attendue) {
+            alertes.push(format!("{} : {message}", noms.join(" et ")));
         }
-        let reference = g["reference"].as_str().unwrap_or_default().to_string();
-        stades.push((nom, reference, depart, dernier + 1));
-        depart += dernier + 1;
+        let duree = couvert.max(attendue.unwrap_or(0)) + 1;
+        for (i, (nom, reference, debut)) in etiquettes.iter().enumerate() {
+            let suivant = etiquettes.get(i + 1).map(|e| e.2).unwrap_or(duree);
+            stades.push((nom.clone(), reference.clone(), depart + debut, (suivant - debut).max(1)));
+        }
+        for (debut, fin, nom, p) in du_troncon {
+            lignes.push((depart + debut, depart + fin, nom, p));
+        }
+        durees.push((depart, duree));
+        depart += duree;
     }
     let echelle = depart.max(1) as f64;
     let pct = |v: i64| (100.0 * v as f64 / echelle * 10.0).round() / 10.0;
     let pas: i64 = if echelle > 120.0 { 28 } else if echelle > 40.0 { 14 } else { 7 };
-    let reperes: Vec<Value> = stades
+    let reperes: Vec<Value> = durees
         .iter()
-        .flat_map(|(_, _, debut, duree)| {
+        .flat_map(|(debut, duree)| {
             (0..*duree)
                 .step_by(pas as usize)
                 .filter(move |j| *j == 0 || duree - j >= pas / 2)
@@ -315,7 +356,7 @@ fn fusionner(libelle: &str, plans: &[Value]) -> Value {
     json!({
         "code": "",
         "libelle": libelle,
-        "reference": "stades à la suite, chacun avec son J0",
+        "reference": "cycle complet : IA et gestation comptées depuis l’insémination",
         "fin_attendue": null,
         "attendu_gauche": null,
         "lignes": lignes,
@@ -374,6 +415,17 @@ mod tests {
         assert_eq!(cycle["vides"].as_array().unwrap().len(), 2);
         assert_eq!(cycle["lignes"][0]["stade"], "Truies gestantes");
         assert_eq!(cycle["stades"][1]["libelle"], "Truies allaitantes");
+        // IA et gestation partagent le J0 de l'insémination : pas de trou J0-J20.
+        let plans = vec![
+            json!({"id":1,"categorie":"truie_ia","jour_debut":0,"jour_fin":20,"aliment":"I"}),
+            json!({"id":2,"categorie":"truie_gestante","jour_debut":21,"jour_fin":115,"aliment":"G"}),
+            json!({"id":3,"categorie":"truie_allaitante","jour_debut":0,"jour_fin":28,"aliment":"L"}),
+        ];
+        let tableaux = super::tableaux(&plans, BandSchedule::default());
+        let cycle = &tableaux[0]["plans"][0];
+        assert!(cycle["alertes"].as_array().unwrap().is_empty());
+        assert_eq!(cycle["stades"].as_array().unwrap().len(), 3);
+        assert_eq!(cycle["lignes"][1]["gauche"], json!(14.5));
         assert_eq!(tableaux[1]["libelle"], "Porcelets et porcs");
         assert_eq!(categories_sans_plan(&plans).len(), 2);
         // Gestantes : attendu jusqu'à l'entrée en maternité (J109).

@@ -275,3 +275,8 @@ porcelets » : cochettes → IA → gestation → maternité sont mis bout à bo
 une seule frise et une seule liste (plans_aliment::fusionner). Chaque stade
 garde son J0 ; un stade sans aliment ni durée connue n’apparaît qu’une fois
 qu’on y ajoute un aliment.
+
+### 2026-10-01 — claude — 2.47.4 plans d’alimentation : IA et gestation sur le même J0
+Précision d’Emmanuel : l’aliment « IA » va de J0 à J20 et l’aliment gestante
+de J21 à J115, comptés depuis la même insémination. truie_ia et truie_gestante
+partagent donc un seul tronçon de la frise (plus de fausse alerte J0 à J20).
