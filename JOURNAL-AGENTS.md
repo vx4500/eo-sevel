@@ -280,3 +280,12 @@ qu’on y ajoute un aliment.
 Précision d’Emmanuel : l’aliment « IA » va de J0 à J20 et l’aliment gestante
 de J21 à J115, comptés depuis la même insémination. truie_ia et truie_gestante
 partagent donc un seul tronçon de la frise (plus de fausse alerte J0 à J20).
+
+### 2026-10-02 — claude — 2.47.5 import de la redevance DanBred
+Facture DanBred « Redevance autorenouvellement » (141.12.pdf) : le pied de page
+« Total animaux reproducteurs français livrés… » l’envoyait vers l’import
+génétique Cooperl (aperçu « Cochettes / reproducteurs », référence et date
+absentes). Elle passe désormais par l’import semence ; lopdf sort une case du
+tableau par ligne, d’où `redevance_ht` (dernier nombre après le libellé).
+Attention : `cargo test --release` dépasse 2 Go ici (oom-kill) — tests en
+profil debug, plafond 3 Go.

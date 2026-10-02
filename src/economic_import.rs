@@ -194,11 +194,15 @@ pub fn parse_document(text: &str) -> Result<ImportDocument, String> {
         .replace(['\u{2212}', '\u{2013}', '\u{2014}'], "-")
         .replace('\u{00a0}', " ");
     let upper = normalized.to_uppercase();
-    if (upper.contains("AUTORENOUVELLEMENT") || is_semence(&upper))
-        && !upper
-            .split_whitespace()
-            .collect::<String>()
-            .contains("ANIMAUXREPRODUCTEURS")
+    // Le pied de page DanBred (« Total animaux reproducteurs français livrés… »)
+    // figure aussi sur la redevance d'autorenouvellement, qui ne contient
+    // pourtant aucun animal : la redevance reste une facture de semence.
+    if upper.contains("AUTORENOUVELLEMENT")
+        || (is_semence(&upper)
+            && !upper
+                .split_whitespace()
+                .collect::<String>()
+                .contains("ANIMAUXREPRODUCTEURS"))
     {
         return parse_semence(&normalized);
     }
@@ -517,7 +521,9 @@ fn parse_semence(text: &str) -> Result<ImportDocument, String> {
     } else {
         "Semence"
     };
-    let reference = capture(text, r"(?i)\b(FAC[0-9A-Z-]+)\b", 1)
+    // « FAC » doit être suivi d'un chiffre : sinon le mot FACTURE de l'en-tête
+    // était pris pour la référence.
+    let reference = capture(text, r"(?i)\b(FAC[0-9][0-9A-Z-]*)\b", 1)
         .or_else(|| capture(text, r"(?i)NUM[ÉE]RO\s+DE\s+FACTURE\s+([A-Z0-9-]+)", 1));
     let date = capture(
         text,
@@ -533,17 +539,17 @@ fn parse_semence(text: &str) -> Result<ImportDocument, String> {
     );
     let fee = upper.contains("AUTORENOUVELLEMENT");
     if fee {
-        for line in text
-            .lines()
-            .filter(|line| line.to_uppercase().contains("AUTORENOUVELLEMENT"))
-        {
-            if let Some(value) = last_amount(line) {
-                ht = Some(value.abs());
-            }
+        if let Some(value) = redevance_ht(text) {
+            ht = Some(value);
         }
         if ttc.is_none() {
-            ttc = capture(text, r"(?i)EUR\s+([0-9][0-9 .\u{202f}]*,[0-9]{2})", 1)
-                .and_then(|value| number(&value));
+            // Après « EUR » viennent la TVA puis le TTC : on garde le dernier.
+            ttc = capture(
+                text,
+                r"(?i)EUR\s+((?:[0-9]+,[0-9]{2}[ \t\r\n]*)+)",
+                1,
+            )
+            .and_then(|run| run.split_whitespace().next_back().and_then(number));
         }
     }
     // Exception autorisée uniquement lorsque la facture indique elle-même
@@ -606,6 +612,39 @@ fn parse_semence(text: &str) -> Result<ImportDocument, String> {
         }),
     };
     finish_document("semence", vec![line], reference, date)
+}
+
+/// Montant HT d'une ligne « Redevance autorenouvellement ». Selon l'extraction,
+/// quantité, prix unitaire et montant suivent le libellé sur la même ligne
+/// (« 84   1,40   117,60 ») ou occupent chacun la leur : dans les deux cas le
+/// montant est le dernier nombre de la série.
+fn redevance_ht(text: &str) -> Option<f64> {
+    let amount = Regex::new(r"[0-9]{1,3}(?:[ .\u{202f}][0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}").ok()?;
+    let numeric = Regex::new(r"^[0-9][0-9 .,\u{202f}]*$").ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    let mut total = None;
+    for (index, line) in lines.iter().enumerate() {
+        if !line.to_uppercase().contains("AUTORENOUVELLEMENT") {
+            continue;
+        }
+        let mut found = amount.find_iter(line).last().map(|m| m.as_str());
+        if found.is_none() {
+            for next in lines[index + 1..]
+                .iter()
+                .map(|next| next.trim())
+                .take_while(|next| numeric.is_match(next))
+                .take(4)
+            {
+                if let Some(m) = amount.find_iter(next).last() {
+                    found = Some(m.as_str());
+                }
+            }
+        }
+        if let Some(value) = found.and_then(number) {
+            total = Some(total.unwrap_or(0.0) + value.abs());
+        }
+    }
+    total
 }
 
 fn parse_genetique(text: &str) -> Result<ImportDocument, String> {
@@ -1699,6 +1738,32 @@ mod tests {
         };
         assert_eq!(parsed.lines[0].amount, Some(-1392.5));
         assert!(parsed.lines[0].label.starts_with("AVOIR"));
+    }
+
+    #[test]
+    fn redevance_danbred_nest_pas_prise_pour_une_facture_genetique() {
+        let text = "FACTURE\nDANBRED\nNuméro de facture 106674\nDate 01/10/26\nLivraison 01/10/26\nDate d'échéance 31/10/26\nG61100 Redevance autorenouvellement 84 1,40 117,60\nTotal animaux reproducteurs français livrés rendu France: 0\nTotal HT 20% VAT Devise Montant TTC à payer\n117,60 23,52 EUR 141,12";
+        let Ok(parsed) = parse_document(text) else {
+            panic!("la redevance DanBred doit être analysée");
+        };
+        assert_eq!(parsed.document_type, "semence");
+        let line = &parsed.lines[0];
+        assert_eq!(line.reference.as_deref(), Some("106674"));
+        assert_eq!(line.date.as_deref(), Some("2026-10-01"));
+        assert_eq!(line.amount, Some(117.6));
+        assert_eq!(line.details["montant_ttc"], 141.12);
+
+        // Texte réellement extrait du PDF par l'application : une case du
+        // tableau par ligne.
+        let text = "Numéro de page\nNuméro de facture\n106674\n01/10/26\nLivraison\nDate\nDate d'échéance\nFACTURE \n1\n31/10/26\n01/10/26\nREDEVANCE \nPurpose Kode\nMontant HT\n01.10.26 - 31.10.26\nG61100 \nRedevance autorenouvellement\n84\n1,40\n117,60 \nTVA % \nBase HT\n20 %\n117,60 \n23,52\n117,60 \nTotal animaux reproducteurs français livrés rendu France: 0 \nfacturation@danbred.com\nDevise\nEUR\n23,52\n141,12\nMontant TTC à payer\nTotal HT \n20% VAT \n117,60 \n";
+        let Ok(parsed) = parse_document(text) else {
+            panic!("la redevance DanBred extraite case par case doit être analysée");
+        };
+        let line = &parsed.lines[0];
+        assert_eq!(line.reference.as_deref(), Some("106674"));
+        assert_eq!(line.date.as_deref(), Some("2026-10-01"));
+        assert_eq!(line.amount, Some(117.6));
+        assert_eq!(line.details["montant_ttc"], 141.12);
     }
 
     #[test]
