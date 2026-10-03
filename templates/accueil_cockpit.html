@@ -6,11 +6,9 @@
 {% include "accueil_kpis.html" %}
 <div class="acc-tete"><div><h2>Ambiance des salles</h2></div><a href="/ambiance">Toutes les salles</a></div>
 <div class="acc-grille acc-salles">{% for s in salles_suivies %}{% include "accueil_salle.html" %}{% else %}<p class="acc-vide">Aucune salle suivie par la régulation.</p>{% endfor %}{% include "accueil_soupe.html" %}</div>
-<div class="acc-grille" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));align-items:start">
-<section class="acc-carte" style="grid-column:span 2;display:flex;flex-direction:column;gap:12px;min-width:0"><div class="acc-tete"><div><h2>Conduite des bandes</h2></div><a href="/planning">Planning complet</a></div>{% include "accueil_frise.html" %}</section>
-<section class="acc-carte"><h2 style="margin-bottom:8px">Prochaines interventions</h2>{% include "accueil_interventions.html" %}</section>
-</div>
+<section class="acc-carte" style="display:flex;flex-direction:column;gap:12px;min-width:0"><div class="acc-tete"><div><h2>Conduite des bandes</h2></div><a href="/planning">Planning complet</a></div>{% set etiq = 190 %}{% set haut = 54 %}{% include "accueil_frise.html" %}</section>
 <div class="acc-grille" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start">
+<section class="acc-carte"><h2 style="margin-bottom:8px">Prochaines interventions</h2>{% include "accueil_interventions.html" %}</section>
 <section class="acc-carte acc-taches"><h2 style="margin-bottom:8px">À faire</h2>{% for t in taches %}<label><input type="checkbox" disabled> <span>{{ t.titre }}{% if t.echeance %} · <b>{{ t.echeance|date_fr }}</b>{% endif %}{% if t.bande_code %} · {{ t.bande_code }}{% endif %}</span></label>{% else %}<p class="acc-vide">Rien d’enregistré. <a href="/conduite/semaine">Travaux de la semaine</a></p>{% endfor %}
 {% if inseminations %}<p style="margin:10px 0 0"><b>{{ inseminations|length }}</b> truie(s) en chaleur à inséminer · <a href="/inseminations">Saisir</a></p>{% endif %}</section>
 <section class="acc-carte"><h2 style="margin-bottom:8px">Dernières ventes</h2>{% if dernieres_ventes %}<ul class="acc-liste">{% for v in dernieres_ventes|reverse %}{% if loop.index <= 5 %}<li style="display:flex;justify-content:space-between;padding:9px 0"><span>{{ v.date|date_fr }} · {{ v.nb_porcs or '—' }} porcs</span><b>{% if v.prix_ht_kg is not none %}{{ v.prix_ht_kg|decimal3 }} €/kg{% endif %}</b></li>{% endif %}{% endfor %}</ul>{% else %}<p class="acc-vide">Aucune vente.</p>{% endif %}</section>

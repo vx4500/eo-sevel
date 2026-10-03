@@ -69,6 +69,25 @@ fn planning(bandes: &mut [Value]) -> Value {
     json!({"mois": mois, "aujourdhui": format!("{:.2}", pct(today))})
 }
 
+/// Frise des bandes actives pour une page qui n'a pas le contexte du tableau
+/// de bord (Places et flux) : mêmes vues de bande, mêmes segments.
+pub(super) async fn frise_bandes(pool: &SqlitePool) -> AppResult<(Value, Vec<Value>)> {
+    let schedule = load_band_schedule(pool).await?;
+    let mut bandes = Vec::new();
+    for band in sqlx::query_as::<_, Bande>(BAND_SELECT_ACTIVE).fetch_all(pool).await? {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie WHERE bande_code=? AND reformee=0")
+            .bind(&band.code)
+            .fetch_one(pool)
+            .await?;
+        let flux = band_flow_summary(pool, &band).await?;
+        let actual_stage = actual_band_stage(pool, &band).await?;
+        let reproduction = band_reproduction_stats(pool, &band).await?;
+        bandes.push(serde_json::to_value(band_view(&band, count, schedule, flux, actual_stage, reproduction)).unwrap_or_default());
+    }
+    let frise = planning(&mut bandes);
+    Ok((frise, bandes))
+}
+
 pub(super) async fn enrichir(pool: &SqlitePool, ctx: &mut Map<String, Value>, mut bandes: Vec<Value>) -> AppResult<()> {
     // Salles suivies par la régulation, avec les animaux présents d'après les
     // emplacements des bandes (mêmes calculs que le tableau classique).

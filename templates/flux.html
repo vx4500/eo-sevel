@@ -4,6 +4,9 @@
 <h1>Places et flux</h1>
 <p class="note">Où sont les animaux, combien de places restent, et ce qui arrive dans les prochaines semaines.</p>
 
+<section class="cd-section"><h2>Conduite des bandes <small>étapes de chaque bande, passées et à venir — <a href="/planning">Planning complet</a></small></h2>
+{% include "accueil_style.html" %}<div class="acc" style="gap:12px">{% set bandes = frise_bandes %}{% set etiq = 190 %}{% set haut = 50 %}{% include "accueil_frise.html" %}</div></section>
+
 {% if alertes %}<section class="cd-section"><h2>Risques de débordement</h2>
 <ul class="cd-alertes">{% for a in alertes %}<li class="{{ a.niveau }}">{{ a.message }}</li>{% endfor %}</ul></section>{% endif %}
 

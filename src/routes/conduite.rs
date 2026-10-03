@@ -1295,6 +1295,9 @@ pub(super) async fn flux(
                 .collect(),
         ),
     );
+    let (frise, frise_bandes) = super::accueil::frise_bandes(pool).await?;
+    ctx.insert("frise".into(), frise);
+    ctx.insert("frise_bandes".into(), Value::Array(frise_bandes));
     render(&state, "flux.html", Value::Object(ctx))
 }
 
@@ -1608,6 +1611,24 @@ pub(super) async fn analyse(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn places_et_flux_affiche_la_frise_des_bandes() {
+        let state = super::super::documents::tests::state().await;
+        let mb = (Local::now().date_naive() - Duration::days(40)).to_string();
+        sqlx::query("INSERT INTO bande(code,date_mb,active) VALUES('B9.01',?,1)")
+            .bind(&mb)
+            .execute(&state.pool)
+            .await
+            .unwrap();
+        let Html(page) = flux(State(state), Extension(super::super::documents::tests::session()))
+            .await
+            .unwrap();
+        assert!(page.contains("Conduite des bandes"));
+        assert!(page.contains("class=\"acc-frise\""));
+        assert!(page.contains("B9.01</a>"));
+        assert!(page.contains("seg maternite"));
+    }
 
     #[test]
     fn groupe_de_bande() {

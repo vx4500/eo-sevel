@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.47.5** —
+Version actuelle : **2.48.0** —
+
+### Version 2.48.0 — Frise des bandes agrandie et dans Places et flux
+
+Version Rust 2.48.0 : accueil « cockpit » : la carte « Conduite des bandes » prend toute la largeur avec des lignes plus hautes (étiquettes 190 px, lignes 54 px) ; « Prochaines interventions » passe dans la rangée suivante. Places et flux (/flux) : même frise en tête de page (`accueil::frise_bandes`, mêmes vues de bande et segments que l'accueil, gabarit `accueil_frise.html`). Le libellé « AUJOURD’HUI » ne chevauche plus le nom du mois.
 
 ### Versions 2.41.1 à 2.47.5 — résumé
 
