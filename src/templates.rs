@@ -109,6 +109,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         include_str!("../templates/ambiance_ipx.html"),
     )?;
     env.add_template("salles.html", include_str!("../templates/salles.html"))?;
+    env.add_template("departs.html", include_str!("../templates/departs.html"))?;
     env.add_template(
         "zigbee_electricite.html",
         include_str!("../templates/zigbee_electricite.html"),

@@ -2,6 +2,12 @@
 {% include "salles_style.html" %}
 <h1 style="margin-bottom:4px">🏠 Mes salles</h1>
 <p class="muted" style="margin-top:0">Tout ce que le logiciel sait de chaque salle : animaux, bande, ambiance, lumière, alertes. Cliquez sur une salle pour sa fiche complète. Les informations s'ajoutent d'elles-mêmes dès qu'un élément est relié à la salle.</p>
+<section class="card" style="margin-bottom:14px">
+  <h2 style="margin-top:0">🚚 Départs prévus <a class="ghost" href="/departs" style="float:right;font-size:.9rem">Prévoir un départ</a></h2>
+  {% for d in departs %}
+  <div>{% if d.a_confirmer %}<a href="/departs" style="color:#b3261e;font-weight:600">⚠ {{ d.quand }} — {{ d.nombre }} porcs : à confirmer (salles prélevées)</a>{% else %}<b>{{ d.quand }}</b> — {{ d.nombre }} porcs{% if d.note %} · {{ d.note }}{% endif %}{% endif %}</div>
+  {% else %}<p class="muted" style="margin:0">Aucun départ prévu.</p>{% endfor %}
+</section>
 {% for s in salles %}
 {% if loop.first or s.stade != loop.previtem.stade %}{% if not loop.first %}</div>{% endif %}
 <h2 class="sl-stade">{{ s.stade }}</h2>

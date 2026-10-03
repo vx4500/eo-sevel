@@ -299,6 +299,7 @@ pub(super) async fn liste(
     let salles: Vec<Value> = salles.into_iter().map(|(_, s)| s).collect();
     let mut contexte = context(&session);
     contexte.insert("salles".into(), Value::Array(salles));
+    contexte.insert("departs".into(), Value::Array(super::departs::a_venir(&state.pool).await?));
     render(&state, "salles.html", Value::Object(contexte))
 }
 

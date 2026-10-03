@@ -32,6 +32,7 @@ mod cameras;
 mod conduite;
 mod eclairage;
 mod demo_portal;
+mod departs;
 pub(crate) mod documents;
 mod factures;
 mod factures_csv;
@@ -628,6 +629,10 @@ pub fn router(state: AppState) -> Router {
         .route("/sauvegarde/telecharger", get(sauvegarde_telecharger))
         .route("/structure", get(structure))
         .route("/salles", get(salles::liste))
+        .route("/departs", get(departs::page))
+        .route("/departs/nouveau", post(departs::creer))
+        .route("/departs/{id}/confirmer", post(departs::confirmer))
+        .route("/departs/{id}/supprimer", post(departs::supprimer))
         .route("/salles/{id}", get(salles::fiche))
         .route("/salles/{id}/reglages", post(salles::reglages))
         .route("/structure/site", post(structure_site))

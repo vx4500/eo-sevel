@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% block title %}Départs prévus — EO_Sevel{% endblock %}{% block content %}
+<p><a href="/salles">← Mes salles</a></p>
+<h1>🚚 Départs prévus</h1>
+<p class="muted">Annoncez un départ à l'avance (date, heure, nombre de porcs). Une fois l'heure passée, indiquez combien de porcs ont été pris dans chaque salle : les sorties sont enregistrées et l'effectif des salles est mis à jour.</p>
+
+{% for d in departs %}
+<section class="card"{% if d.a_confirmer %} style="border-left:4px solid #b8692b"{% endif %}>
+  <h2>{{ d.quand }} — {{ d.nombre }} porcs{% if d.note %} <small class="muted">· {{ d.note }}</small>{% endif %}</h2>
+  {% if d.a_confirmer %}
+  <p><b>Le départ est passé : combien de porcs sont partis de chaque salle ?</b></p>
+  <form method="post" action="/departs/{{ d.id }}/confirmer">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+    {% for s in salles %}
+      <label>{{ s.nom }} <small class="muted">({{ s.porcs }} présents)</small>
+        <input type="number" name="salle_{{ s.id }}" min="0" max="{{ s.porcs }}" placeholder="0" data-depart="{{ d.id }}"></label>
+    {% endfor %}
+    </div>
+    <p>Total saisi : <b id="total-{{ d.id }}">0</b> / {{ d.nombre }} annoncés</p>
+    <button type="submit">Confirmer le départ</button>
+  </form>
+  {% else %}
+  <p class="muted">Les salles seront demandées après l'heure du départ.</p>
+  {% endif %}
+  <form method="post" action="/departs/{{ d.id }}/supprimer" onsubmit="return confirm('Annuler ce départ ?')" style="margin-top:6px">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <button type="submit" class="ghost">Annuler ce départ</button>
+  </form>
+</section>
+{% endfor %}
+
+<section class="card">
+  <h2>Prévoir un départ</h2>
+  <form method="post" action="/departs/nouveau" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <label>Date et heure<input type="datetime-local" name="date_heure" required></label>
+    <label>Nombre de porcs<input type="number" name="nombre" min="1" required></label>
+    <label>Note (facultatif)<input type="text" name="note" placeholder="abattoir, transporteur…"></label>
+    <button type="submit">Ajouter</button>
+  </form>
+</section>
+
+{% if faits %}
+<section class="card">
+  <h2>Derniers départs confirmés</h2>
+  <ul>{% for f in faits %}<li>{{ f.quand }} : {{ f.reel }} porcs partis ({{ f.nombre }} annoncés){% if f.note %} · {{ f.note }}{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+<script>
+document.querySelectorAll('[data-depart]').forEach(function (champ) {
+  champ.addEventListener('input', function () {
+    var id = champ.dataset.depart, t = 0;
+    document.querySelectorAll('[data-depart="' + id + '"]').forEach(function (c) { t += parseInt(c.value || 0, 10); });
+    document.getElementById('total-' + id).textContent = t;
+  });
+});
+</script>
+{% endblock %}
