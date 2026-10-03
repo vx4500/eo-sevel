@@ -14368,7 +14368,8 @@ mod gttt_tests {
             .execute(&pool)
             .await?;
         let alerts = farm_alerts(&pool).await?;
-        assert_eq!(alerts["total"], 7);
+        // 7 + les 2 truies actives sevrées le 29/01 sans IA depuis (improductives).
+        assert_eq!(alerts["total"], 9);
         let labels = alerts["alertes"]
             .as_array()
             .into_iter()
@@ -14378,6 +14379,7 @@ mod gttt_tests {
         assert!(labels.contains(&"Relevés d’eau attendus"));
         assert!(labels.contains(&"Relevés d’électricité attendus"));
         assert!(labels.contains(&"Cases avec un effectif incohérent"));
+        assert!(labels.contains(&"Truies improductives depuis plus de 2 mois : à déclarer stériles"));
         Ok(())
     }
 

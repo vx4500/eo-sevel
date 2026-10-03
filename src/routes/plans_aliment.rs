@@ -415,17 +415,6 @@ mod tests {
         assert_eq!(cycle["vides"].as_array().unwrap().len(), 2);
         assert_eq!(cycle["lignes"][0]["stade"], "Truies gestantes");
         assert_eq!(cycle["stades"][1]["libelle"], "Truies allaitantes");
-        // IA et gestation partagent le J0 de l'insémination : pas de trou J0-J20.
-        let plans = vec![
-            json!({"id":1,"categorie":"truie_ia","jour_debut":0,"jour_fin":20,"aliment":"I"}),
-            json!({"id":2,"categorie":"truie_gestante","jour_debut":21,"jour_fin":115,"aliment":"G"}),
-            json!({"id":3,"categorie":"truie_allaitante","jour_debut":0,"jour_fin":28,"aliment":"L"}),
-        ];
-        let tableaux = super::tableaux(&plans, BandSchedule::default());
-        let cycle = &tableaux[0]["plans"][0];
-        assert!(cycle["alertes"].as_array().unwrap().is_empty());
-        assert_eq!(cycle["stades"].as_array().unwrap().len(), 3);
-        assert_eq!(cycle["lignes"][1]["gauche"], json!(14.5));
         assert_eq!(tableaux[1]["libelle"], "Porcelets et porcs");
         assert_eq!(categories_sans_plan(&plans).len(), 2);
         // Gestantes : attendu jusqu'à l'entrée en maternité (J109).
@@ -433,5 +422,18 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("J85 à J109"));
+        {
+            // IA et gestation partagent le J0 de l'insémination : pas de trou J0-J20.
+            let plans = vec![
+                json!({"id":1,"categorie":"truie_ia","jour_debut":0,"jour_fin":20,"aliment":"I"}),
+                json!({"id":2,"categorie":"truie_gestante","jour_debut":21,"jour_fin":115,"aliment":"G"}),
+                json!({"id":3,"categorie":"truie_allaitante","jour_debut":0,"jour_fin":28,"aliment":"L"}),
+            ];
+            let tableaux = super::tableaux(&plans, BandSchedule::default());
+            let cycle = &tableaux[0]["plans"][0];
+            assert!(cycle["alertes"].as_array().unwrap().is_empty());
+            assert_eq!(cycle["stades"].as_array().unwrap().len(), 3);
+            assert_eq!(cycle["lignes"][1]["gauche"], json!(14.5));
+        }
     }
 }

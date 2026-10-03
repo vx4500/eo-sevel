@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.41.0** —
+Version actuelle : **2.47.5** —
+
+### Versions 2.41.1 à 2.47.5 — résumé
+
+Version Rust 2.47.5 : ce fichier n'avait plus été mis à jour depuis 2.41.0. Le détail de chaque version de 2.41.1 à 2.47.5 (machine à soupe : pilotage et synoptique ; import de factures ; truies improductives ; pages d'accueil au choix ; plans d'alimentation ; redevance DanBred) est dans `git log` ; `templates/correctifs.html`, lui aussi arrêté à 2.39.3, a reçu une entrée récapitulative 2.47.5. `.github/workflows/rust.yml` (resté à 2.39.3) est resynchronisé. Les tests remis en état à cette occasion (schéma de test sans `inventairecase.dernier_transfert_id` ni `zigbee_demarrage_reglage`, assertions périmées) ne changent pas le comportement de l'application.
 
 ### Version 2.41.0 — Ventilation des salles vides
 

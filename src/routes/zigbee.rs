@@ -673,6 +673,7 @@ mod tests {
             include_str!("../../migrations/0007_ipx_points.sql"),
             include_str!("../../migrations/0016_eclairage.sql"),
             include_str!("../../migrations/0017_zigbee.sql"),
+            include_str!("../../migrations/0022_demarrages.sql"),
         ] {
             sqlx::raw_sql(sql).execute(&state.pool).await?;
         }

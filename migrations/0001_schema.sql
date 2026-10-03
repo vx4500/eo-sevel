@@ -829,7 +829,8 @@ CREATE TABLE IF NOT EXISTS inventairecase (
     nombre INTEGER NOT NULL,
     note TEXT,
     cree_par TEXT,
-    cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dernier_transfert_id INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS ix_inventairecase_case_date ON inventairecase(case_id,date);

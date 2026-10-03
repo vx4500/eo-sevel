@@ -181,7 +181,7 @@ fn version_225_affiche_les_flux_et_les_alertes_elevage() {
     assert!(routes.contains("Relevés d’électricité attendus"));
     assert!(base.contains("id=\"farm-alert-button\""));
     assert!(base.contains("fetch('/api/alertes-elevage'"));
-    assert!(dashboard.contains("Truies → verraterie"));
+    assert!(dashboard.contains("Truies en verraterie"));
     assert!(bands.contains("{{ l.flux.sevres }} sevrés"));
     assert!(band.contains("{% for vente in flux.ventes %}"));
 }
