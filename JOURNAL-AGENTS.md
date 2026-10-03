@@ -289,3 +289,15 @@ absentes). Elle passe désormais par l’import semence ; lopdf sort une case du
 tableau par ligne, d’où `redevance_ht` (dernier nombre après le libellé).
 Attention : `cargo test --release` dépasse 2 Go ici (oom-kill) — tests en
 profil debug, plafond 3 Go.
+
+### 2026-10-03 — claude — 2.48.0 / 2.48.1 déployées (+ tests remis au vert)
+Les 11 tests en échec depuis 2.39.1 venaient des bases de test (0001 seul :
+pas de `dernier_transfert_id`, pas de 0022) et d’assertions périmées ; la prod
+avait bien colonnes et tables. Une fois le binaire principal vert, cargo a
+enchaîné sur tests/presentation.rs, jamais exécuté depuis : Etat-projet,
+correctifs.html et rust.yml étaient restés à 2.41.0 / 2.39.3 → resynchronisés.
+Demandes d’Emmanuel : frise « Conduite des bandes » agrandie (cockpit, pleine
+largeur) et reprise dans Places et flux ; sur /equipements/soupe, « Repas des
+7 derniers jours » et « Journal » repliés par défaut. Binaire précédent :
+/var/backups/eo-sevel/eo-sevel_avant_2.48.1_20261003_151658 (= 2.47.5).
+target/debug/incremental (34 Go) supprimé, disque à 93 %.
