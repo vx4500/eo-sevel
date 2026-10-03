@@ -93,13 +93,13 @@
 {% else %}<p class="muted">Pas encore de synchronisation reçue : dans Exa-Feeder, lancez la mise à jour des données du PC depuis le contrôleur.</p>{% endif %}
 </section>
 
-<section class="card" id="soupe-repas"><h2>Repas des 7 derniers jours</h2>
+<details class="card" id="soupe-repas"><summary><b>Repas des 7 derniers jours</b></summary>
 <div class="rust-scroll"><table><thead><tr><th>Jour</th><th>Heure</th><th>Séquence</th><th>Formule</th><th>Vannes</th><th>Prévu (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>
 {% for t in totaux %}<tr><td>{{ t.jour|date_fr }}</td><td>{{ t.debut }} → {{ t.fin }}</td><td>{{ t.sequence }}</td><td>{{ t.formule }}</td><td>{{ t.vannes }}</td><td>{{ t.consigne }}</td><td>{{ t.distribue }}</td></tr>
 {% else %}<tr><td colspan="7" class="rust-empty">Aucune distribution enregistrée</td></tr>{% endfor %}
 </tbody></table></div>
 <p class="muted">« Prévu » : consigne de chaque vanne (tous passages confondus). « Distribué » : compteur de la machine, vanne par vanne.</p>
-</section>
+</details>
 
 <details class="card"><summary><b>Détail par vanne (hier et aujourd’hui)</b></summary>
 <div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Séquence</th><th>Formule</th><th>Passage</th><th>Vanne</th><th>Consigne (kg)</th><th>Distribué (kg)</th></tr></thead><tbody>
@@ -107,13 +107,13 @@
 {% else %}<tr><td colspan="7" class="rust-empty">—</td></tr>{% endfor %}
 </tbody></table></div></details>
 
-<section class="card" id="soupe-journal"><h2>Journal</h2>
+<details class="card" id="soupe-journal"><summary><b>Journal</b></summary>
 <div class="rust-scroll"><table><thead><tr><th>Heure</th><th>Événement</th></tr></thead><tbody>
 {% for e in evenements %}<tr><td>{{ e.heure }}</td><td{% if e.phase == 7 %} style="color:#c0392b;font-weight:bold"{% endif %}>{{ e.message }}</td></tr>
 {% else %}<tr><td colspan="2" class="rust-empty">—</td></tr>{% endfor %}
 </tbody></table></div>
 <p class="muted">Alertes SMS : « alerte dosage » dès qu’elle apparaît, et « plus de nouvelles » après 10 minutes sans trame (PC Mega-feeder, câble ou service arrêté).</p>
-</section>
+</details>
 
 {% if session.est_admin and jeton %}
 <details class="card"{% if not etat %} open{% endif %}><summary><b>Installer le service d’écoute sur l’hôte Proxmox</b></summary>
@@ -146,6 +146,8 @@
         ids.forEach(function (id) {
           var ancien = document.getElementById(id), nouveau = doc.getElementById(id);
           if (!ancien || !nouveau) { return; }
+          // Repas et Journal sont repliables : garder l'état choisi.
+          if (ancien.tagName === 'DETAILS' && nouveau.tagName === 'DETAILS') { nouveau.open = ancien.open; }
           ancien.querySelectorAll('details[id]').forEach(function (d) {
             var n = nouveau.querySelector('details#' + d.id); if (n) { n.open = d.open; }
           });

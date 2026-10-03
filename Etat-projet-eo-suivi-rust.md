@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.48.0** —
+Version actuelle : **2.48.1** —
+
+### Version 2.48.1 — Machine à soupe : sections repliables
+
+Version Rust 2.48.1 : /equipements/soupe : « Repas des 7 derniers jours » et « Journal » deviennent des blocs `<details>` repliés par défaut ; la mise à jour en place (toutes les 10 s) conserve l'état ouvert/replié choisi.
 
 ### Version 2.48.0 — Frise des bandes agrandie et dans Places et flux
 
