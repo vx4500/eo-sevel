@@ -2,7 +2,6 @@
 <div class="acc">
 <div class="acc-tete"><div><span class="acc-sur">Centre de pilotage · {{ aujourd_hui|date_fr }}</span><h1>Tableau de bord élevage</h1><span style="color:var(--acc-gris)">{{ stats.band_active }} bande(s) en cours · {{ stats.truies }} truies</span></div>
 <a href="/quotidien" class="acc-btn">Contrôle quotidien</a><a href="/bandes" class="acc-btn plein">Gérer les bandes</a></div>
-{% include "accueil_alertes.html" %}
 {% include "accueil_kpis.html" %}
 <div class="acc-tete"><div><h2>Ambiance des salles</h2></div><a href="/ambiance">Toutes les salles</a></div>
 <div class="acc-grille acc-salles">{% for s in salles_suivies %}{% include "accueil_salle.html" %}{% else %}<p class="acc-vide">Aucune salle suivie par la régulation.</p>{% endfor %}{% include "accueil_soupe.html" %}</div>

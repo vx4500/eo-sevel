@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.48.1** —
+Version actuelle : **2.48.2** —
+
+### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.48.2 : accueils « cockpit » et « flux » : le bandeau rouge des alertes (accueil_alertes.html, supprimé) faisait doublon avec le bouton « ! » du menu (État de l’élevage) ; retiré. Bouton « Gérer les bandes » lisible : la règle `.rust-main a:not(…)` imposait sa couleur de lien au bouton plein (texte vert sur fond vert).
 
 ### Version 2.48.1 — Machine à soupe : sections repliables
 

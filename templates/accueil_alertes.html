@@ -1,3 +1,0 @@
-{% if alertes_elevage.total > 0 %}<section class="acc-alertes" aria-label="Alertes"><span class="rond">{{ alertes_elevage.total }}</span><ul>
-{% for a in alertes_elevage.alertes %}<li class="{{ a.niveau }}"><a href="{{ a.url }}">{{ a.message }}{% if a.nombre > 1 %} ({{ a.nombre }}){% endif %}</a></li>{% endfor %}
-</ul></section>{% endif %}
