@@ -15,7 +15,7 @@
 {% for c in cameras %}
 <section class="card sl-camera">
   <h2>📷 {{ c.nom }} <button type="button" class="ghost" style="float:right" data-camera-direct="{{ c.id }}">▶ Direct</button></h2>
-  <img id="camera-{{ c.id }}" src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable" style="width:100%;border-radius:8px;background:#0002;min-height:60px">
+  <img id="camera-{{ c.id }}" src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable" title="Cliquer pour agrandir" style="width:100%;border-radius:8px;background:#0002;min-height:60px;cursor:zoom-in">
   <small class="muted" id="camera-{{ c.id }}-heure"></small>
 </section>
 {% endfor %}
@@ -206,6 +206,16 @@ document.querySelectorAll('[data-camera-direct]').forEach(function (bouton) {
     minuterie = true; bouton.textContent = '■ Arrêter'; suivante();
   });
   document.addEventListener('visibilitychange', function () { if (!document.hidden && minuterie) suivante(); });
+  // Clic sur l'image : affichage en grand (l'image continue d'être mise à
+  // jour en Direct). Nouveau clic ou Échap pour revenir.
+  img.addEventListener('click', function () { img.classList.toggle('camera-grande'); });
 });
-</script>{% endif %}
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') document.querySelectorAll('.camera-grande').forEach(function (i) { i.classList.remove('camera-grande'); });
+});
+</script>
+<style>
+img.camera-grande { position:fixed; inset:0; z-index:1000; width:100vw !important; height:100vh; object-fit:contain;
+  background:#000 !important; border-radius:0 !important; cursor:zoom-out !important; }
+</style>{% endif %}
 {% endblock %}
