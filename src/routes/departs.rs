@@ -181,3 +181,65 @@ pub(super) async fn confirmer(
     db::journal(&state.pool, &session.nom, "confirmer", "départ", &format!("{dh} · {total} porcs"), "/departs").await;
     Ok(Redirect::to("/departs").into_response())
 }
+
+/// Saisie rapide « Quai » : cases où il reste des porcs, avec leur effectif
+/// et leur bande, pour choisir d'où partent les porcs mis sur le quai.
+pub(super) async fn api_cases_porcs(State(state): State<AppState>) -> AppResult<axum::Json<Value>> {
+    let cases: Vec<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT c.id,COALESCE(si.nom,si.code,''),s.nom,c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id \
+         LEFT JOIN site si ON si.id=s.site_id ORDER BY s.ordre,s.nom,c.id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut sortie = Vec::new();
+    for (id, site, salle, nom) in cases {
+        let n = case_pig_count(&state.pool, id).await?;
+        if n <= 0 {
+            continue;
+        }
+        let bande: Option<String> = sqlx::query_scalar(
+            "SELECT b.code FROM transfert t JOIN bande b ON b.id=t.bande_id WHERE t.case_dest_id=? ORDER BY t.date DESC,t.id DESC LIMIT 1",
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+        sortie.push(json!({"id": id, "site": site, "salle": salle, "nom": nom, "porcs": n, "bande": bande}));
+    }
+    Ok(axum::Json(Value::Array(sortie)))
+}
+
+/// Porcs mis sur le quai pour l'abattoir : ils sortent de leur case
+/// (transfert sans destination, bande de la case conservée).
+pub(super) async fn sortie_quai(
+    pool: &SqlitePool,
+    case_id: i64,
+    nombre: i64,
+    date: &str,
+    note: Option<String>,
+) -> AppResult<()> {
+    let (salle_id,): (i64,) = sqlx::query_as("SELECT salle_id FROM casesalle WHERE id=?")
+        .bind(case_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::Invalid("Case introuvable".into()))?;
+    let present = case_pig_count(pool, case_id).await?;
+    if nombre > present {
+        return Err(AppError::Invalid(format!("Effectif insuffisant dans la case : {present} porc(s) présent(s)")));
+    }
+    let bande: Option<i64> = sqlx::query_scalar(
+        "SELECT bande_id FROM transfert WHERE case_dest_id=? AND bande_id IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1",
+    )
+    .bind(case_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+    let note = match note {
+        Some(n) => format!("Quai — départ abattoir · {n}"),
+        None => "Quai — départ abattoir".to_string(),
+    };
+    sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,case_source_id,nombre,note) VALUES(?,'porc',?,?,?,?,?)")
+        .bind(date).bind(bande).bind(salle_id).bind(case_id).bind(nombre).bind(note)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

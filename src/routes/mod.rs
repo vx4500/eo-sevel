@@ -424,6 +424,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/bande/{id}/cases", get(api_bande_cases))
         .route("/api/lignees", get(api_lignees))
         .route("/api/cases-capacity", get(api_cases_capacity))
+        .route("/api/cases-porcs", get(departs::api_cases_porcs))
         .route("/api/causes-perte", get(api_causes_perte))
         // Saisie vocale : analyse sans écriture, puis validation après
         // relecture à l'écran. Les deux étapes sont volontairement séparées.

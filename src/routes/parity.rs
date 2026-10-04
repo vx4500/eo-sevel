@@ -1473,6 +1473,16 @@ pub(super) async fn saisie_rapide(
                 .await?;
             updated_band_id = Some(band_id);
         }
+        // Porcs mis sur le quai pour l'abattoir : ils quittent leur case.
+        "quai" => {
+            let case_id = form_i64(&form, "case_id")
+                .ok_or_else(|| AppError::Invalid("Choisissez la case".into()))?;
+            let nombre = form_i64(&form, "nombre")
+                .filter(|n| *n > 0)
+                .ok_or_else(|| AppError::Invalid("Nombre de porcs invalide".into()))?;
+            super::departs::sortie_quai(&state.pool, case_id, nombre, &date, form_text(&form, "note")).await?;
+            updated_cases.push(case_id);
+        }
         "sortie" => {
             let sow_id = form_i64(&form, "truie_id")
                 .ok_or_else(|| AppError::Invalid("Truie obligatoire".into()))?;

@@ -438,6 +438,7 @@
     <button type="button" class="fab-t" data-type="mise_bas">Mise-bas</button>
     <button type="button" class="fab-t" data-type="perte">Perte porcelet</button>
     <button type="button" class="fab-t" data-type="perte_bande">Perte porc</button>
+    <button type="button" class="fab-t" data-type="quai">Quai abattoir</button>
     <button type="button" class="fab-t" data-type="sortie">Sortie truie</button>
     <button type="button" class="fab-t" data-type="mouvement">Mouvement</button>
     <button type="button" class="fab-t" data-type="sevrage">Sevrage</button>
@@ -540,6 +541,14 @@
       <label>Cause
         <select name="cause" id="fab-cause-perte-porc" disabled required><option>Chargement des causes configurées…</option></select>
       </label>
+    </div>
+    <div class="fab-f" data-for="quai" hidden>
+      <p class="help">Porcs mis sur le quai pour le départ à l’abattoir : ils sortent de la case. Enregistrez case par case, le panneau reste ouvert.</p>
+      <label>Case
+        <select name="case_id" id="fab-case-quai" disabled required><option value="">Chargement…</option></select>
+      </label>
+      <label>Nombre de porcs<input name="nombre" id="fab-nombre-quai" type="number" inputmode="numeric" min="1" disabled required></label>
+      <p class="help" id="fab-quai-total" hidden></p>
     </div>
     <div class="fab-f" data-for="sortie" hidden>
       <label>Motif de sortie
@@ -978,13 +987,15 @@
       var active=section.dataset.for===type; section.hidden=!active;
       section.querySelectorAll('input,select,textarea,button').forEach(function(field){field.disabled=!active;});
     });
+    var quai=type==='quai';
+    if(quai) chargerCasesQuai();
     var loss=type==='perte', bandLoss=type==='perte_bande', movement=type==='mouvement', sevrage=type==='sevrage', cochette=type==='cochette', comportement=type==='comportement';
     if(cochette) chargerCochette();
     if(comportement) initComportement();
     form.action=movement?'/transferts/porcs':'/saisie-rapide';
     // Une cochette n'existe pas encore, un comportement n'est pas rattaché à
     // une truie précise : il n'y a pas de truie à choisir dans ces deux cas.
-    var sansTruie=bandLoss||movement||sevrage||cochette||comportement;
+    var sansTruie=quai||bandLoss||movement||sevrage||cochette||comportement;
     sow.disabled=sansTruie; sow.required=!sansTruie;
     document.getElementById('fab-truie-wrap').hidden=sansTruie;
     sowLabel.textContent=loss?'Numéro de la truie':'Truie';
@@ -1116,7 +1127,51 @@
     if(!Number.isNaN(remaining) && val>remaining){ invalid = true; inp.classList.add('invalid'); } else { inp.classList.remove('invalid'); }
   }); document.getElementById('fab-sevrage-sum').textContent = sum; document.getElementById('fab-sevrage-sum').dataset.value = sum; if(invalid){ document.getElementById('fab-sevrage-sum').style.color='red'; } else { document.getElementById('fab-sevrage-sum').style.color='inherit'; } }
 
+  // Quai abattoir : cases où il reste des porcs, avec leur effectif.
+  var caseQuai=document.getElementById('fab-case-quai');
+  var nombreQuai=document.getElementById('fab-nombre-quai');
+  var totalQuai=0;
+  function chargerCasesQuai(){
+    return fetch('/api/cases-porcs',{credentials:'same-origin'})
+      .then(function(r){return r.ok?r.json():[];})
+      .then(function(rows){
+        var choix=caseQuai.value;
+        caseQuai.replaceChildren(new Option(rows.length?'— choisir la case —':'Aucune case avec des porcs',''));
+        var groupes={};
+        rows.forEach(function(r){
+          var g=[r.site,r.salle].filter(Boolean).join(' · ');
+          if(!groupes[g]){groupes[g]=document.createElement('optgroup');groupes[g].label=g;caseQuai.appendChild(groupes[g]);}
+          var o=new Option(text(r.nom)+' — '+r.porcs+' porcs'+(r.bande?' · '+text(r.bande):''),String(r.id));
+          o.dataset.porcs=String(r.porcs); groupes[g].appendChild(o);
+        });
+        caseQuai.value=choix; majQuai();
+      }).catch(function(){});
+  }
+  function majQuai(){
+    var o=caseQuai.options[caseQuai.selectedIndex];
+    var max=o&&o.dataset.porcs?o.dataset.porcs:'';
+    nombreQuai.max=max; if(max&&!nombreQuai.value) nombreQuai.value=max;
+  }
+  if(caseQuai) caseQuai.addEventListener('change',function(){nombreQuai.value='';majQuai();});
+
   form.addEventListener('submit',function(event){
+    if(typeInput.value==='quai'){
+      event.preventDefault();
+      var n=parseInt(nombreQuai.value)||0;
+      setSubmitPending(true);
+      var fd=new FormData(form); fd.set('ajax','1');
+      fetch('/saisie-rapide',{method:'POST',body:new URLSearchParams(fd),credentials:'same-origin'})
+        .then(function(resp){ if(resp.ok) return resp.json(); return resp.text().then(function(t){var d=new DOMParser().parseFromString(t,'text/html');var m=d.querySelector('[data-app-error]');throw new Error(m?(m.getAttribute('data-app-error')||m.textContent.trim()):'Erreur lors de l\u2019enregistrement');}); })
+        .then(function(){
+          totalQuai+=n;
+          var t=document.getElementById('fab-quai-total'); t.hidden=false; t.textContent=totalQuai+' porc(s) mis sur le quai pendant cette saisie.';
+          showToast(n+' porc(s) sur le quai.','success');
+          caseQuai.value=''; nombreQuai.value=''; chargerCasesQuai();
+          setSubmitPending(false);
+        })
+        .catch(function(err){ setSubmitPending(false); showToast(err.message,'error'); });
+      return;
+    }
     // La route des truies attend une case cochée par animal (`truie_<id>`) :
     // on traduit ici le choix fait dans la liste des sources.
     if(typeInput.value==='mouvement'){
