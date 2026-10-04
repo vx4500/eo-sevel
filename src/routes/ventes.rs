@@ -300,6 +300,10 @@ pub(super) async fn remove_apport(
             .bind(sale)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("DELETE FROM quai_affectation WHERE vente_id=?")
+            .bind(sale)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM venteapport WHERE id=?")
             .bind(sale)
             .execute(&mut *tx)
@@ -529,6 +533,24 @@ mod tests {
         .fetch_one(&state.pool)
         .await?;
         assert_eq!(moved, 55);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bon_apport_reprend_les_porcs_du_quai_sans_double_sortie() -> anyhow::Result<()> {
+        use super::super::documents::tests::state;
+        let state = state().await;
+        sqlx::raw_sql("INSERT INTO bande(id,code) VALUES(1,'A'); INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'R'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'C1'); INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-01-01','porc',1,1,50); INSERT INTO venteapport(id,date,num_apport,nb_porcs,montant_ht) VALUES(1,'2026-02-02','AP',40,2000);").execute(&state.pool).await?;
+        super::super::departs::sortie_quai(&state.pool, 1, 30, "2026-02-01", None).await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 20);
+        assert_eq!(super::super::departs::quai_en_attente(&state.pool).await?.len(), 1);
+        let mut tx = state.pool.begin().await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        tx.commit().await?;
+        // 30 pris sur le quai, 10 seulement retirés de la case.
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 10);
+        assert!(super::super::departs::quai_en_attente(&state.pool).await?.is_empty());
         Ok(())
     }
 

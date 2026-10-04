@@ -635,6 +635,7 @@ pub fn router(state: AppState) -> Router {
         .route("/departs/nouveau", post(departs::creer))
         .route("/departs/{id}/confirmer", post(departs::confirmer))
         .route("/departs/{id}/supprimer", post(departs::supprimer))
+        .route("/departs/quai/{id}/annuler", post(departs::quai_annuler))
         .route("/salles/{id}", get(salles::fiche))
         .route("/salles/{id}/reglages", post(salles::reglages))
         .route("/structure/site", post(structure_site))
@@ -9691,6 +9692,10 @@ async fn synchronise_sortie_abattoir(
         .bind(sale_id)
         .execute(&mut **tx)
         .await?;
+    sqlx::query("DELETE FROM quai_affectation WHERE vente_id=?")
+        .bind(sale_id)
+        .execute(&mut **tx)
+        .await?;
     let mut allocations = Vec::<(i64, i64)>::new();
     if let Some(raw) = lots_json {
         if let Ok(Value::Array(lots)) = serde_json::from_str::<Value>(raw) {
@@ -9732,6 +9737,26 @@ async fn synchronise_sortie_abattoir(
         .fetch_all(&mut **tx)
         .await?;
         let mut remaining = count;
+        // Porcs déjà mis sur le quai : sortis de case, ils partent avec ce
+        // bon d'apport sans être retirés une seconde fois des cases.
+        let quai: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT q.id,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) AS reste \
+             FROM quai_porc q WHERE q.bande_id=? AND date(q.date)<=date(?) AND reste>0 ORDER BY q.date,q.id",
+        )
+        .bind(band)
+        .bind(&movement_date)
+        .fetch_all(&mut **tx)
+        .await?;
+        for (quai_id, reste) in quai {
+            if remaining <= 0 {
+                break;
+            }
+            let pris = remaining.min(reste);
+            sqlx::query("INSERT INTO quai_affectation(quai_id,vente_id,nombre) VALUES(?,?,?)")
+                .bind(quai_id).bind(sale_id).bind(pris)
+                .execute(&mut **tx).await?;
+            remaining -= pris;
+        }
         for (case_id, available) in cases {
             if remaining <= 0 {
                 break;

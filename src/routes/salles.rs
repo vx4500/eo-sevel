@@ -300,6 +300,7 @@ pub(super) async fn liste(
     let mut contexte = context(&session);
     contexte.insert("salles".into(), Value::Array(salles));
     contexte.insert("departs".into(), Value::Array(super::departs::a_venir(&state.pool).await?));
+    contexte.insert("quai".into(), Value::Array(super::departs::quai_en_attente(&state.pool).await?));
     render(&state, "salles.html", Value::Object(contexte))
 }
 
