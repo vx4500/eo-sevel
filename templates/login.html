@@ -1,18 +1,59 @@
 {% extends "base.html" %}{% block title %}Connexion — EO_Sevel{% endblock %}
 {% block body_class %}login-page{% endblock %}
 {% block content %}
-<div style="display:flex;flex-wrap:wrap-reverse;gap:24px;align-items:center;justify-content:flex-end;width:100%">
-<div style="flex:1 1 420px;max-width:620px">{% include "accueil_presentation.html" %}</div>
-<div class="card login-card">
-  <img class="login-brand" src="/static/ei-ory-emmanuel.png?v={{ app_version }}" alt="EI ORY Emmanuel">
-  <h1>EO_Sevel</h1><p class="muted">Version Rust {{ app_version }}</p>
-  {% if demo_portal %}<p>Démonstration indépendante. Utilisez l’identifiant et le mot de passe de 48 h transmis par Emmanuel ORY. Contact : <a href="mailto:vx4500@gmail.com">vx4500@gmail.com</a>.</p>{% endif %}
-  {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
-  <form method="post" action="/login">
-    <label>Identifiant<input name="identifiant" autocomplete="username" required autofocus></label>
-    <label>Mot de passe<input name="mdp" type="password" autocomplete="current-password" required></label>
-    <button type="submit" style="width:100%;margin-top:12px">Se connecter</button>
-  </form>
-</div>
+<style>
+body.login-page{background:#f4f1ec !important}
+.login-page .rust-main{display:block !important;max-width:1180px;padding:4vh 20px !important}
+.lg{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.8fr);border-radius:18px;overflow:hidden;box-shadow:0 18px 50px #1d3a2c26;background:#fff}
+@media(max-width:900px){.lg{grid-template-columns:1fr}.lg-presente{order:2}}
+.lg-presente{background:linear-gradient(160deg,#1f4a37 0%,#163527 100%);color:#e9f1ec;padding:44px 46px}
+.lg-sur{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#f2c38b;font-weight:700}
+.lg-presente h1{color:#fff;font-size:clamp(26px,3vw,36px);line-height:1.15;margin:10px 0 14px;font-weight:800}
+.lg-intro{font-size:16px;line-height:1.55;color:#cfe0d6;max-width:58ch;margin:0 0 28px}
+.lg-points{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 28px;margin:0;padding:0;list-style:none}
+@media(max-width:560px){.lg-points{grid-template-columns:1fr}.lg-presente{padding:30px 24px}}
+.lg-points li{display:flex;gap:12px;align-items:flex-start}
+.lg-points svg{flex:none;width:22px;height:22px;stroke:#f2c38b;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:2px}
+.lg-points b{display:block;color:#fff;font-size:15px;margin-bottom:3px}
+.lg-points span{font-size:13.5px;line-height:1.45;color:#b9cfc2}
+.lg-garanties{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:32px;padding-top:20px;border-top:1px solid #ffffff22;font-size:13px;color:#b9cfc2}
+.lg-garanties span::before{content:"✓ ";color:#f2c38b;font-weight:700}
+.lg-connexion{padding:44px 40px;display:flex;flex-direction:column;justify-content:center}
+.lg-marque{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.lg-marque img{width:64px;height:64px;border-radius:12px;object-fit:cover}
+.lg-marque b{display:block;font-size:22px;color:#1f4a37}.lg-marque small{color:#6b7c73}
+.lg-connexion h2{font-size:20px;margin:0 0 4px}.lg-connexion .muted{margin:0 0 18px}
+.lg-connexion label{display:block;font-weight:600;font-size:14px;margin-top:12px}
+.lg-connexion input{width:100%;box-sizing:border-box;margin-top:6px;min-height:46px;font-size:16px}
+.lg-connexion button{width:100%;margin-top:20px;min-height:48px;font-size:16px}
+.lg-version{margin-top:22px;font-size:12px;color:#8a978f}
+</style>
+<div class="lg">
+  <section class="lg-presente">
+    <div class="lg-sur">Logiciel de gestion d'élevage porcin</div>
+    <h1>Tout votre élevage, piloté depuis un seul outil.</h1>
+    <p class="lg-intro">EO_Sevel centralise le suivi des animaux, la conduite des bandes, l'ambiance des bâtiments et la gestion économique. Chaque saisie est réutilisée partout où elle compte : moins de papier, moins d'oublis, des décisions prises sur des chiffres à jour.</p>
+    <ul class="lg-points">
+      <li><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><div><b>Conduite en bandes</b><span>Inséminations, mises bas, sevrages, transferts et planning des interventions.</span></div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21v-6h6v6"/></svg><div><b>Suivi par salle</b><span>Effectifs, bande en place, ambiance, caméra et départs prévus, salle par salle.</span></div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M14 14.8V4a2 2 0 1 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg><div><b>Ambiance et automatismes</b><span>Température, ventilation, éclairage et alertes, reliés aux automates et capteurs.</span></div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><div><b>Résultats économiques</b><span>Ventes, achats, aliment, énergie et stocks pour suivre la rentabilité.</span></div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12h6M12 9v6"/></svg><div><b>Sanitaire et pharmacie</b><span>Traitements, délais d'attente, ordonnances et stock de produits.</span></div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg><div><b>Documents réglementaires</b><span>Registre d'élevage et documents de contrôle, prêts à présenter.</span></div></li>
+    </ul>
+    <div class="lg-garanties"><span>Données hébergées sur l'exploitation</span><span>Ordinateur, tablette et téléphone</span><span>Alertes en temps réel</span></div>
+  </section>
+  <section class="lg-connexion">
+    <div class="lg-marque"><img src="/static/ei-ory-emmanuel.png?v={{ app_version }}" alt=""><div><b>EO_Sevel</b><small>Espace éleveur</small></div></div>
+    <h2>Connexion</h2><p class="muted">Identifiez-vous pour accéder à votre élevage.</p>
+    {% if demo_portal %}<p>Démonstration indépendante. Utilisez l’identifiant et le mot de passe de 48 h transmis par Emmanuel ORY. Contact : <a href="mailto:vx4500@gmail.com">vx4500@gmail.com</a>.</p>{% endif %}
+    {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <label>Identifiant<input name="identifiant" autocomplete="username" required autofocus></label>
+      <label>Mot de passe<input name="mdp" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Se connecter</button>
+    </form>
+    <p class="lg-version">Version {{ app_version }}</p>
+  </section>
 </div>
 {% endblock %}
