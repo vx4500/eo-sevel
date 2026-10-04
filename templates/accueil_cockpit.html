@@ -1,6 +1,5 @@
 {% extends "base.html" %}{% block content %}{% include "accueil_style.html" %}
 <div class="acc">
-{% include "accueil_presentation.html" %}
 <div class="acc-tete"><div><span class="acc-sur">Centre de pilotage · {{ aujourd_hui|date_fr }}</span><h1>Tableau de bord élevage</h1><span style="color:var(--acc-gris)">{{ stats.band_active }} bande(s) en cours · {{ stats.truies }} truies</span></div>
 <a href="/quotidien" class="acc-btn">Contrôle quotidien</a><a href="/bandes" class="acc-btn plein">Gérer les bandes</a></div>
 {% include "accueil_kpis.html" %}
