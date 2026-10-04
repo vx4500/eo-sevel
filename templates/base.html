@@ -322,16 +322,17 @@
   <div class="rust-menu" data-rubrique="Mes équipements"><button type="button" aria-expanded="false">Mes équipements <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
     <div class="rust-sub-groupe"><h3>Automatismes de l’élevage</h3>
       <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
-      <a href="/ambiance"><b>EO_Awel</b><small>Ventilation, températures et alertes</small></a>
-      <a href="/ambiance/automate"><b>Automate IPX800</b><small>Entrées, sorties, carte et éclairage</small></a>
-      <a href="/ambiance/zigbee"><b>Réseau Zigbee</b><small>Sondes, interrupteurs, variateurs, compteurs</small></a>
-      <a href="/equipements/laezh"><b>EO_Laezh</b><small>Machine à lait pour porcelets</small></a>
-      <a href="/equipements/treizh"><b>EO_Treizh</b><small>Station de pesée et de tri Domino</small></a>
-      <a href="/equipements/kren"><b>EO_Kren</b><small>Distribution automatisée d’aliment</small></a>
-      <a href="/equipements/sms"><b>Free SMS</b><small>Alertes par SMS, retour de courant</small></a>
-      <a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>
-      <a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>
-      {% if session.est_admin %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
+      <a href="/equipements/modules"><b>Choisir mes modules</b><small>Afficher ou masquer les équipements</small></a>
+      {% if equip_actif('awel') %}<a href="/ambiance"><b>EO_Awel</b><small>Ventilation, températures et alertes</small></a>{% endif %}
+      {% if equip_actif('ipx') %}<a href="/ambiance/automate"><b>Automate IPX800</b><small>Entrées, sorties, carte et éclairage</small></a>{% endif %}
+      {% if equip_actif('zigbee') %}<a href="/ambiance/zigbee"><b>Réseau Zigbee</b><small>Sondes, interrupteurs, variateurs, compteurs</small></a>{% endif %}
+      {% if equip_actif('laezh') %}<a href="/equipements/laezh"><b>EO_Laezh</b><small>Machine à lait pour porcelets</small></a>{% endif %}
+      {% if equip_actif('treizh') %}<a href="/equipements/treizh"><b>EO_Treizh</b><small>Station de pesée et de tri Domino</small></a>{% endif %}
+      {% if equip_actif('kren') %}<a href="/equipements/kren"><b>EO_Kren</b><small>Distribution automatisée d’aliment</small></a>{% endif %}
+      {% if equip_actif('sms') %}<a href="/equipements/sms"><b>Free SMS</b><small>Alertes par SMS, retour de courant</small></a>{% endif %}
+      {% if equip_actif('cameras') %}<a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>{% endif %}
+      {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>{% endif %}
+      {% if session.est_admin and equip_actif('acces') %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
     </div>
   </div></div>{% endif %}
 

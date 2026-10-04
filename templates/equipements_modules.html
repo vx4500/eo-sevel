@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Mes modules — EO_Sevel{% endblock %}
+{% block content %}
+<p><a href="/equipements">← Mes équipements</a></p>
+<h1>Choisir mes modules</h1>
+<p class="muted">Cochez les équipements présents dans votre élevage. Les modules décochés disparaissent de « Mes équipements » et du menu ; leurs réglages sont conservés et reviennent si vous les recochez.</p>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  {% for m in modules %}
+  <label style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #0001;cursor:pointer">
+    <input type="checkbox" name="m_{{ m.code }}" {% if m.actif %}checked{% endif %} style="width:22px;height:22px;margin-top:2px">
+    <span><b>{{ m.nom }}</b><br><small class="muted">{{ m.description }}</small></span>
+  </label>
+  {% endfor %}
+  <p><button type="submit">Enregistrer</button></p>
+</form>
+{% endblock %}

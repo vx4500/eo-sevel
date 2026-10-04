@@ -1,6 +1,20 @@
 use chrono::NaiveDate;
 use minijinja::{Environment, Value};
 
+/// Équipements masqués par l'éleveur (page /equipements/modules) : codes
+/// lus au démarrage et à chaque enregistrement, consultés par le menu.
+static EQUIP_MASQUES: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+pub fn definir_equip_masques(codes: Vec<String>) {
+    if let Ok(mut l) = EQUIP_MASQUES.write() {
+        *l = codes;
+    }
+}
+
+pub fn equip_actif(code: &str) -> bool {
+    EQUIP_MASQUES.read().map(|l| !l.iter().any(|c| c == code)).unwrap_or(true)
+}
+
 pub fn build() -> anyhow::Result<Environment<'static>> {
     let mut env = Environment::new();
     env.add_template(
@@ -110,6 +124,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     )?;
     env.add_template("salles.html", include_str!("../templates/salles.html"))?;
     env.add_template("departs.html", include_str!("../templates/departs.html"))?;
+    env.add_template("equipements_modules.html", include_str!("../templates/equipements_modules.html"))?;
     env.add_template(
         "zigbee_electricite.html",
         include_str!("../templates/zigbee_electricite.html"),
@@ -355,6 +370,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_filter("decimal2", decimal2);
     env.add_filter("decimal3", decimal3);
     env.add_filter("id_in_csv", id_in_csv);
+    env.add_function("equip_actif", |code: String| equip_actif(&code));
     Ok(env)
 }
 

@@ -150,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let templates = templates::build()?;
+    routes::charger_equip_masques(&pool).await;
     let state = AppState::new(config.clone(), pool, templates);
 
     let app = routes::router(state.clone())

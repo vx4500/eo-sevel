@@ -132,6 +132,7 @@ pub fn router(state: AppState) -> Router {
         .route("/logout", get(logout))
         .route("/mon-compte/mdp", get(password_page).post(password_post))
         .route("/equipements", get(equipements))
+        .route("/equipements/modules", get(equipements_modules).post(equipements_modules_enregistrer))
         .route("/equipements/laezh", get(equipement_laezh))
         .route("/equipements/treizh", get(equipement_treizh))
         .route("/equipements/kren", get(equipement_kren))
@@ -936,6 +937,65 @@ fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String
 
 /// Regroupe les équipements connectés ou prévus de l'élevage. Chaque écran
 /// indique son état pour ne pas confondre une préparation avec une donnée lue.
+/// Modules d'équipement proposés sur /equipements/modules, dans l'ordre.
+const EQUIP_MODULES: &[(&str, &str, &str)] = &[
+    ("awel", "EO_Awel", "Ventilation, températures, hygrométrie et alertes des salles"),
+    ("ipx", "Automate IPX800", "Sondes, relais, entrées et sorties, éclairage"),
+    ("zigbee", "Réseau Zigbee", "Sondes sans fil, interrupteurs, variateurs, compteurs"),
+    ("sms", "Free SMS", "Alertes par SMS"),
+    ("acces", "Accès à distance", "Tunnel Cloudflare"),
+    ("cameras", "Caméras", "Image des caméras dans les salles"),
+    ("soupe", "Machine à soupe", "Exa-Feeder Asserva en écoute seule"),
+    ("laezh", "EO_Laezh", "Machine à lait pour porcelets"),
+    ("treizh", "EO_Treizh", "Station de pesée et de tri Domino"),
+    ("kren", "EO_Kren", "Distribution automatisée d’aliment"),
+];
+
+/// Lit les modules masqués (paramètre `equipements_masques`). Sans réglage
+/// enregistré, la machine à soupe suit l'ancien interrupteur
+/// `module_machine_soupe` (masquée par défaut).
+pub async fn charger_equip_masques(pool: &SqlitePool) {
+    let valeur: Option<String> = sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='equipements_masques'")
+        .fetch_optional(pool).await.ok().flatten();
+    let codes = match valeur {
+        Some(v) => v.split(',').map(str::trim).filter(|c| !c.is_empty()).map(String::from).collect(),
+        None if module_actif(pool, "module_machine_soupe", false).await.unwrap_or(false) => Vec::new(),
+        None => vec!["soupe".to_string()],
+    };
+    crate::templates::definir_equip_masques(codes);
+}
+
+async fn equipements_modules(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let mut contexte = context(&session);
+    contexte.insert("modules".into(), Value::Array(EQUIP_MODULES.iter().map(|(code, nom, desc)| {
+        json!({"code": code, "nom": nom, "description": desc, "actif": crate::templates::equip_actif(code)})
+    }).collect()));
+    render(&state, "equipements_modules.html", Value::Object(contexte))
+}
+
+async fn equipements_modules_enregistrer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let masques: Vec<String> = EQUIP_MODULES.iter()
+        .filter(|(code, _, _)| !form.contains_key(&format!("m_{code}")))
+        .map(|(code, _, _)| code.to_string())
+        .collect();
+    sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('equipements_masques',?) ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur")
+        .bind(masques.join(","))
+        .execute(&state.pool)
+        .await?;
+    crate::templates::definir_equip_masques(masques);
+    db::journal(&state.pool, &session.nom, "régler", "modules", "équipements", "/equipements/modules").await;
+    Ok(Redirect::to("/equipements").into_response())
+}
+
 async fn equipements(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -965,34 +1025,35 @@ async fn equipements(
         .unwrap_or(0);
     let zigbee_ok = zigbee.is_some_and(|(connecte, age)| connecte != 0 && age < 600);
     let ipx = match &ipx_hote {
-        Some(hote) => json!({"nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
-        None => json!({"nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
+        Some(hote) => json!({"code":"ipx","nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
+        None => json!({"code":"ipx","nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
     };
     let sms_actif: bool = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM parametre WHERE cle='sms_free_actif' AND valeur='1'")
         .fetch_one(&state.pool)
         .await
         .unwrap_or(0)
         > 0;
-    let sms = json!({"nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
+    let sms = json!({"code":"sms","nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
     let nb_cameras: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM camera WHERE actif=1")
         .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
-    let cameras = json!({"nom":"Caméras", "etat": if nb_cameras > 0 { "actif" } else { "attente" }, "etat_texte": if nb_cameras > 0 { format!("{nb_cameras} caméra{}", if nb_cameras > 1 { "s" } else { "" }) } else { "À configurer".to_string() }, "description":"Image des caméras IP dans la page de chaque salle, prise à la demande, sans enregistrement.", "href":"/equipements/cameras", "action":"Régler les caméras"});
-    let soupe = if module_actif(&state.pool, "module_machine_soupe", false).await? {
+    let cameras = json!({"code":"cameras","nom":"Caméras", "etat": if nb_cameras > 0 { "actif" } else { "attente" }, "etat_texte": if nb_cameras > 0 { format!("{nb_cameras} caméra{}", if nb_cameras > 1 { "s" } else { "" }) } else { "À configurer".to_string() }, "description":"Image des caméras IP dans la page de chaque salle, prise à la demande, sans enregistrement.", "href":"/equipements/cameras", "action":"Régler les caméras"});
+    let soupe = if crate::templates::equip_actif("soupe") {
         let age: Option<i64> = sqlx::query_scalar("SELECT strftime('%s','now') - ts FROM soupe_etat WHERE id=1")
             .fetch_optional(&state.pool)
             .await
             .ok()
             .flatten();
         let ok = age.is_some_and(|a| a < 600);
-        Some(json!({"nom":"Machine à soupe", "etat": if ok { "actif" } else { "attente" }, "etat_texte": if ok { "Écoute en cours" } else if age.is_some() { "Pas de nouvelles" } else { "Service d’écoute à installer" }, "description":"Exa-Feeder Asserva suivie en écoute seule : phases, repas vanne par vanne et alertes.", "href":"/equipements/soupe", "action":"Ouvrir la machine à soupe"}))
+        Some(json!({"code":"soupe","nom":"Machine à soupe", "etat": if ok { "actif" } else { "attente" }, "etat_texte": if ok { "Écoute en cours" } else if age.is_some() { "Pas de nouvelles" } else { "Service d’écoute à installer" }, "description":"Exa-Feeder Asserva suivie en écoute seule : phases, repas vanne par vanne et alertes.", "href":"/equipements/soupe", "action":"Ouvrir la machine à soupe"}))
     } else {
         None
     };
     let tunnel = crate::tunnel::instantane();
-    let acces = json!({"nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
+    let acces = json!({"code":"acces","nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
+        "code":"zigbee",
         "nom":"Réseau Zigbee",
         "etat": if zigbee_ok { "actif" } else { "attente" },
         "etat_texte": if zigbee_ok { format!("Connecté · {zigbee_appareils} appareils") } else if zigbee.is_some() { "Pont coupé".to_string() } else { "Pas encore démarré".to_string() },
@@ -1004,18 +1065,21 @@ async fn equipements(
         "equipements".into(),
         {
         let mut liste = json!([
-            {"nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
+            {"code":"awel","nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             ipx,
             zigbee,
             sms,
             acces,
             cameras,
-            {"nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
-            {"nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
-            {"nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
+            {"code":"laezh","nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
+            {"code":"treizh","nom":"EO_Treizh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Station Domino : pesée, tri et suivi des porcs.", "href":"/equipements/treizh", "action":"Préparer EO_Treizh"},
+            {"code":"kren","nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
         ]);
         if let (Some(s), Value::Array(l)) = (soupe, &mut liste) {
             l.insert(6, s);
+        }
+        if let Value::Array(l) = &mut liste {
+            l.retain(|e| crate::templates::equip_actif(e["code"].as_str().unwrap_or("")));
         }
         liste
         },
