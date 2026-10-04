@@ -13,6 +13,7 @@
 </style>
 {% set occupees = salles_suivies|selectattr("effectif")|list %}
 <div class="acc">
+{% include "accueil_presentation.html" %}
 <div><span class="acc-sur">{{ aujourd_hui|date_fr }} · ma tournée</span><h1>Bonjour{% if session.nom %} {{ session.nom }}{% endif %}, voici votre tournée</h1>
 <p style="margin:6px 0 0;color:var(--acc-gris);font-size:17px">{{ occupees|length }} salle(s) occupée(s) · {{ salles_suivies|selectattr("hors_consigne")|list|length }} écart(s) d’ambiance · {{ alertes_elevage.total }} alerte(s)</p></div>
 <nav class="acc-etapes" aria-label="Étapes de la tournée">{% for s in occupees %}<a href="#arret-{{ s.id }}"><span class="acc-num">{{ loop.index }}</span>{{ s.nom }}</a>{% endfor %}{% if soupe %}<a href="#arret-soupe"><span class="acc-num">{{ occupees|length + 1 }}</span>Machine à soupe</a>{% endif %}</nav>

@@ -1,0 +1,30 @@
+<details class="presentation-logiciel" id="presentation-logiciel" open>
+<summary><b>ℹ️ EO_Sevel en bref</b> <small>— ce que fait le logiciel et où trouver chaque chose</small></summary>
+<p>EO_Sevel réunit en un seul endroit le suivi des animaux, la conduite en bandes, l'ambiance des bâtiments et la gestion de l'élevage. Il fonctionne sur le serveur de l'exploitation et s'ouvre depuis un ordinateur, une tablette ou un téléphone.</p>
+<div class="pl-grille">
+  <div><b>🐖 Animaux et bandes</b><span>Truies, inséminations, mises bas, sevrages, transferts entre salles, conduite et planning des bandes.</span></div>
+  <div><b>🏠 Mes salles</b><span>Pour chaque salle : animaux présents, bande, ambiance, alertes, caméra, départs prévus.</span></div>
+  <div><b>🌀 Ambiance et équipements</b><span>Températures, ventilation, éclairage et alertes, avec les automates et capteurs raccordés. Choisissez vos modules dans « Mes équipements ».</span></div>
+  <div><b>💶 Économie, aliment, stocks</b><span>Ventes, achats, aliment, eau et électricité, stocks de produits.</span></div>
+  <div><b>💊 Sanitaire et pharmacie</b><span>Traitements, délais d'attente, ordonnances, conduite à tenir devant un symptôme.</span></div>
+  <div><b>📄 Documents obligatoires</b><span>Registre d'élevage et documents de contrôle, prêts à imprimer.</span></div>
+</div>
+<p class="pl-pied">Les informations se complètent d'elles-mêmes : une saisie faite à un endroit (transfert, départ, traitement…) se retrouve partout où elle compte. Les alertes importantes s'affichent en rouge.</p>
+</details>
+<style>
+.presentation-logiciel{background:var(--acc-fond,#fff);border:1px solid var(--acc-trait,#0002);border-left:5px solid #2f6b4f;border-radius:14px;padding:12px 18px;margin:0 0 18px}
+.presentation-logiciel summary{cursor:pointer;font-size:1.05rem;list-style-position:outside}
+.presentation-logiciel summary small{color:#52655d;font-weight:400}
+.presentation-logiciel p{margin:10px 0}
+.pl-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px}
+.pl-grille div{background:#2f6b4f0d;border-radius:10px;padding:10px 12px}
+.pl-grille b{display:block;margin-bottom:3px}.pl-grille span{font-size:.9rem;color:#52655d}
+.pl-pied{font-size:.9rem;color:#52655d}
+</style>
+<script>
+(function () {
+  var d = document.getElementById('presentation-logiciel');
+  try { if (localStorage.getItem('presentation-repliee') === '1') d.open = false; } catch (e) {}
+  d.addEventListener('toggle', function () { try { localStorage.setItem('presentation-repliee', d.open ? '0' : '1'); } catch (e) {} });
+})();
+</script>

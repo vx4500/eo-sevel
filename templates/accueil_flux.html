@@ -9,6 +9,7 @@
 .acc-fiche .ens{margin-top:auto;padding-top:8px;border-top:1px solid var(--acc-trait);font-size:13px}
 </style>
 <div class="acc">
+{% include "accueil_presentation.html" %}
 <div class="acc-tete"><div><span class="acc-sur">Flux de l’élevage · {{ aujourd_hui|date_fr }}</span><h1>Où en sont mes {{ stats.band_active }} bandes</h1></div><a href="/flux" class="acc-btn">Flux détaillé</a><a href="/planning" class="acc-btn plein">Planning complet</a></div>
 <section class="acc-stades" aria-label="Animaux par stade">{% for s in stades %}<div><small>{{ s.stade }}</small><b>{{ s.animaux }}</b> <span style="color:var(--acc-gris)">animaux</span><div style="font-size:13px;color:var(--acc-gris)">{{ s.bandes }}</div></div>{% endfor %}</section>
 <section class="acc-carte" style="display:flex;flex-direction:column;gap:12px">{% set etiq = 190 %}{% set haut = 50 %}{% include "accueil_frise.html" %}</section>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% block content %}
+{% include "accueil_presentation.html" %}
 {% if alertes.delai_attente_total > 0 or alertes.commandes_vente_ouvertes > 0 %}
 <section class="dashboard-panel alert-panel" aria-label="Alertes de traitement">
   <div class="dashboard-section-head compact"><div><span class="section-code">ALERTES</span><div><h2>Alertes à traiter</h2><p>Sécurité sanitaire et suivi commercial.</p></div></div></div>
