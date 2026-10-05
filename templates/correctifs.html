@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.52.3 — Supprimer une salle vide</h2><ul><li>Une salle sans case ni animaux peut être supprimée même si des contrôles quotidiens y ont été faits : ils restent dans l’historique avec le nom de la salle.</li><li>Si la suppression est refusée, le message dit pourquoi (cases, truies ou mouvements).</li></ul></section>
 <section class="card"><h2>2.52.2 — Bons d’apport et inventaires</h2><ul><li>Un bon d’apport retire maintenant les porcs selon l’inventaire de la case, s’il y en a un : plus de porcs restés « fantômes » après un départ.</li></ul></section>
 <section class="card"><h2>2.52.1 — Salles sur le téléphone</h2><ul><li>Barre du bas : nouvelle entrée « Salles ».</li><li>Menu du compte (sur téléphone) : Mes salles, Températures et ventilation, Éclairage, Mes équipements.</li></ul></section>
 <section class="card"><h2>2.52.0 — Serveur Proxmox</h2><ul><li>Nouveau module dans Mes équipements : processeur, mémoire, disques, machines et conteneurs, stockage et sauvegardes du serveur, en lecture seule.</li><li>Alertes par SMS : serveur hors ligne, disque plein à 90 %, mémoire saturée, machine surveillée arrêtée, pas de sauvegarde depuis 48 h.</li></ul></section>

@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.2** —
+Version actuelle : **2.52.3** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.52.3 : suppression de salle — bloquée seulement par cases, truies ou transferts ; contrôles/alertes/observations/IPX/caméras détachés (salle_id NULL, nom conservé), réglages et mesures d'ambiance supprimés.
 
 Version Rust 2.52.2 : synchronise_sortie_abattoir — une case avec inventaire (daté avant l'apport) prend l'effectif compté (case_pig_count) au lieu de l'estimation par transferts. Données prod 05/10 : inventaire Case 1 La Berru (id 1) dernier_transfert_id=146, apport 12 = 109 porcs de la case 47.
 

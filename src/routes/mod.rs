@@ -12416,21 +12416,50 @@ async fn structure_salle_supprimer(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let children: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM casesalle WHERE salle_id=?)+(SELECT COUNT(*) FROM truie WHERE salle_id=?)+(SELECT COUNT(*) FROM transfert WHERE salle_source_id=? OR salle_dest_id=?)+(SELECT COUNT(*) FROM controlequotidien WHERE salle_id=?)")
+    let (cases, truies, mouvements): (i64, i64, i64) = sqlx::query_as("SELECT (SELECT COUNT(*) FROM casesalle WHERE salle_id=?1),(SELECT COUNT(*) FROM truie WHERE salle_id=?1),(SELECT COUNT(*) FROM transfert WHERE salle_source_id=?1 OR salle_dest_id=?1)")
         .bind(id)
-        .bind(id).bind(id).bind(id).bind(id)
         .fetch_one(&state.pool)
         .await?;
-    if children > 0 {
-        return Err(AppError::Invalid(
-            "Cette salle contient des cases, animaux, contrôles ou mouvements. Conservez-la pour préserver l’historique, ou déplacez d’abord les éléments actifs.".into(),
-        ));
+    if cases + truies + mouvements > 0 {
+        let mut raisons = Vec::new();
+        if cases > 0 {
+            raisons.push(format!("{cases} case(s) — supprimez-les d’abord, leurs animaux vont dans la case choisie"));
+        }
+        if truies > 0 {
+            raisons.push(format!("{truies} truie(s) rattachée(s)"));
+        }
+        if mouvements > 0 {
+            raisons.push(format!("{mouvements} mouvement(s) d’animaux dans l’historique"));
+        }
+        return Err(AppError::Invalid(format!("Salle non supprimée : {}.", raisons.join(", "))));
     }
-    sqlx::query("DELETE FROM salle WHERE id=?")
+    let nom: String = sqlx::query_scalar("SELECT nom FROM salle WHERE id=?")
         .bind(id)
-        .execute(&state.pool)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    // Salle vide : l'historique (contrôles, alertes, observations) garde le
+    // nom de la salle et perd seulement le lien ; réglages et mesures
+    // d'ambiance propres à la salle partent avec elle.
+    let tables: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table'")
+        .fetch_all(&state.pool)
         .await?;
-    Ok(Redirect::to("/structure").into_response())
+    let mut tx = state.pool.begin().await?;
+    for table in ["controlequotidien", "ambiance_alerte", "observation_comportement", "ipx_point", "camera"] {
+        if tables.iter().any(|t| t == table) {
+            sqlx::query(&format!("UPDATE {table} SET salle_id=NULL WHERE salle_id=?")).bind(id).execute(&mut *tx).await?;
+        }
+    }
+    for table in ["ambiance_mesure", "ambiance_heure", "ambiance_jour", "ambiance_etat", "ambiance_preconditionnement", "ventilateur_salle", "ambiance_salle"] {
+        if tables.iter().any(|t| t == table) {
+            sqlx::query(&format!("DELETE FROM {table} WHERE salle_id=?")).bind(id).execute(&mut *tx).await?;
+        }
+    }
+    sqlx::query("DELETE FROM salle WHERE id=?").bind(id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    db::journal(&state.pool, &session.nom, "supprimer", "salle", &nom, "/structure").await;
+    let message = format!("Salle « {nom} » supprimée");
+    Ok(Redirect::to(&format!("/structure?ok={}", encode_query(&message))).into_response())
 }
 
 async fn structure_site_supprimer(
@@ -14692,5 +14721,27 @@ mod band_code_tests {
         assert_ne!(normalize_band_code("B2.33"), normalize_band_code("B23.3"));
         assert_ne!(normalize_band_code("LOT-A"), normalize_band_code("LOT-B"));
         assert_ne!(normalize_band_code("A12"), normalize_band_code("B12"));
+    }
+}
+
+#[cfg(test)]
+mod suppression_salle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn salle_vide_supprimee_historique_conserve() -> anyhow::Result<()> {
+        use super::documents::tests::{session, state};
+        let state = state().await;
+        sqlx::raw_sql("INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'Quai'),(2,1,'Pleine'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,2,'C1'); INSERT INTO controlequotidien(date,horodatage,categorie,salle_id,salle_nom,statut,utilisateur) VALUES('2026-08-11','2026-08-11 05:00','vannes_auges',1,'Quai','ok','x');")
+            .execute(&state.pool)
+            .await?;
+        let form = || Form(HashMap::from([("csrf_token".to_string(), "test".to_string())]));
+        structure_salle_supprimer(State(state.clone()), Extension(session()), Path(1), form()).await?;
+        assert!(structure_salle_supprimer(State(state.clone()), Extension(session()), Path(2), form()).await.is_err());
+        let salles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM salle").fetch_one(&state.pool).await?;
+        assert_eq!(salles, 1);
+        let controle: (Option<i64>, String) = sqlx::query_as("SELECT salle_id,salle_nom FROM controlequotidien").fetch_one(&state.pool).await?;
+        assert_eq!(controle, (None, "Quai".to_string()));
+        Ok(())
     }
 }
