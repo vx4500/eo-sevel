@@ -30,6 +30,8 @@
     .rust-sub.large{width:min(78vw,860px)}
     .rust-menu>button[aria-expanded=true]+.rust-sub{display:grid}
     .rust-menu-fin .rust-sub{left:auto;right:0}
+    .menu-tel{display:none}
+    @media(max-width:850px){.menu-tel{display:block}}
     .rust-sub-groupe h3{margin:0 0 5px;font-size:.71rem;text-transform:uppercase;letter-spacing:.09em;
       color:#667c72;font-weight:700}
     .rust-sub a{display:block;padding:8px 10px;border-radius:8px;color:#1d2620;text-decoration:none;line-height:1.3}
@@ -353,6 +355,12 @@
 
   {% if session.peut_modifier %}<button type="button" id="vocal-bouton" aria-label="Dicter une saisie" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.6" width="6" height="11.2" rx="3"/><path d="M5.2 11.4a6.8 6.8 0 0 0 13.6 0M12 18.2v3.2"/></svg></button>{% endif %}
   <div class="rust-menu rust-menu-fin" data-rubrique="Mon compte"><button type="button" aria-expanded="false">{{ session.nom }} <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub">
+    {% if 'structure' in session.pages or 'ambiance' in session.pages %}<div class="rust-sub-groupe menu-tel"><h3>Salles et ambiance</h3>
+      {% if 'structure' in session.pages %}<a href="/salles"><b>Mes salles</b><small>Bande, animaux, température, éclairage</small></a>{% endif %}
+      {% if 'ambiance' in session.pages %}<a href="/ambiance"><b>Températures et ventilation</b><small>Ambiance de toutes les salles</small></a>
+      <a href="/ambiance/eclairage"><b>Éclairage</b><small>Lampes et programmes par salle</small></a>
+      {% if session.module_equipements %}<a href="/equipements"><b>Mes équipements</b><small>Automate, Zigbee, soupe, caméras, serveur</small></a>{% endif %}{% endif %}
+    </div>{% endif %}
     <div class="rust-sub-groupe"><h3>Mon compte</h3>
       <a href="/mon-compte/mdp"><b>Mot de passe</b><small>Changer mon mot de passe</small></a>
       <a href="/logout"><b>Déconnexion</b><small>Fermer la session</small></a>
@@ -418,6 +426,8 @@
   {% if 'bandes' in session.pages %}<a href="/bandes" data-pouce="/bandes"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.4 6.6 5 4l3.1.9M17.6 6.6 19 4l-3.1.9"/><path d="M12 20.2c4 0 7.1-3 7.1-6.9S16 6.4 12 6.4 4.9 9.4 4.9 13.3s3.1 6.9 7.1 6.9Z"/><ellipse cx="12" cy="14.8" rx="2.9" ry="2.1"/><path d="M9.2 11.2h.01M14.8 11.2h.01"/></svg>Animaux</a>
   {% elif 'truies' in session.pages %}<a href="/truies" data-pouce="/bandes"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.4 6.6 5 4l3.1.9M17.6 6.6 19 4l-3.1.9"/><path d="M12 20.2c4 0 7.1-3 7.1-6.9S16 6.4 12 6.4 4.9 9.4 4.9 13.3s3.1 6.9 7.1 6.9Z"/><ellipse cx="12" cy="14.8" rx="2.9" ry="2.1"/><path d="M9.2 11.2h.01M14.8 11.2h.01"/></svg>Animaux</a>
   {% elif 'structure' in session.pages %}<a href="/structure" data-pouce="/bandes"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.4 6.6 5 4l3.1.9M17.6 6.6 19 4l-3.1.9"/><path d="M12 20.2c4 0 7.1-3 7.1-6.9S16 6.4 12 6.4 4.9 9.4 4.9 13.3s3.1 6.9 7.1 6.9Z"/><ellipse cx="12" cy="14.8" rx="2.9" ry="2.1"/><path d="M9.2 11.2h.01M14.8 11.2h.01"/></svg>Animaux</a>{% endif %}
+  {% if 'structure' in session.pages %}<a href="/salles" data-pouce="/salles"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5V20H3.5z"/><path d="M14.5 20v-5.5h-5V20"/><path d="M16.6 8.4V5.2"/></svg>Salles</a>
+  {% elif 'ambiance' in session.pages %}<a href="/ambiance" data-pouce="/salles"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5V20H3.5z"/><path d="M14.5 20v-5.5h-5V20"/></svg>Salles</a>{% endif %}
   {% if session.peut_modifier %}<button type="button" class="saisir" id="pouce-saisir" aria-label="Ouvrir la saisie rapide"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5.4v13.2M5.4 12h13.2"/></svg>Saisir</button>{% endif %}
   {% if 'economique' in session.pages %}<a href="/gte" data-pouce="/gte"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.4V4.6M4 19.4h15.6"/><path d="m7.4 15.4 3.4-4.2 3 2.4 4.2-5.6"/></svg>Résultats</a>
   {% elif 'productivite' in session.pages %}<a href="/gttt" data-pouce="/gte"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.4V4.6M4 19.4h15.6"/><path d="m7.4 15.4 3.4-4.2 3 2.4 4.2-5.6"/></svg>Résultats</a>
@@ -1525,6 +1535,8 @@
     menus.forEach(function(menu){
       menu.querySelectorAll('a[href^="/"]').forEach(function(lien){
         lien.removeAttribute('aria-current');
+        // Raccourcis « Salles et ambiance » du téléphone : ne définissent pas la rubrique.
+        if(lien.closest('.menu-tel')) return;
         var cible = lien.getAttribute('href').replace(/\/+$/,'') || '/';
         if(cible === chemin){ exact = exact || {menu:menu, lien:lien}; }
         else if(cible !== '/' && chemin.indexOf(cible) === 0){ approche = approche || {menu:menu, lien:lien}; }
@@ -1588,7 +1600,7 @@
     fil.appendChild(dedans);
 
     // Onglets : les pages sœurs de la rubrique, dans l'ordre du menu.
-    var soeurs = place.menu.querySelectorAll('a[href^="/"]');
+    var soeurs = Array.prototype.filter.call(place.menu.querySelectorAll('a[href^="/"]'), function(l){ return !l.closest('.menu-tel'); });
     if(soeurs.length > 1){
       soeurs.forEach(function(lien){
         var onglet = document.createElement('a');
@@ -1606,6 +1618,7 @@
     var correspondances = {'Aujourd’hui':'/quotidien','Mes animaux':'/bandes',
       'Mes résultats':'/gte','Ma gestion':'/economique','Vente directe':'/vente-directe'};
     var vise = correspondances[rubrique];
+    if(/^\/(salles?|ambiance)(\/|$)/.test(window.location.pathname)) vise = '/salles';
     document.querySelectorAll('.nav-pouce a[data-pouce]').forEach(function(lien){
       if(lien.dataset.pouce === vise){ lien.setAttribute('aria-current','page'); }
       else { lien.removeAttribute('aria-current'); }

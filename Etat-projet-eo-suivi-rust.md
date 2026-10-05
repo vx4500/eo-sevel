@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.0** —
+Version actuelle : **2.52.1** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.52.1 : téléphone — entrée « Salles » dans la barre du bas, groupe « Salles et ambiance » (.menu-tel, ignoré par le fil d'Ariane) dans le menu du compte : les menus du haut sont masqués sous 850 px.
 
 Version Rust 2.52.0 : module Serveur Proxmox (/equipements/proxmox, src/proxmox.rs) : lecture seule par jeton PVEAuditor (parametre proxmox_url/jeton/secret), nœuds, VM/CT, stockages, sauvegardes vzdump ; boucle 5 min, SMS via Free SMS (proxmox_alertes, proxmox_suivis, proxmox_signales).
 
