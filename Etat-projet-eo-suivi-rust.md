@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.51.1** —
+Version actuelle : **2.51.2** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.51.2 : /decouvrir enrichie (accueil, salles, automate, éclairage, soupe, GTE, résultats, vente directe, rôles, modules à la demande) ; bandeau vert plus fixe (section au lieu de header, sticky global).
 
 Version Rust 2.51.1 : pied de page sans « Rust » ; page publique /decouvrir (présentation détaillée, maquettes qui se déplient au défilement), lien depuis la page de connexion.
 

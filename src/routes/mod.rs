@@ -14295,11 +14295,15 @@ async fn apropos(
 ) -> AppResult<Html<String>> {
     render(&state, "apropos.html", Value::Object(context(&session)))
 }
+/// Publique : lien « Contact et propriété » du pied de page, connecté ou non.
 async fn contact(
     State(state): State<AppState>,
-    Extension(session): Extension<SessionData>,
+    session: Option<Extension<SessionData>>,
 ) -> AppResult<Html<String>> {
-    render(&state, "contact.html", Value::Object(context(&session)))
+    match session {
+        Some(Extension(session)) => render(&state, "contact.html", Value::Object(context(&session))),
+        None => render(&state, "contact.html", json!({})),
+    }
 }
 
 async fn list_page(

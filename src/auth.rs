@@ -286,6 +286,7 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
     // seule la page de connexion reste accessible sans session dans ce cas.
     let public = path == "/login"
         || path == "/decouvrir"
+        || path == "/contact"
         || (!crate::demo_portal::enabled()
             && (path == "/commande"
                 || path.starts_with("/commande/")
