@@ -285,6 +285,7 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
     // Le tunnel de commande publique (vente directe) est fermé en mode démo :
     // seule la page de connexion reste accessible sans session dans ce cas.
     let public = path == "/login"
+        || path == "/decouvrir"
         || (!crate::demo_portal::enabled()
             && (path == "/commande"
                 || path.starts_with("/commande/")

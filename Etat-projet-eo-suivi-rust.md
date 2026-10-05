@@ -1,8 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.48.2** —
+Version actuelle : **2.51.1** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.51.1 : pied de page sans « Rust » ; page publique /decouvrir (présentation détaillée, maquettes qui se déplient au défilement), lien depuis la page de connexion.
+
+Version Rust 2.51.0 : saisie rapide « Quai abattoir » — porcs sortis des salles mais encore à l'élevage jusqu'au bon d'apport (quai_porc/quai_affectation, repris en priorité par synchronise_sortie_abattoir) ; affichage /departs et Mes salles.
 
 Version Rust 2.48.2 : accueils « cockpit » et « flux » : le bandeau rouge des alertes (accueil_alertes.html, supprimé) faisait doublon avec le bouton « ! » du menu (État de l’élevage) ; retiré. Bouton « Gérer les bandes » lisible : la règle `.rust-main a:not(…)` imposait sa couleur de lien au bouton plein (texte vert sur fond vert).
 

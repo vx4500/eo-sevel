@@ -62,6 +62,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_global("app_version", env!("CARGO_PKG_VERSION"));
     env.add_template("base.html", include_str!("../templates/base.html"))?;
     env.add_template("login.html", include_str!("../templates/login.html"))?;
+    env.add_template("decouvrir.html", include_str!("../templates/decouvrir.html"))?;
     env.add_template(
         "dashboard.html",
         include_str!("../templates/dashboard.html"),

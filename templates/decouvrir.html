@@ -1,0 +1,209 @@
+{% extends "base.html" %}{% block title %}Découvrir EO_Sevel — logiciel de gestion d'élevage porcin{% endblock %}
+{% block body_class %}login-page decouvrir{% endblock %}
+{% block content %}
+<style>
+body.decouvrir{background:#f4f1ec !important}
+.decouvrir .rust-main{display:block !important;max-width:1180px;padding:0 20px 60px !important}
+.dc-hero{background:linear-gradient(160deg,#1f4a37 0%,#163527 100%);color:#e9f1ec;border-radius:0 0 22px 22px;padding:56px 46px 64px;margin:0 -20px 40px;text-align:center}
+.dc-hero .sur{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#f2c38b;font-weight:700}
+.dc-hero h1{color:#fff;font-size:clamp(30px,4.4vw,52px);line-height:1.08;margin:12px auto 16px;max-width:18ch;font-weight:800}
+.dc-hero p{font-size:18px;line-height:1.55;color:#cfe0d6;max-width:62ch;margin:0 auto 26px}
+.dc-btn{display:inline-block;background:#f2c38b;color:#1f2a24 !important;font-weight:700;padding:13px 26px;border-radius:999px;text-decoration:none}
+.dc-btn.ghost{background:transparent;color:#fff !important;border:1px solid #ffffff55;margin-left:8px}
+.dc-defiler{margin-top:34px;font-size:13px;color:#b9cfc2;animation:dc-bond 2s infinite}
+@keyframes dc-bond{50%{transform:translateY(6px)}}
+.dc-bloc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:44px;align-items:center;margin:0 0 90px}
+.dc-bloc.inverse .dc-texte{order:2}
+@media(max-width:860px){.dc-bloc{grid-template-columns:1fr;gap:22px;margin-bottom:60px}.dc-bloc.inverse .dc-texte{order:0}.dc-hero{padding:40px 22px 48px}}
+.dc-num{font-size:13px;font-weight:800;color:#b8692b;letter-spacing:.1em}
+.dc-texte h2{font-size:clamp(24px,2.6vw,32px);line-height:1.15;margin:6px 0 12px;color:#1f4a37}
+.dc-texte p{font-size:16px;line-height:1.6;color:#46524c;margin:0 0 12px}
+.dc-texte ul{margin:0;padding-left:20px;color:#46524c;line-height:1.7}
+.dc-visuel{background:#fff;border-radius:18px;box-shadow:0 18px 50px #1d3a2c22;padding:22px;overflow:hidden}
+.dc-fenetre{display:flex;gap:6px;margin-bottom:14px}.dc-fenetre i{width:10px;height:10px;border-radius:50%;background:#e2ddd4}
+/* Dépliement au défilement */
+.dc-r{opacity:0;transform:translateY(40px);transition:opacity .8s ease,transform .8s ease}
+.dc-r.vu{opacity:1;transform:none}
+.dc-r .dc-e{opacity:0;transform:translateY(14px) scale(.97);transition:opacity .5s ease,transform .5s ease}
+.dc-r.vu .dc-e{opacity:1;transform:none}
+.dc-r .dc-barre{transform:scaleX(0);transform-origin:left;transition:transform 1.1s cubic-bezier(.2,.7,.2,1)}
+.dc-r.vu .dc-barre{transform:scaleX(1)}
+.dc-r .dc-trace{stroke-dasharray:900;stroke-dashoffset:900;transition:stroke-dashoffset 2.2s ease}
+.dc-r.vu .dc-trace{stroke-dashoffset:0}
+@media(prefers-reduced-motion:reduce){.dc-r,.dc-r .dc-e,.dc-r .dc-barre,.dc-r .dc-trace{opacity:1!important;transform:none!important;transition:none!important;stroke-dashoffset:0!important}}
+/* Maquettes */
+.m-salles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:520px){.m-salles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.m-salle{border:1px solid #e6e1d8;border-radius:12px;padding:11px;font-size:13px;background:#fbfaf7}
+.m-salle b{display:block;font-size:14px;color:#1f4a37}
+.m-salle .eff{font-size:22px;font-weight:800;color:#1f2a24;margin:4px 0}
+.m-salle .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#e5efe9;color:#1f4a37;margin-right:4px}
+.m-salle .t{color:#6b7c73}.m-salle.alerte{border-color:#e8b4a8;background:#fdf3f0}.m-salle.alerte .t{color:#b3261e;font-weight:600}
+.m-salle.vide{opacity:.6}
+.m-jauge{height:6px;background:#eee8de;border-radius:4px;margin-top:6px;overflow:hidden}.m-jauge span{display:block;height:100%;background:#2f7a55;border-radius:4px}
+.m-frise{font-size:12px}
+.m-ligne{display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;margin:8px 0}
+.m-ligne b{color:#1f4a37}
+.m-piste{position:relative;height:22px;background:#f4f1ec;border-radius:6px}
+.m-piste span{position:absolute;top:0;height:100%;border-radius:6px;color:#fff;font-size:11px;line-height:22px;padding-left:6px;white-space:nowrap;overflow:hidden}
+.c-ia{background:#7a5ea8}.c-gest{background:#5b8bb5}.c-mat{background:#d07a3a}.c-ps{background:#3f9a6a}.c-eng{background:#1f4a37}
+.m-aujourdhui{position:absolute;top:-4px;bottom:-4px;width:2px;background:#b3261e}
+.m-legende{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;color:#6b7c73}.m-legende i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.m-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.m-kpi{background:#fbfaf7;border:1px solid #e6e1d8;border-radius:12px;padding:10px;text-align:center}
+.m-kpi b{display:block;font-size:22px;color:#1f2a24}.m-kpi small{color:#6b7c73;font-size:12px}
+.m-panneau{max-width:330px;margin:0 auto;border:1px solid #e6e1d8;border-radius:16px;padding:14px;font-size:13px}
+.m-onglets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.m-onglets span{padding:5px 10px;border-radius:999px;background:#f1ede6;font-size:12px}.m-onglets span.on{background:#1f4a37;color:#fff}
+.m-champ{border:1px solid #ddd6ca;border-radius:9px;padding:9px 10px;margin:6px 0 10px;background:#fff;color:#1f2a24}
+.m-champ small{display:block;color:#8a978f;font-size:11px}
+.m-ok{background:#1f4a37;color:#fff;text-align:center;border-radius:10px;padding:10px;font-weight:700}
+.m-toast{margin-top:10px;background:#e5efe9;color:#1f4a37;border-radius:10px;padding:8px 10px;font-weight:600}
+.m-quai{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.m-etape{flex:1;min-width:120px;border:1px solid #e6e1d8;border-radius:12px;padding:12px;text-align:center;background:#fbfaf7}
+.m-etape b{display:block;font-size:20px;color:#1f2a24}.m-fleche{color:#b8692b;font-size:22px}
+.m-table{width:100%;border-collapse:collapse;font-size:13px}.m-table td,.m-table th{padding:7px 6px;border-bottom:1px solid #eee8de;text-align:left}.m-table th{color:#6b7c73;font-weight:600}
+.m-table td:last-child,.m-table th:last-child{text-align:right}
+.dc-fin{text-align:center;background:#1f4a37;color:#e9f1ec;border-radius:22px;padding:48px 24px}
+.dc-fin h2{color:#fff;font-size:clamp(24px,3vw,34px);margin:0 0 10px}.dc-fin p{color:#cfe0d6;margin:0 0 22px}
+.dc-pied{text-align:center;color:#8a978f;font-size:12px;margin-top:22px}
+</style>
+
+<header class="dc-hero">
+  <div class="sur">Logiciel de gestion d'élevage porcin</div>
+  <h1>Votre élevage, salle par salle, bande par bande.</h1>
+  <p>EO_Sevel réunit dans un seul outil le suivi des animaux, la conduite des bandes, l'ambiance des bâtiments, les départs à l'abattoir et les résultats économiques. Faites défiler pour le découvrir en images.</p>
+  <a class="dc-btn" href="/login">Se connecter</a><a class="dc-btn ghost" href="mailto:vx4500@gmail.com">Nous contacter</a>
+  <div class="dc-defiler">▼ Faites défiler</div>
+</header>
+
+<section class="dc-bloc dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">01 · MES SALLES</div>
+    <h2>Chaque salle en un coup d'œil</h2>
+    <p>Effectif, bande en place, remplissage, température : toutes les salles sont regroupées par stade. Une anomalie ressort aussitôt en rouge.</p>
+    <ul><li>Fiche complète d'une salle en un clic</li><li>Caméra, ventilation et lumière reliées à la salle</li><li>Effectifs mis à jour à chaque mouvement</li></ul>
+  </div>
+  <div class="dc-visuel"><div class="dc-fenetre"><i></i><i></i><i></i></div>
+    <div class="m-salles">
+      <div class="m-salle dc-e" style="transition-delay:.05s"><b>Maternité 1</b><div class="eff">24 truies</div><span class="tag">Bande 12</span><div class="t">24,5 °C · 62 %</div><div class="m-jauge"><span class="dc-barre" style="width:100%"></span></div></div>
+      <div class="m-salle dc-e" style="transition-delay:.15s"><b>Maternité 2</b><div class="eff">22 truies</div><span class="tag">Bande 13</span><div class="t">24,1 °C · 60 %</div><div class="m-jauge"><span class="dc-barre" style="width:92%"></span></div></div>
+      <div class="m-salle alerte dc-e" style="transition-delay:.25s"><b>Post-sevrage 1</b><div class="eff">312 porcelets</div><span class="tag">Bande 10</span><div class="t">⚠ 21,3 °C (consigne 26)</div><div class="m-jauge"><span class="dc-barre" style="width:87%"></span></div></div>
+      <div class="m-salle dc-e" style="transition-delay:.35s"><b>Post-sevrage 2</b><div class="eff">298 porcelets</div><span class="tag">Bande 11</span><div class="t">26,2 °C · 58 %</div><div class="m-jauge"><span class="dc-barre" style="width:83%"></span></div></div>
+      <div class="m-salle dc-e" style="transition-delay:.45s"><b>Engraissement 1</b><div class="eff">286 porcs</div><span class="tag">Bande 7</span><div class="t">19,8 °C · 65 %</div><div class="m-jauge"><span class="dc-barre" style="width:95%"></span></div></div>
+      <div class="m-salle vide dc-e" style="transition-delay:.55s"><b>Engraissement 2</b><div class="eff">Vide</div><span class="tag">Lavage</span><div class="t">Ventilation réduite</div><div class="m-jauge"><span class="dc-barre" style="width:0"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="dc-bloc inverse dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">02 · CONDUITE EN BANDES</div>
+    <h2>Le calendrier de toutes les bandes</h2>
+    <p>De l'insémination au départ à l'abattoir, chaque bande avance sur sa frise. Le logiciel prévoit les mises bas, sevrages et transferts, et vous prévient dix jours avant qu'une salle manque de place.</p>
+    <ul><li>Inséminations, échographies, mises bas, sevrages</li><li>Tâches de la semaine à valider</li><li>Prévision des places par stade</li></ul>
+  </div>
+  <div class="dc-visuel m-frise"><div class="dc-fenetre"><i></i><i></i><i></i></div>
+    <div class="m-ligne dc-e" style="transition-delay:.05s"><b>Bande 14</b><div class="m-piste"><span class="c-ia dc-barre" style="left:0;width:12%">IA</span><span class="c-gest dc-barre" style="left:12%;width:60%">Gestation</span></div></div>
+    <div class="m-ligne dc-e" style="transition-delay:.15s"><b>Bande 13</b><div class="m-piste"><span class="c-gest dc-barre" style="left:0;width:38%">Gestation</span><span class="c-mat dc-barre" style="left:38%;width:22%">Maternité</span><span class="c-ps dc-barre" style="left:60%;width:30%">Post-sevrage</span></div></div>
+    <div class="m-ligne dc-e" style="transition-delay:.25s"><b>Bande 12</b><div class="m-piste"><span class="c-mat dc-barre" style="left:0;width:28%">Maternité</span><span class="c-ps dc-barre" style="left:28%;width:40%">Post-sevrage</span><span class="c-eng dc-barre" style="left:68%;width:32%">Engraissement</span></div></div>
+    <div class="m-ligne dc-e" style="transition-delay:.35s"><b>Bande 10</b><div class="m-piste"><span class="c-ps dc-barre" style="left:0;width:24%">Post-sevrage</span><span class="c-eng dc-barre" style="left:24%;width:62%">Engraissement</span></div></div>
+    <div class="m-ligne dc-e" style="transition-delay:.45s"><b>Bande 7</b><div class="m-piste"><span class="c-eng dc-barre" style="left:0;width:44%">Engraissement → départ</span><div class="m-aujourdhui" style="left:30%"></div></div></div>
+    <div class="m-legende"><span><i class="c-ia"></i>IA</span><span><i class="c-gest"></i>Gestation</span><span><i class="c-mat"></i>Maternité</span><span><i class="c-ps"></i>Post-sevrage</span><span><i class="c-eng"></i>Engraissement</span><span><i style="background:#b3261e"></i>Aujourd'hui</span></div>
+  </div>
+</section>
+
+<section class="dc-bloc dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">03 · AMBIANCE</div>
+    <h2>Température, ventilation, lumière</h2>
+    <p>Les capteurs et automates des bâtiments remontent dans EO_Sevel. Les courbes montrent la nuit passée, les alertes partent par SMS, et les programmes d'éclairage se règlent salle par salle.</p>
+    <ul><li>Capteurs sans fil et automates reliés</li><li>Alerte SMS, même après une coupure de courant</li><li>Historique pour comprendre un problème</li></ul>
+  </div>
+  <div class="dc-visuel"><div class="dc-fenetre"><i></i><i></i><i></i></div>
+    <div class="m-kpis">
+      <div class="m-kpi dc-e" style="transition-delay:.05s"><b>25,8 °C</b><small>Post-sevrage 2</small></div>
+      <div class="m-kpi dc-e" style="transition-delay:.15s"><b>45 %</b><small>Ventilation</small></div>
+      <div class="m-kpi dc-e" style="transition-delay:.25s"><b>0</b><small>Alerte active</small></div>
+    </div>
+    <svg viewBox="0 0 400 150" width="100%" role="img" aria-label="Courbe de température sur 24 heures">
+      <line x1="0" y1="60" x2="400" y2="60" stroke="#b8692b" stroke-dasharray="4 4" stroke-width="1"/>
+      <text x="396" y="54" text-anchor="end" font-size="10" fill="#b8692b">consigne 26 °C</text>
+      <path class="dc-trace" d="M0,78 C30,74 50,70 80,66 S130,58 160,60 S210,70 240,64 S290,52 320,57 S370,64 400,61" fill="none" stroke="#1f4a37" stroke-width="3"/>
+      <path class="dc-trace" d="M0,120 C40,118 70,110 100,112 S160,96 200,100 S260,88 300,92 S360,104 400,98" fill="none" stroke="#5b8bb5" stroke-width="2"/>
+      <text x="4" y="146" font-size="10" fill="#8a978f">00 h</text><text x="196" y="146" font-size="10" fill="#8a978f">12 h</text><text x="372" y="146" font-size="10" fill="#8a978f">24 h</text>
+    </svg>
+    <div class="m-legende"><span><i style="background:#1f4a37"></i>Température</span><span><i style="background:#5b8bb5"></i>Ventilation</span></div>
+  </div>
+</section>
+
+<section class="dc-bloc inverse dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">04 · SAISIE RAPIDE</div>
+    <h2>Noter au bord de la case, depuis le téléphone</h2>
+    <p>Un bouton + toujours visible : mise bas, perte, insémination, mouvement, sevrage… La saisie prend quelques secondes et se retrouve partout où elle compte.</p>
+    <ul><li>Pensée pour le téléphone et les gants</li><li>Contrôles d'effectif pour éviter les erreurs</li><li>Saisie vocale et lecture de code QR</li></ul>
+  </div>
+  <div class="dc-visuel"><div class="m-panneau">
+    <b>Saisie rapide</b>
+    <div class="m-onglets dc-e" style="transition-delay:.05s"><span>Mise bas</span><span class="on">Perte porc</span><span>Mouvement</span><span>Sevrage</span><span>Quai abattoir</span></div>
+    <div class="m-champ dc-e" style="transition-delay:.2s"><small>Bande</small>Bande 10</div>
+    <div class="m-champ dc-e" style="transition-delay:.3s"><small>Case</small>Post-sevrage 1 · Case 3</div>
+    <div class="m-champ dc-e" style="transition-delay:.4s"><small>Cause</small>Digestive</div>
+    <div class="m-ok dc-e" style="transition-delay:.5s">Enregistrer</div>
+    <div class="m-toast dc-e" style="transition-delay:.9s">✓ Perte enregistrée</div>
+  </div></div>
+</section>
+
+<section class="dc-bloc dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">05 · DÉPARTS</div>
+    <h2>Du quai jusqu'au bon d'apport</h2>
+    <p>Annoncez le camion, mettez les porcs sur le quai case par case : ils quittent les salles mais restent comptés à l'élevage jusqu'au bon d'apport, qui les retire sans double compte.</p>
+    <ul><li>Départs prévus avec date et heure</li><li>Porcs en attente sur le quai</li><li>Rapprochement automatique avec l'abattoir</li></ul>
+  </div>
+  <div class="dc-visuel"><div class="dc-fenetre"><i></i><i></i><i></i></div>
+    <div class="m-quai">
+      <div class="m-etape dc-e" style="transition-delay:.05s">🏠<b>286</b>en salle</div><div class="m-fleche dc-e" style="transition-delay:.2s">→</div>
+      <div class="m-etape dc-e" style="transition-delay:.35s">🅿<b>120</b>sur le quai</div><div class="m-fleche dc-e" style="transition-delay:.5s">→</div>
+      <div class="m-etape dc-e" style="transition-delay:.65s">🚚<b>120</b>bon d'apport</div>
+    </div>
+  </div>
+</section>
+
+<section class="dc-bloc inverse dc-r">
+  <div class="dc-texte">
+    <div class="dc-num">06 · RÉSULTATS</div>
+    <h2>Les chiffres qui comptent</h2>
+    <p>Ventes, aliment, énergie, pharmacie et stocks se rejoignent pour donner la marge par bande. Les documents réglementaires sont prêts à présenter en cas de contrôle.</p>
+    <ul><li>Résultats par bande et par période</li><li>Import des factures et bons d'apport</li><li>Registre et documents obligatoires</li></ul>
+  </div>
+  <div class="dc-visuel"><div class="dc-fenetre"><i></i><i></i><i></i></div>
+    <table class="m-table">
+      <tr><th>Bande</th><th>Porcs vendus</th><th>Poids moyen</th><th>Marge / porc</th></tr>
+      <tr class="dc-e" style="transition-delay:.1s"><td>Bande 5</td><td>284</td><td>118,4 kg</td><td><b style="color:#2f7a55">+ 21 €</b></td></tr>
+      <tr class="dc-e" style="transition-delay:.25s"><td>Bande 6</td><td>291</td><td>116,9 kg</td><td><b style="color:#2f7a55">+ 18 €</b></td></tr>
+      <tr class="dc-e" style="transition-delay:.4s"><td>Bande 7</td><td>279</td><td>119,2 kg</td><td><b style="color:#2f7a55">+ 24 €</b></td></tr>
+    </table>
+    <p style="font-size:12px;color:#8a978f;margin:10px 0 0">Données d'exemple.</p>
+  </div>
+</section>
+
+<section class="dc-fin dc-r">
+  <h2>Vos données restent chez vous</h2>
+  <p>Hébergé sur l'exploitation · Ordinateur, tablette et téléphone · Alertes en temps réel</p>
+  <a class="dc-btn" href="/login">Se connecter</a><a class="dc-btn ghost" href="mailto:vx4500@gmail.com">Nous contacter</a>
+</section>
+<p class="dc-pied">EO_Sevel · Version {{ app_version }} · © Emmanuel ORY</p>
+
+<script>
+(function(){
+  var blocs=document.querySelectorAll('.dc-r');
+  if(!('IntersectionObserver' in window)){blocs.forEach(function(b){b.classList.add('vu');});return;}
+  var obs=new IntersectionObserver(function(entrees){
+    entrees.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('vu'); obs.unobserve(e.target); } });
+  },{threshold:0.18,rootMargin:'0px 0px -8% 0px'});
+  blocs.forEach(function(b){obs.observe(b);});
+})();
+</script>
+{% endblock %}

@@ -123,6 +123,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(dashboard))
         .route("/login", get(login_page).post(login_post))
+        .route("/decouvrir", get(decouvrir_page))
         .route(
             "/demo/acces",
             get(demo_portal::acces).post(demo_portal::creer),
@@ -2092,6 +2093,11 @@ fn require_writer(session: &SessionData) -> AppResult<()> {
     } else {
         Err(AppError::Forbidden)
     }
+}
+
+/// Présentation détaillée du logiciel, publique (lien depuis la connexion).
+async fn decouvrir_page(State(state): State<AppState>) -> AppResult<Html<String>> {
+    render(&state, "decouvrir.html", json!({}))
 }
 
 async fn login_page(
