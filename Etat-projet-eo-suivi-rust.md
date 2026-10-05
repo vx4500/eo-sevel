@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.1** —
+Version actuelle : **2.52.2** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.52.2 : synchronise_sortie_abattoir — une case avec inventaire (daté avant l'apport) prend l'effectif compté (case_pig_count) au lieu de l'estimation par transferts. Données prod 05/10 : inventaire Case 1 La Berru (id 1) dernier_transfert_id=146, apport 12 = 109 porcs de la case 47.
 
 Version Rust 2.52.1 : téléphone — entrée « Salles » dans la barre du bas, groupe « Salles et ambiance » (.menu-tel, ignoré par le fil d'Ariane) dans le menu du compte : les menus du haut sont masqués sous 850 px.
 

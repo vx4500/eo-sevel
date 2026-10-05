@@ -9739,8 +9739,8 @@ async fn synchronise_sortie_abattoir(
         .map(str::to_owned)
         .unwrap_or_else(|| Local::now().date_naive().format("%Y-%m-%d").to_string());
     for (band, count) in allocations {
-        let cases: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT c.id,CAST(COALESCE(SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE d.case_id=c.id AND b.id=? AND date(d.date)<=date(?)),0) AS INTEGER) AS disponible FROM casesalle c JOIN transfert t ON (t.case_dest_id=c.id OR t.case_source_id=c.id) WHERE t.espece='porc' AND t.bande_id=? AND date(t.date)<=date(?) GROUP BY c.id HAVING disponible>0 ORDER BY MAX(t.date),c.id",
+        let candidates: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT c.id,CAST(COALESCE(SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE d.case_id=c.id AND b.id=? AND date(d.date)<=date(?)),0) AS INTEGER) AS disponible FROM casesalle c JOIN transfert t ON (t.case_dest_id=c.id OR t.case_source_id=c.id) WHERE t.espece='porc' AND t.bande_id=? AND date(t.date)<=date(?) GROUP BY c.id ORDER BY MAX(t.date),c.id",
         )
         .bind(band)
         .bind(&movement_date)
@@ -9748,6 +9748,22 @@ async fn synchronise_sortie_abattoir(
         .bind(&movement_date)
         .fetch_all(&mut **tx)
         .await?;
+        // Un inventaire saisi dans la case fait foi : l'effectif compté
+        // (inventaire + mouvements suivants) remplace l'estimation par les
+        // seuls transferts, sinon un bon d'apport après inventaire laissait
+        // des porcs « fantômes » dans la case (Case 1 La Berru, 24/08).
+        let mut cases = Vec::new();
+        for (case_id, estime) in candidates {
+            let inventaire: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM inventairecase WHERE case_id=? AND date(date)<=date(?)")
+                .bind(case_id)
+                .bind(&movement_date)
+                .fetch_one(&mut **tx)
+                .await?;
+            let disponible = if inventaire > 0 { case_pig_count_conn(&mut **tx, case_id).await? } else { estime };
+            if disponible > 0 {
+                cases.push((case_id, disponible));
+            }
+        }
         let mut remaining = count;
         // Porcs déjà mis sur le quai : sortis de case, ils partent avec ce
         // bon d'apport sans être retirés une seconde fois des cases.
