@@ -54,6 +54,7 @@ mod regression_tests;
 mod scan;
 mod sevrage;
 mod sms;
+mod proxmox;
 mod soupe;
 mod soupe_pilotage;
 mod surfaces;
@@ -139,6 +140,7 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/kren", get(equipement_kren))
         .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
         .route("/equipements/sms/test", post(sms::test))
+        .route("/equipements/proxmox", get(proxmox::page).post(proxmox::enregistrer))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
         .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))
@@ -946,6 +948,7 @@ const EQUIP_MODULES: &[(&str, &str, &str)] = &[
     ("ipx", "Automate IPX800", "Sondes, relais, entrées et sorties, éclairage"),
     ("zigbee", "Réseau Zigbee", "Sondes sans fil, interrupteurs, variateurs, compteurs"),
     ("sms", "Free SMS", "Alertes par SMS"),
+    ("proxmox", "Serveur Proxmox", "État du serveur, machines et sauvegardes"),
     ("acces", "Accès à distance", "Tunnel Cloudflare"),
     ("cameras", "Caméras", "Image des caméras dans les salles"),
     ("soupe", "Machine à soupe", "Exa-Feeder Asserva en écoute seule"),
@@ -1037,6 +1040,8 @@ async fn equipements(
         .unwrap_or(0)
         > 0;
     let sms = json!({"code":"sms","nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
+    let proxmox_ok = crate::proxmox::parametre(&state.pool, "proxmox_secret").await.is_some();
+    let proxmox = json!({"code":"proxmox","nom":"Serveur Proxmox", "etat": if proxmox_ok { "actif" } else { "attente" }, "etat_texte": if proxmox_ok { "Jeton enregistré" } else { "À configurer" }, "description":"Le serveur qui fait tourner EO_Sevel : processeur, mémoire, disques, machines et sauvegardes, en lecture seule.", "href":"/equipements/proxmox", "action":"Voir le serveur"});
     let nb_cameras: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM camera WHERE actif=1")
         .fetch_one(&state.pool)
         .await
@@ -1072,6 +1077,7 @@ async fn equipements(
             ipx,
             zigbee,
             sms,
+            proxmox,
             acces,
             cameras,
             {"code":"laezh","nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
@@ -1079,7 +1085,7 @@ async fn equipements(
             {"code":"kren","nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
         ]);
         if let (Some(s), Value::Array(l)) = (soupe, &mut liste) {
-            l.insert(6, s);
+            l.insert(7, s);
         }
         if let Value::Array(l) = &mut liste {
             l.retain(|e| crate::templates::equip_actif(e["code"].as_str().unwrap_or("")));

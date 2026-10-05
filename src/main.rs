@@ -16,6 +16,7 @@ mod mdns;
 mod models;
 mod regul_core;
 mod routes;
+mod proxmox;
 mod sms_free;
 mod soupe;
 mod tunnel;
@@ -123,6 +124,12 @@ async fn main() -> anyhow::Result<()> {
     let sms_pool = pool.clone();
     tokio::spawn(async move {
         crate::sms_free::boucle(sms_pool).await;
+    });
+
+    // Serveur Proxmox : alertes SMS (disque, mémoire, machines, sauvegardes).
+    let proxmox_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::proxmox::boucle(proxmox_pool).await;
     });
 
     // Machine à soupe : alerte quand le service d'écoute ne donne plus de nouvelles.

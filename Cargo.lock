@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "eo-sevel"
-version = "2.51.3"
+version = "2.52.0"
 dependencies = [
  "anyhow",
  "axum",
