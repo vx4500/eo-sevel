@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.3** —
+Version actuelle : **2.52.4** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.52.4 : « QR code » au lieu de « code QR » (page Découvrir).
 
 Version Rust 2.52.3 : suppression de salle — bloquée seulement par cases, truies ou transferts ; contrôles/alertes/observations/IPX/caméras détachés (salle_id NULL, nom conservé), réglages et mesures d'ambiance supprimés.
 
