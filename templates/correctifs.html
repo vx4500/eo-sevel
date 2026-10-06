@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.53.0 — Parler à l’élevage avec Claude</h2><ul><li>Nouveau connecteur pour l’application Claude (Mes équipements → Assistant) : à la voix, chercher une truie, voir les places d’une case (vanne), connaître les dates d’IA, déplacer une truie et créer un rappel. Rien n’est enregistré sans votre « oui ».</li><li>Nouvelle page Assistant : questions écrites sur les données de l’élevage, en lecture seule.</li><li>L’ancien bouton de dictée (micro) est retiré.</li></ul></section>
 <section class="card"><h2>2.52.5 — Serveur Proxmox</h2><ul><li>Adresse en « http » corrigée automatiquement en « https ».</li><li>Si le jeton n’a pas le droit de lire le serveur, la page le dit et explique quoi régler dans Proxmox.</li></ul></section>
 <section class="card"><h2>2.52.4 — QR code</h2><ul><li>On écrit désormais « QR code ».</li></ul></section>
 <section class="card"><h2>2.52.3 — Supprimer une salle vide</h2><ul><li>Une salle sans case ni animaux peut être supprimée même si des contrôles quotidiens y ont été faits : ils restent dans l’historique avec le nom de la salle.</li><li>Si la suppression est refusée, le message dit pourquoi (cases, truies ou mouvements).</li></ul></section>
