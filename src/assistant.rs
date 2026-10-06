@@ -131,7 +131,7 @@ fn cellule(row: &SqliteRow, i: usize) -> Value {
     }
 }
 
-async fn connexion(base: &Path) -> Result<SqliteConnection, String> {
+pub(crate) async fn connexion(base: &Path) -> Result<SqliteConnection, String> {
     SqliteConnectOptions::new()
         .filename(base)
         .read_only(true)
@@ -141,7 +141,7 @@ async fn connexion(base: &Path) -> Result<SqliteConnection, String> {
         .map_err(|e| format!("Base illisible : {e}"))
 }
 
-async fn executer(cnx: &mut SqliteConnection, nom: &str, entree: &Value) -> (String, String) {
+pub(crate) async fn executer(cnx: &mut SqliteConnection, nom: &str, entree: &Value) -> (String, String) {
     match nom {
         "lister_tables" => {
             let noms: Vec<String> = sqlx::query_scalar(

@@ -8,6 +8,9 @@ async fn contexte_page(state: &AppState, session: &SessionData) -> Map<String, V
     ctx.insert("cle_enregistree".into(), json!(crate::proxmox::parametre(pool, "assistant_cle").await.is_some()));
     ctx.insert("modele".into(), json!(crate::proxmox::parametre(pool, "assistant_modele").await));
     ctx.insert("modele_defaut".into(), json!(crate::assistant::MODELE_DEFAUT));
+    if session.est_admin() {
+        ctx.insert("mcp_jeton".into(), json!(crate::proxmox::parametre(pool, "mcp_jeton").await));
+    }
     ctx
 }
 
@@ -59,4 +62,20 @@ pub(super) async fn reglages(
     }
     crate::sms_free::ecrire_parametre(pool, "assistant_modele", &form_text(&form, "modele").unwrap_or_default()).await?;
     Ok(Redirect::to("/equipements/assistant?resultat=enregistre").into_response())
+}
+
+/// Crée (ou remplace) le jeton du connecteur Claude : l'ancienne adresse
+/// cesse aussitôt de fonctionner.
+pub(super) async fn nouveau_jeton(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    if !session.est_admin() {
+        return Err(AppError::Forbidden);
+    }
+    verify_csrf(&session, &form)?;
+    let jeton = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    crate::sms_free::ecrire_parametre(&state.pool, "mcp_jeton", &jeton).await?;
+    Ok(Redirect::to("/equipements/assistant?resultat=jeton#connecteur").into_response())
 }

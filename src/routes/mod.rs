@@ -56,6 +56,7 @@ mod sevrage;
 mod sms;
 mod proxmox;
 mod assistant;
+mod mcp;
 mod soupe;
 mod soupe_pilotage;
 mod surfaces;
@@ -143,6 +144,8 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/proxmox", get(proxmox::page).post(proxmox::enregistrer))
         .route("/equipements/assistant", get(assistant::page).post(assistant::reglages))
         .route("/assistant", get(assistant::page).post(assistant::demander))
+        .route("/equipements/assistant/connecteur", post(assistant::nouveau_jeton))
+        .route("/mcp/{jeton}", get(mcp::get_refuse).post(mcp::point_entree))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
         .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))

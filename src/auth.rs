@@ -294,7 +294,9 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
                 || path.starts_with("/desinscription/")))
         // Service d'écoute de la machine à soupe : authentifié par son jeton.
         || path == "/api/soupe/trames"
-        || path == "/api/soupe/script";
+        || path == "/api/soupe/script"
+        // Connecteur Claude : authentifié par le jeton contenu dans l'adresse.
+        || path.starts_with("/mcp/");
     let session_id = cookie_value(request.headers(), "eo_session");
     let session = session_id
         .as_ref()

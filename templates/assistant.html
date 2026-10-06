@@ -41,6 +41,16 @@
 {% endif %}
 
 {% if session.est_admin %}
+<section class="card" id="connecteur"><h2>Connecteur pour l'application Claude</h2>
+<p>Pour parler à l'élevage depuis l'application Claude du téléphone (mode vocal) : Claude peut chercher une truie, voir les places des cases, calculer les dates d'IA, <b>déplacer une truie</b> et <b>créer un rappel</b> — toujours après votre « oui ».</p>
+{% if resultat == 'jeton' %}<p><b>✓ Nouvelle adresse créée.</b> L'ancienne ne fonctionne plus.</p>{% endif %}
+{% if mcp_jeton %}<p>Adresse à coller dans claude.ai → <b>Paramètres → Connecteurs → Ajouter un connecteur personnalisé</b> :</p>
+<p><code id="mcp-url">/mcp/{{ mcp_jeton }}</code> <button type="button" class="secondary" id="mcp-copier">Copier</button></p>
+<p class="muted">Elle doit commencer par l'adresse <b>https</b> de l'accès à distance (pas 192.168…). Gardez-la secrète : elle sert de mot de passe.</p>
+<script>(function(){var c=document.getElementById('mcp-url');if(location.protocol==='https:')c.textContent=location.origin+c.textContent;document.getElementById('mcp-copier').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(c.textContent);};})();</script>
+{% endif %}
+<form method="post" action="/equipements/assistant/connecteur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button type="submit" {% if mcp_jeton %}class="secondary"{% endif %}>{% if mcp_jeton %}Changer l'adresse{% else %}Créer l'adresse du connecteur{% endif %}</button></form>
+</section>
 <section class="card"><details {% if not cle_enregistree %}open{% endif %}><summary><b>Réglages</b></summary>
 <p>L'assistant utilise l'API Claude d'Anthropic. Créez une clé sur <b>console.anthropic.com → API Keys</b>. La question et les résultats des requêtes sont envoyés à l'API ; les comptes, mots de passe et paramètres ne sont jamais lisibles par l'assistant.</p>
 <form class="rust-actions" method="post" action="/equipements/assistant"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
