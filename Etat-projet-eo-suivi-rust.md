@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.4** —
+Version actuelle : **2.52.5** —
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.52.5 : Proxmox — adresse http forcée en https (la redirection perdait le jeton) ; refus 403 sur /nodes/{n}/status affiché au lieu d'une page vide.
 
 Version Rust 2.52.4 : « QR code » au lieu de « code QR » (page Découvrir).
 

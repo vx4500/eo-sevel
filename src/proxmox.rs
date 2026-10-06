@@ -21,8 +21,13 @@ pub async fn parametre(pool: &SqlitePool, cle: &str) -> Option<String> {
 
 /// Adresse normalisée : « 192.168.1.10 » → « https://192.168.1.10:8006 ».
 pub fn normaliser_adresse(brute: &str) -> String {
+    // Proxmox ne répond qu'en https : une adresse en http est redirigée et
+    // la redirection perd le jeton (réponse « non connecté »).
     let mut a = brute.trim().trim_end_matches('/').to_string();
-    if !a.starts_with("http://") && !a.starts_with("https://") {
+    if let Some(reste) = a.strip_prefix("http://") {
+        a = format!("https://{reste}");
+    }
+    if !a.starts_with("https://") {
         a = format!("https://{a}");
     }
     let hote = a.splitn(2, "://").nth(1).unwrap_or("");
@@ -56,7 +61,7 @@ async fn get(client: &reqwest::Client, a: &Acces, chemin: &str) -> Result<Value,
     match r.status().as_u16() {
         200 => {}
         401 => return Err("Jeton refusé : vérifiez l'identifiant (utilisateur@pam!nom) et le secret".into()),
-        403 => return Err("Droits insuffisants : donnez le rôle PVEAuditor au jeton sur « / »".into()),
+        403 => return Err("Le jeton est reconnu mais n'a pas le droit de lire le serveur. Dans Proxmox : Datacenter → Permissions → Ajouter → Permission du jeton, chemin « / », jeton root@pam!eosevel, rôle PVEAuditor, « Propager » coché.".into()),
         c => return Err(format!("Réponse inattendue de Proxmox ({c})")),
     }
     let v: Value = r.json().await.map_err(|e| format!("Réponse illisible : {e}"))?;
@@ -123,7 +128,9 @@ pub async fn lire(pool: &SqlitePool) -> Result<Value, String> {
         let en_ligne = n.get("status").and_then(Value::as_str) == Some("online");
         let mut noeud = json!({"nom": nom, "en_ligne": en_ligne});
         if en_ligne {
-            let st = get(&client, &a, &format!("/nodes/{nom}/status")).await.unwrap_or(Value::Null);
+            // Erreur remontée telle quelle : un jeton sans le rôle PVEAuditor
+            // voit la liste des serveurs mais rien d'autre (403).
+            let st = get(&client, &a, &format!("/nodes/{nom}/status")).await?;
             let mem = st.get("memory").cloned().unwrap_or(Value::Null);
             let root = st.get("rootfs").cloned().unwrap_or(Value::Null);
             noeud["cpu"] = json!((f(&st, "cpu") * 1000.0).round() / 10.0);
@@ -283,6 +290,7 @@ mod tests {
     fn mise_en_forme_et_problemes() {
         assert_eq!(normaliser_adresse("192.168.1.10"), "https://192.168.1.10:8006");
         assert_eq!(normaliser_adresse("https://pve:8006/"), "https://pve:8006");
+        assert_eq!(normaliser_adresse("http://192.168.1.140:8006"), "https://192.168.1.140:8006");
         assert_eq!(taille(1_610_612_736.0), "1,5 Go");
         assert_eq!(depuis(90_000.0), "1 j 1 h");
         let etat = json!({"noeuds": [{"nom": "pve", "en_ligne": true, "mem_pct": 50.0, "root_pct": 93.0,
