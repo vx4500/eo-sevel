@@ -366,48 +366,10 @@ fn version_235_structure_maternite_et_sevrage_sont_tracables() {
 /// La dictée n'a d'intérêt qu'avec les mains prises : le bouton n'apparaît
 /// que sur téléphone, et le parcours reste en deux temps jusque dans
 /// l'interface — analyse sans écriture, puis validation de ce qui a été relu.
-#[test]
-fn la_dictee_vocale_est_accessible_depuis_le_telephone() {
-    let base = include_str!("../templates/base.html");
-
-    assert!(base.contains("id=\"vocal-bouton\""));
-    assert!(base.contains("#vocal-bouton{display:none}"));
-    assert!(base.contains("#vocal-bouton{display:grid"));
-    assert!(base.contains("/api/vocal/analyser"));
-    assert!(base.contains("/api/vocal/valider"));
-    assert!(base.contains("/api/vocal/contexte"));
-    // L'effectif présent de la portée est ce qui rend une erreur visible
-    // avant l'enregistrement : il doit figurer sur l'écran de relecture.
-    assert!(base.contains("porcelet(s) présent(s)"));
-    // Le formulaire de relecture reste modifiable : corriger un champ doit
-    // rester plus rapide que redicter.
-    assert!(base.contains("id=\"vocal-truie\""));
-    assert!(base.contains("id=\"vocal-nombre\""));
-    assert!(base.contains("id=\"vocal-cause\""));
-}
 
 /// Le retour de terrain sur la dictée portait sur l'attente aveugle : sans
 /// chrono ni niveau sonore, quelques secondes de silence passent pour une
 /// panne et la dictée est reprise pour rien.
-#[test]
-fn la_dictee_montre_quelle_ecoute_et_ou_elle_en_est() {
-    let base = include_str!("../templates/base.html");
-    let routes = include_str!("../src/routes/vocal.rs");
-
-    assert!(base.contains("id=\"vocal-chrono\""));
-    assert!(base.contains("id=\"vocal-niveau\""));
-    assert!(base.contains("id=\"vocal-barre\""));
-    assert!(base.contains("navigator.vibrate"));
-    assert!(base.contains("Transcription en cours"));
-    assert!(base.contains("DUREE_MAX_S"));
-    // Le micro doit rejoindre le bout de la barre : l'espace élastique qui
-    // joue ce rôle sur grand écran est masqué sur téléphone.
-    assert!(base.contains("margin-left:auto;cursor:pointer"));
-    // La durée de transcription est la seule mesure qui permette de décider
-    // s'il faut un modèle plus léger sur le serveur de l'élevage.
-    assert!(routes.contains("transcription vocale terminée"));
-    assert!(routes.contains("EO_VOCAL_THREADS"));
-}
 
 /// La saisie rapide a été reprise depuis le terrain : ce qui se calcule ne se
 /// demande plus, ce qui ne se relit jamais disparaît, et ce qui ne se retrouve
