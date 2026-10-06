@@ -1037,6 +1037,8 @@ async fn equipements(
     let sms = json!({"code":"sms","nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
     let proxmox_ok = crate::proxmox::parametre(&state.pool, "proxmox_secret").await.is_some();
     let proxmox = json!({"code":"proxmox","nom":"Serveur Proxmox", "etat": if proxmox_ok { "actif" } else { "attente" }, "etat_texte": if proxmox_ok { "Jeton enregistré" } else { "À configurer" }, "description":"Le serveur qui fait tourner EO_Sevel : processeur, mémoire, disques, machines et sauvegardes, en lecture seule.", "href":"/equipements/proxmox", "action":"Voir le serveur"});
+    let assistant_ok = crate::proxmox::parametre(&state.pool, "mcp_jeton").await.is_some();
+    let assistant = json!({"code":"assistant","nom":"Assistant Claude", "etat": if assistant_ok { "actif" } else { "attente" }, "etat_texte": if assistant_ok { "Connecteur créé" } else { "À configurer" }, "description":"Parler à l’élevage depuis l’application Claude : truies, cases et vannes, dates d’IA, déplacements et rappels, toujours après votre « oui ».", "href":"/equipements/assistant", "action":"Régler l’assistant"});
     let nb_cameras: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM camera WHERE actif=1")
         .fetch_one(&state.pool)
         .await
@@ -1073,6 +1075,7 @@ async fn equipements(
             zigbee,
             sms,
             proxmox,
+            assistant,
             acces,
             cameras,
             {"code":"laezh","nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
@@ -1080,7 +1083,7 @@ async fn equipements(
             {"code":"kren","nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
         ]);
         if let (Some(s), Value::Array(l)) = (soupe, &mut liste) {
-            l.insert(7, s);
+            l.insert(8, s);
         }
         if let Value::Array(l) = &mut liste {
             l.retain(|e| crate::templates::equip_actif(e["code"].as_str().unwrap_or("")));

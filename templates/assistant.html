@@ -10,7 +10,7 @@
 </style>
 <section class="equipment-head">
   <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Assistant</h1><p>Posez une question sur l'élevage en langage courant. L'assistant consulte les données en lecture seule et ne modifie rien.</p></div>
-  <span class="equipment-state {% if cle_enregistree %}actif{% else %}attente{% endif %}">{% if cle_enregistree %}Prêt{% else %}À configurer{% endif %}</span>
+  <span class="equipment-state {% if cle_enregistree or mcp_jeton %}actif{% else %}attente{% endif %}">{% if mcp_jeton %}Connecteur créé{% elif cle_enregistree %}Prêt{% else %}À configurer{% endif %}</span>
 </section>
 
 {% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b></p></section>{% endif %}
@@ -51,12 +51,12 @@
 {% endif %}
 <form method="post" action="/equipements/assistant/connecteur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button type="submit" {% if mcp_jeton %}class="secondary"{% endif %}>{% if mcp_jeton %}Changer l'adresse{% else %}Créer l'adresse du connecteur{% endif %}</button></form>
 </section>
-<section class="card"><details {% if not cle_enregistree %}open{% endif %}><summary><b>Réglages</b></summary>
-<p>L'assistant utilise l'API Claude d'Anthropic. Créez une clé sur <b>console.anthropic.com → API Keys</b>. La question et les résultats des requêtes sont envoyés à l'API ; les comptes, mots de passe et paramètres ne sont jamais lisibles par l'assistant.</p>
+<section class="card"><h2>Questions écrites (facultatif)</h2>
+<p>Seulement pour poser des questions écrites sur cette page (pas nécessaire pour le connecteur). L'assistant utilise l'API Claude d'Anthropic. Créez une clé sur <b>console.anthropic.com → API Keys</b>. La question et les résultats des requêtes sont envoyés à l'API ; les comptes, mots de passe et paramètres ne sont jamais lisibles par l'assistant.</p>
 <form class="rust-actions" method="post" action="/equipements/assistant"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
   <label>Clé API<input type="password" name="cle" autocomplete="new-password" placeholder="{% if cle_enregistree %}enregistrée — laisser vide pour la garder{% else %}sk-ant-…{% endif %}"></label>
   <label>Modèle<input name="modele" value="{{ modele or '' }}" placeholder="{{ modele_defaut }}"></label>
   <button type="submit">Enregistrer</button>
-</form></details></section>
+</form></section>
 {% endif %}
 </div>{% endblock %}
