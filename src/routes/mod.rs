@@ -55,6 +55,7 @@ mod scan;
 mod sevrage;
 mod sms;
 mod proxmox;
+mod assistant;
 mod soupe;
 mod soupe_pilotage;
 mod surfaces;
@@ -141,6 +142,8 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
         .route("/equipements/sms/test", post(sms::test))
         .route("/equipements/proxmox", get(proxmox::page).post(proxmox::enregistrer))
+        .route("/equipements/assistant", get(assistant::page).post(assistant::reglages))
+        .route("/assistant", get(assistant::page).post(assistant::demander))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
         .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))
@@ -949,6 +952,7 @@ const EQUIP_MODULES: &[(&str, &str, &str)] = &[
     ("zigbee", "Réseau Zigbee", "Sondes sans fil, interrupteurs, variateurs, compteurs"),
     ("sms", "Free SMS", "Alertes par SMS"),
     ("proxmox", "Serveur Proxmox", "État du serveur, machines et sauvegardes"),
+    ("assistant", "Assistant", "Questions en langage courant sur les données de l'élevage"),
     ("acces", "Accès à distance", "Tunnel Cloudflare"),
     ("cameras", "Caméras", "Image des caméras dans les salles"),
     ("soupe", "Machine à soupe", "Exa-Feeder Asserva en écoute seule"),

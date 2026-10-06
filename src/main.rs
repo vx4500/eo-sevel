@@ -17,6 +17,7 @@ mod models;
 mod regul_core;
 mod routes;
 mod proxmox;
+mod assistant;
 mod sms_free;
 mod soupe;
 mod tunnel;

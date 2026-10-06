@@ -301,3 +301,6 @@ largeur) et reprise dans Places et flux ; sur /equipements/soupe, « Repas des
 7 derniers jours » et « Journal » repliés par défaut. Binaire précédent :
 /var/backups/eo-sevel/eo-sevel_avant_2.48.1_20261003_151658 (= 2.47.5).
 target/debug/incremental (34 Go) supprimé, disque à 93 %.
+
+## 2026-10-06 15:30 — Prototype « Assistant » (langage naturel), branche `assistant` (depuis quai 2.52.5), worktree /var/tmp/eo-assistant. NON déployé.
+src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assistant (question) et /equipements/assistant (réglages admin : parametre assistant_cle, assistant_modele, défaut claude-haiku-4-5). API Claude avec outils lister_tables / decrire_tables / requete — connexion SQLite read_only, SELECT/WITH seuls, tables utilisateur/parametre/sessionventedirecte/reglagecommunicationventedirecte/sms_envoi refusées. Module « assistant » dans Choisir mes modules + menu Mes équipements. Test ignoré assistant_sur_copie (EO_TEST_BASE). Jamais testé contre l'API réelle (pas de clé).

@@ -63,6 +63,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("base.html", include_str!("../templates/base.html"))?;
     env.add_template("login.html", include_str!("../templates/login.html"))?;
     env.add_template("proxmox.html", include_str!("../templates/proxmox.html"))?;
+    env.add_template("assistant.html", include_str!("../templates/assistant.html"))?;
     env.add_template("decouvrir.html", include_str!("../templates/decouvrir.html"))?;
     env.add_template(
         "dashboard.html",
