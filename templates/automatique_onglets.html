@@ -1,0 +1,16 @@
+{% macro onglets_auto(actif) %}
+<style>
+.auto-onglets{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.auto-onglets a{padding:8px 13px;border-radius:9px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;white-space:nowrap}
+.auto-onglets a:hover{background:#eef3f0;color:var(--vert)}
+.auto-onglets a.actif{background:var(--vert);color:#fff}
+.auto-titre{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px}
+.auto-titre h1{margin:0}
+</style>
+<div class="auto-titre"><h1>Automatique</h1><a class="muted" href="/equipements">← Mes équipements</a></div>
+<nav class="auto-onglets" aria-label="Automatique">
+  <a href="/automatique"{% if actif == 'regles' %} class="actif" aria-current="page"{% endif %}>🔗 Règles</a>
+  <a href="/ambiance/eclairage"{% if actif == 'eclairage' %} class="actif" aria-current="page"{% endif %}>💡 Éclairage</a>
+  <a href="/automatique/nouvelle"{% if actif == 'nouvelle' %} class="actif" aria-current="page"{% endif %}>+ Nouvelle règle</a>
+</nav>
+{% endmacro %}

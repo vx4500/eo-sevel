@@ -1722,26 +1722,52 @@ pub(super) async fn ipx_carte(
     carte(&state, &session, &parametres, None).await
 }
 
-/// Une famille d'entrées ou de sorties de la carte mère de l'IPX800 V5.
+/// Une page de l'onglet IPX800 V5 : la carte mère (relais, entrées…) ou une
+/// extension (sondes X-THL, variateurs X-010V…).
 ///
-/// Leurs identifiants sont fixés par le matériel, quel que soit le nom donné
-/// dans l'automate : ces pages n'ont donc rien à régler, contrairement aux
-/// sections de la carte complète.
+/// Chaque page tient en un ou plusieurs blocs. Les identifiants de la carte
+/// mère sont fixés par le matériel ; les extensions se reconnaissent à leur
+/// nom. Ces pages n'ont donc rien à régler, contrairement à la carte complète.
 pub(crate) struct TypeV5 {
     pub code: &'static str,
     pub nom: &'static str,
+    /// Nombre d'objets attendus (carte mère), 0 si variable (extensions).
+    pub nombre: i64,
+    pub blocs: &'static [BlocV5],
+}
+
+pub(crate) struct BlocV5 {
+    pub nom: &'static str,
     pub source: &'static str,
-    pub debut: i64,
-    pub fin: i64,
+    pub motif: &'static str,
+    pub debut: Option<i64>,
+    pub fin: Option<i64>,
     pub commandable: bool,
 }
 
-pub(crate) const TYPES_V5: [TypeV5; 5] = [
-    TypeV5 { code: "relais", nom: "Relais", source: "io", debut: 65536, fin: 65543, commandable: true },
-    TypeV5 { code: "digitales", nom: "Entrées digitales", source: "io", debut: 65552, fin: 65559, commandable: false },
-    TypeV5 { code: "analogiques", nom: "Entrées analogiques", source: "ana", debut: 262144, fin: 262147, commandable: false },
-    TypeV5 { code: "opto", nom: "Entrées opto-isolées", source: "io", debut: 65560, fin: 65563, commandable: false },
-    TypeV5 { code: "collecteurs", nom: "Sorties collecteurs ouverts", source: "io", debut: 65568, fin: 65571, commandable: true },
+const fn plage(nom: &'static str, source: &'static str, debut: i64, fin: i64, commandable: bool) -> BlocV5 {
+    BlocV5 { nom, source, motif: "", debut: Some(debut), fin: Some(fin), commandable }
+}
+
+const fn par_nom(nom: &'static str, source: &'static str, motif: &'static str, commandable: bool) -> BlocV5 {
+    BlocV5 { nom, source, motif, debut: None, fin: None, commandable }
+}
+
+pub(crate) const TYPES_V5: [TypeV5; 8] = [
+    TypeV5 { code: "relais", nom: "Relais", nombre: 8, blocs: &[plage("Relais", "io", 65536, 65543, true)] },
+    TypeV5 { code: "digitales", nom: "Entrées digitales", nombre: 8, blocs: &[plage("Entrées digitales", "io", 65552, 65559, false)] },
+    TypeV5 { code: "analogiques", nom: "Entrées analogiques", nombre: 4, blocs: &[plage("Entrées analogiques", "ana", 262144, 262147, false)] },
+    TypeV5 { code: "opto", nom: "Entrées opto-isolées", nombre: 4, blocs: &[plage("Entrées opto-isolées", "io", 65560, 65563, false)] },
+    TypeV5 { code: "collecteurs", nom: "Collecteurs ouverts", nombre: 4, blocs: &[plage("Sorties collecteurs ouverts", "io", 65568, 65571, true)] },
+    TypeV5 { code: "xthl", nom: "Sondes X-THL", nombre: 0, blocs: &[
+        par_nom("Température, humidité, luminosité", "ana", "X-THL;XTHL", false),
+        par_nom("Défauts des sondes", "io", "]Fault", false),
+    ] },
+    TypeV5 { code: "x010v", nom: "Variateurs X-010V", nombre: 0, blocs: &[
+        par_nom("Consignes et niveaux", "ana", "x-010v", false),
+        par_nom("Marche / arrêt", "io", "x-010v", true),
+    ] },
+    TypeV5 { code: "xpsu", nom: "Alimentation X-PSU", nombre: 0, blocs: &[par_nom("Alimentation secourue", "io", "[XPSU]", false)] },
 ];
 
 pub(super) async fn ipx_v5_accueil() -> Redirect {
@@ -1813,11 +1839,15 @@ async fn carte(
 
     let mut sources: HashMap<String, Vec<Value>> = HashMap::new();
     if !hote.is_empty() {
-        let a_lire: &[&str] = match type_v5 {
-            Some(t) => std::slice::from_ref(&t.source),
-            None => &["ana", "io"],
+        let a_lire: Vec<&str> = match type_v5 {
+            Some(t) => {
+                let mut sources: Vec<&str> = t.blocs.iter().map(|b| b.source).collect();
+                sources.dedup();
+                sources
+            }
+            None => vec!["ana", "io"],
         };
-        for &source in a_lire {
+        for source in a_lire {
             sources.insert(
                 source.to_string(),
                 lire_source(&client, &acces, &hote, source).await,
@@ -1826,19 +1856,23 @@ async fn carte(
     }
 
     let defs: Vec<DefSection> = match type_v5 {
-        Some(t) => vec![DefSection {
-            id: 0,
-            nom: t.nom.to_string(),
-            critere: Critere {
-                source: t.source.to_string(),
-                motif: String::new(),
-                debut: Some(t.debut),
-                fin: Some(t.fin),
-            },
-            commandable: t.commandable,
-            ordre: 0,
-            note: None,
-        }],
+        Some(t) => t
+            .blocs
+            .iter()
+            .map(|bloc| DefSection {
+                id: 0,
+                nom: bloc.nom.to_string(),
+                critere: Critere {
+                    source: bloc.source.to_string(),
+                    motif: bloc.motif.to_string(),
+                    debut: bloc.debut,
+                    fin: bloc.fin,
+                },
+                commandable: bloc.commandable,
+                ordre: 0,
+                note: None,
+            })
+            .collect(),
         None => sqlx::query(
             "SELECT id,nom,source,motif,id_debut,id_fin,commandable,ordre,note \
              FROM ipx_section ORDER BY ordre, nom",
@@ -1923,7 +1957,7 @@ async fn carte(
     contexte.insert(
         "v5".into(),
         match type_v5 {
-            Some(t) => json!({"code": t.code, "nom": t.nom, "source": t.source}),
+            Some(t) => json!({"code": t.code, "nom": t.nom}),
             None => Value::Null,
         },
     );
@@ -1932,7 +1966,7 @@ async fn carte(
         Value::Array(
             TYPES_V5
                 .iter()
-                .map(|t| json!({"code": t.code, "nom": t.nom, "nombre": t.fin - t.debut + 1}))
+                .map(|t| json!({"code": t.code, "nom": t.nom, "nombre": t.nombre}))
                 .collect(),
         ),
     );

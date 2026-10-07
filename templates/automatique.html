@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}Automatique — EO_Sevel{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}Automatique — EO_Sevel{% endblock %}{% block content %}
 <style>
 .auto-regles{display:grid;gap:12px}
 .auto-regle{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-left:5px solid var(--line)}
@@ -11,10 +11,8 @@
 .auto-journal td{vertical-align:top}
 @media(max-width:640px){.auto-regle{grid-template-columns:1fr}.auto-boutons{justify-content:flex-start}}
 </style>
-<div class="rust-actions" style="justify-content:space-between;align-items:center">
-  <div><h1 style="margin:0">Automatique</h1><p class="muted" style="margin:4px 0 0"><a href="/ambiance/automate">← Automate</a> · Règles « si… alors… » qui relient les automates, les appareils Zigbee, les salles et la machine à soupe.</p></div>
-  <a class="button" href="/automatique/nouvelle">+ Nouvelle règle</a>
-</div>
+{{ onglets_auto('regles') }}
+<p class="muted" style="margin:0 0 12px">Règles « si… alors… » qui relient les automates, les appareils Zigbee, les salles et la machine à soupe, et lumières automatiques.</p>
 
 {% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
 

@@ -984,6 +984,19 @@ mod tests {
         }
     }
 
+    /// Les pages d'éclairage portent maintenant les onglets d'Automatique.
+    #[test]
+    fn pages_eclairage_se_rendent() {
+        let env = crate::templates::build().expect("gabarits");
+        let ctx = serde_json::json!({"session": {"csrf": "x", "peut_modifier": true, "pages": []}});
+        for nom in ["ambiance_eclairage.html", "ambiance_eclairage_form.html", "ambiance_eclairage_lampe.html"] {
+            let rendu = env.get_template(nom).unwrap().render(&ctx);
+            if let Err(e) = &rendu {
+                assert!(!e.to_string().contains("onglets"), "{nom}: {e}");
+            }
+        }
+    }
+
     #[test]
     fn modeles_valides() {
         for (code, ..) in MODELES.iter().filter(|(c, ..)| *c != "lumiere") {

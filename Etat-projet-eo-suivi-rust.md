@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.1** — Automatique : modèles de règles et lumières automatiques.
+Version actuelle : **2.58.2** — automate limité à l'IPX800 et ses extensions ; éclairage rangé dans Automatique.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.2 : onglets de l'automate sans Éclairage ni Automatique ; TYPES_V5 en blocs (BlocV5 plage ou motif) avec extensions X-THL (ana X-THL;XTHL + io ]Fault), X-010V (ana + io x-010v), X-PSU (io [XPSU]) ; macro automatique_onglets.html (Règles, Éclairage, Nouvelle règle) utilisée par automatique*.html et ambiance_eclairage*.html.
 
 Version Rust 2.58.1 : /automatique/nouvelle propose des modèles (MODELES : lumière → /ambiance/eclairage/nouveau, alerte température, brumisation, chauffage, hygrométrie, porte la nuit, règle vide) ; /automatique liste aussi les programmes d'éclairage (eclairage_programme/eclairage_etat) ; une règle ne peut pas commander une lampe d'un programme d'éclairage actif (conflit avec eo-regul).
 

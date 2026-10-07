@@ -77,12 +77,6 @@ pub(super) async fn page(
             "/ambiance/ipx/carte",
             "Carte",
         ),
-        (
-            en_service > 0,
-            "Mettre un programme d'éclairage en service",
-            "/ambiance/eclairage",
-            "Éclairage",
-        ),
     ];
     let prochaine = etapes.iter().position(|(fait, ..)| !fait);
     let etapes: Vec<Value> = etapes

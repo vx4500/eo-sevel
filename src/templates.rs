@@ -65,6 +65,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("proxmox.html", include_str!("../templates/proxmox.html"))?;
     env.add_template("assistant.html", include_str!("../templates/assistant.html"))?;
     env.add_template("electricite.html", include_str!("../templates/electricite.html"))?;
+    env.add_template("automatique_onglets.html", include_str!("../templates/automatique_onglets.html"))?;
     env.add_template("automatique.html", include_str!("../templates/automatique.html"))?;
     env.add_template("automatique_regle.html", include_str!("../templates/automatique_regle.html"))?;
     env.add_template("automatique_modeles.html", include_str!("../templates/automatique_modeles.html"))?;

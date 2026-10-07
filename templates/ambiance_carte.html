@@ -5,10 +5,11 @@
 .v5-types a{padding:7px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;background:var(--card)}
 .v5-types a.actif{background:var(--vert);border-color:var(--vert);color:#fff}
 .v5-types small{font-weight:600;opacity:.75}
+.v5-sep{align-self:center;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 2px 0 8px}
 @media(max-width:640px){.v5-types{flex-wrap:nowrap;overflow-x:auto}.v5-types a{white-space:nowrap}}
 </style>
 <nav class="v5-types" aria-label="Entrées et sorties de l'IPX800 V5">
-{% for t in types_v5 %}<a href="/ambiance/ipx/v5/{{ t.code }}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }} <small>{{ t.nombre }}</small></a>{% endfor %}
+{% for t in types_v5 %}{% if t.code == 'xthl' %}<span class="v5-sep">Extensions</span>{% endif %}<a href="/ambiance/ipx/v5/{{ t.code }}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }}{% if t.nombre %} <small>{{ t.nombre }}</small>{% endif %}</a>{% endfor %}
 </nav>
 {% else %}{{ onglets('carte') }}{% endif %}
 
@@ -31,7 +32,7 @@
   {% if s.a_renseigner %}
   <p class="rust-empty">Ni motif de nom ni plage d'identifiants. Repérez un objet de ce bloc dans l'<a href="/ambiance/ipx/explorateur">explorateur</a>, puis indiquez ci-dessous soit un fragment de son nom, soit sa plage d'identifiants.</p>
   {% elif not s.objets %}
-  <p class="rust-empty">{% if v5 %}L'automate n'a renvoyé aucun objet de ce type. Vérifiez son adresse et sa clé dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.{% elif s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
+  <p class="rust-empty">{% if v5 and s.motif %}Aucune extension de ce type sur l'automate.{% elif v5 %}L'automate n'a renvoyé aucun objet de ce type. Vérifiez son adresse et sa clé dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.{% elif s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
   {% else %}
   <div class="rust-scroll"><table>
     <thead><tr><th>Identifiant</th><th>Nom dans l'automate</th><th>Valeur</th><th>Votre nom</th><th>Salle</th><th></th></tr></thead>

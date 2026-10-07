@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Ajouter une lampe — EO_Sevel{% endblock %}{% block content %}
-{{ onglets('eclairage') }}
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}Ajouter une lampe — EO_Sevel{% endblock %}{% block content %}
+{{ onglets_auto('eclairage') }}
 {% include "ambiance_eclairage_style.html" %}
 <style>
 .lp-etapes{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:0;list-style:none;counter-reset:e}

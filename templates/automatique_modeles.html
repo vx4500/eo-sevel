@@ -1,12 +1,11 @@
-{% extends "base.html" %}{% block title %}Nouvelle règle — Automatique — EO_Sevel{% endblock %}{% block content %}
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}Nouvelle règle — Automatique — EO_Sevel{% endblock %}{% block content %}
 <style>
 .am-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .am-carte{display:block;text-decoration:none;color:inherit;border-top:4px solid var(--vert);transition:transform .15s}
 .am-carte:hover{transform:translateY(-3px)}
 .am-carte .ico{font-size:30px}.am-carte h2{margin:6px 0 4px;font-size:18px;color:var(--vert)}.am-carte p{margin:0;color:var(--muted);font-size:14px}
 </style>
-<p><a class="muted" href="/automatique">← Automatique</a></p>
-<h1>Nouvelle règle</h1>
+{{ onglets_auto('nouvelle') }}
 <p class="muted">Partez d'un modèle : tout est prérempli, il ne reste qu'à choisir la salle, la sonde ou la sortie. La règle démarre en essai.</p>
 <div class="am-grille">
 {% for m in modeles %}<a class="card am-carte" href="/automatique/nouvelle?modele={{ m.code }}"><div class="ico">{{ m.icone }}</div><h2>{{ m.titre }}</h2><p>{{ m.texte }}</p></a>{% endfor %}
