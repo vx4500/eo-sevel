@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block content %}
 <h1>Eau & électricité</h1>
-<p><a class="button" href="/electricite">Voir la consommation électrique : jour, semaine, mois, année →</a></p>
+<p><a class="button" href="/electricite">Consommation électrique : jour, semaine, mois, année →</a> <a class="button" href="/eau">Consommation d’eau →</a></p>
 <style>.en-releves{background:transparent;border:1px solid currentColor;border-color:rgba(127,140,133,.35);color:inherit;margin-top:10px}.en-releves>summary{font-weight:600;color:inherit;padding:2px 0}.en-releves[open]>summary{margin-bottom:10px}</style>
 {% if session.peut_modifier %}<div class="card"><a href="/imports">Importer des relevés depuis « Importer un document »</a></div>{% else %}<p><a href="/energie/modele.csv">Télécharger le modèle CSV</a></p>{% endif %}
 {% if session.peut_modifier %}<div class="rust-grid"><form class="card" method="post" action="/energie/compteur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h2>Nouveau compteur</h2><label>Nom<input name="nom" required></label><label>Type<select name="type"><option value="eau">Eau</option><option value="electricite">Électricité</option></select></label><label>Site<select name="site_id"><option value="">—</option>{% for s in sites %}<option value="{{ s.id }}">{{ s.nom or s.code }}</option>{% endfor %}</select></label><label>Rappel eau (jours)<input type="number" name="rappel_jours"></label><label>Note<input name="note"></label><button>Créer</button></form>

@@ -322,3 +322,7 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-07 10:32 UTC — v2.55.0 DÉPLOYÉE (branche assistant) : /electricite consommation jour/semaine/mois/année, table elec_jour (migration 0026). Sauvegarde eo-sevel_avant_2.55.0_20261007_103207
 
 ## 2026-10-07 11:00 UTC — v2.55.1 DÉPLOYÉE (branche assistant) : elec_heure (0027) + import Home Assistant 192.168.1.108 (statistiques horaires 08/03→25/09, 201 j/compteur, rattrapages répartis). Sauvegardes eo-sevel_avant_2.55.1_20261007_110034, elevage_avant_import_ha_20261007_110034.db
+
+## 2026-10-07 11:08 UTC — v2.56.0 DÉPLOYÉE (branche assistant) : /eau (relevés répartis par jour), sous-compteurs électriques (parametre elec_parent_<ieee>) ; soupe 0x60b7… déclarée après tri 0x8c8b…. Sauvegarde eo-sevel_avant_2.56.0_20261007_110813
+
+## 2026-10-07 11:17 UTC — DISQUE PLEIN vers 11:08 UTC (target/debug 51 Go dont incremental 23 Go) : incremental supprimé, z2m a redémarré seul, base OK. Puis v2.56.0 DÉPLOYÉE (branche assistant) : /eau, sous-compteurs électriques (elec_parent_<ieee>) ; soupe déclarée après tri. Sauvegarde eo-sevel_avant_2.56.0_20261007_111708

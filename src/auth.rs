@@ -230,7 +230,7 @@ fn section_for_path(path: &str) -> Option<&'static str> {
         "transfert" | "transferts" => Some("transferts"),
         "reception" => Some("reception"),
         "genetique" => Some("genetique"),
-        "energie" | "electricite" => Some("energie"),
+        "energie" | "electricite" | "eau" => Some("energie"),
         "ambiance" | "equipements" => Some("ambiance"),
         "vente-directe" | "commande" => Some("vente"),
         "documents-obligatoires" => Some("documents"),

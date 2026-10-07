@@ -438,6 +438,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/alertes-elevage", get(api_alertes_elevage))
         .route("/energie", get(energie))
         .route("/electricite", get(electricite::page))
+        .route("/eau", get(electricite::page_eau))
         .route("/electricite/prix", post(electricite::prix))
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/aliment-previsions/silo", post(silo_ajouter))
