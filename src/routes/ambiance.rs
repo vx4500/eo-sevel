@@ -1602,6 +1602,9 @@ pub(super) async fn ipx_point_commander(
     .await?;
 
     let message = format!("{nom} : commande {compte_rendu}");
+    if let Some(page) = retour_v5(&form) {
+        return Ok(Redirect::to(&format!("{page}?ok={}", encode_query(&message))).into_response());
+    }
     Ok(Redirect::to(&format!(
         "/ambiance/ipx?ok={}#points",
         encode_query(&message)
@@ -1716,7 +1719,76 @@ pub(super) async fn ipx_carte(
     Extension(session): Extension<SessionData>,
     Query(parametres): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
-    require_writer(&session)?;
+    carte(&state, &session, &parametres, None).await
+}
+
+/// Une famille d'entrées ou de sorties de la carte mère de l'IPX800 V5.
+///
+/// Leurs identifiants sont fixés par le matériel, quel que soit le nom donné
+/// dans l'automate : ces pages n'ont donc rien à régler, contrairement aux
+/// sections de la carte complète.
+pub(crate) struct TypeV5 {
+    pub code: &'static str,
+    pub nom: &'static str,
+    pub source: &'static str,
+    pub debut: i64,
+    pub fin: i64,
+    pub commandable: bool,
+}
+
+pub(crate) const TYPES_V5: [TypeV5; 5] = [
+    TypeV5 { code: "relais", nom: "Relais", source: "io", debut: 65536, fin: 65543, commandable: true },
+    TypeV5 { code: "digitales", nom: "Entrées digitales", source: "io", debut: 65552, fin: 65559, commandable: false },
+    TypeV5 { code: "analogiques", nom: "Entrées analogiques", source: "ana", debut: 262144, fin: 262147, commandable: false },
+    TypeV5 { code: "opto", nom: "Entrées opto-isolées", source: "io", debut: 65560, fin: 65563, commandable: false },
+    TypeV5 { code: "collecteurs", nom: "Sorties collecteurs ouverts", source: "io", debut: 65568, fin: 65571, commandable: true },
+];
+
+pub(super) async fn ipx_v5_accueil() -> Redirect {
+    Redirect::to("/ambiance/ipx/v5/relais")
+}
+
+pub(super) async fn ipx_v5(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(code): Path<String>,
+    Query(parametres): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    let type_v5 = TYPES_V5
+        .iter()
+        .find(|t| t.code == code)
+        .ok_or(AppError::NotFound)?;
+    carte(&state, &session, &parametres, Some(type_v5)).await
+}
+
+/// Page de retour après une action lancée depuis une page IPX800 V5 : seules
+/// ces pages sont acceptées, pour ne jamais rediriger ailleurs.
+fn retour_v5(form: &HashMap<String, String>) -> Option<String> {
+    let retour = form.get("retour")?;
+    TYPES_V5
+        .iter()
+        .map(|t| format!("/ambiance/ipx/v5/{}", t.code))
+        .find(|page| page == retour)
+}
+
+/// Une section affichée : réglée par l'éleveur (carte complète) ou fixée par
+/// le matériel (pages IPX800 V5).
+struct DefSection {
+    id: i64,
+    nom: String,
+    critere: Critere,
+    commandable: bool,
+    ordre: i64,
+    note: Option<String>,
+}
+
+async fn carte(
+    state: &AppState,
+    session: &SessionData,
+    parametres: &HashMap<String, String>,
+    type_v5: Option<&TypeV5>,
+) -> AppResult<Html<String>> {
+    require_writer(session)?;
     let hotes = hotes_autorises(&state.pool).await;
     let hote = parametres
         .get("hote")
@@ -1741,7 +1813,11 @@ pub(super) async fn ipx_carte(
 
     let mut sources: HashMap<String, Vec<Value>> = HashMap::new();
     if !hote.is_empty() {
-        for source in ["ana", "io"] {
+        let a_lire: &[&str] = match type_v5 {
+            Some(t) => std::slice::from_ref(&t.source),
+            None => &["ana", "io"],
+        };
+        for &source in a_lire {
             sources.insert(
                 source.to_string(),
                 lire_source(&client, &acces, &hote, source).await,
@@ -1749,26 +1825,47 @@ pub(super) async fn ipx_carte(
         }
     }
 
-    let lignes_sections = sqlx::query(
-        "SELECT id,nom,source,motif,id_debut,id_fin,commandable,ordre,note \
-         FROM ipx_section ORDER BY ordre, nom",
-    )
-    .fetch_all(&state.pool)
-    .await?;
-
-    let criteres: Vec<Critere> = lignes_sections
+    let defs: Vec<DefSection> = match type_v5 {
+        Some(t) => vec![DefSection {
+            id: 0,
+            nom: t.nom.to_string(),
+            critere: Critere {
+                source: t.source.to_string(),
+                motif: String::new(),
+                debut: Some(t.debut),
+                fin: Some(t.fin),
+            },
+            commandable: t.commandable,
+            ordre: 0,
+            note: None,
+        }],
+        None => sqlx::query(
+            "SELECT id,nom,source,motif,id_debut,id_fin,commandable,ordre,note \
+             FROM ipx_section ORDER BY ordre, nom",
+        )
+        .fetch_all(&state.pool)
+        .await?
         .iter()
-        .map(|ligne| Critere {
-            source: ligne.try_get("source").unwrap_or_else(|_| "io".into()),
-            motif: ligne
-                .try_get::<Option<String>, _>("motif")
-                .ok()
-                .flatten()
-                .unwrap_or_default(),
-            debut: ligne.try_get("id_debut").ok(),
-            fin: ligne.try_get("id_fin").ok(),
+        .map(|ligne| DefSection {
+            id: ligne.try_get("id").unwrap_or(0),
+            nom: ligne.try_get("nom").unwrap_or_default(),
+            critere: Critere {
+                source: ligne.try_get("source").unwrap_or_else(|_| "io".into()),
+                motif: ligne
+                    .try_get::<Option<String>, _>("motif")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                debut: ligne.try_get("id_debut").ok(),
+                fin: ligne.try_get("id_fin").ok(),
+            },
+            commandable: ligne.try_get::<i64, _>("commandable").unwrap_or(0) != 0,
+            ordre: ligne.try_get("ordre").unwrap_or(0),
+            note: ligne.try_get("note").ok(),
         })
-        .collect();
+        .collect(),
+    };
+    let criteres: Vec<&Critere> = defs.iter().map(|d| &d.critere).collect();
 
     // Un objet ne rejoint que la PREMIÈRE section qui l'accepte. Sans cette
     // règle, un objet portant à la fois un nom reconnu et un identifiant dans
@@ -1797,9 +1894,9 @@ pub(super) async fn ipx_carte(
     let cle_id = |objet: &Value| objet.get("id").and_then(Value::as_i64).unwrap_or(0);
     restes.sort_by_key(cle_id);
 
-    let mut sections = Vec::with_capacity(lignes_sections.len());
-    for (rang, ligne) in lignes_sections.iter().enumerate() {
-        let critere = &criteres[rang];
+    let mut sections = Vec::with_capacity(defs.len());
+    for (rang, def) in defs.iter().enumerate() {
+        let critere = &def.critere;
         let mut objets = std::mem::take(&mut retenus[rang]);
         objets.sort_by_key(cle_id);
         // Une section vide n'est « à renseigner » que si elle n'a ni motif ni
@@ -1808,21 +1905,37 @@ pub(super) async fn ipx_carte(
         let a_renseigner =
             critere.motif.trim().is_empty() && (critere.debut.is_none() || critere.fin.is_none());
         sections.push(json!({
-            "id": ligne.try_get::<i64, _>("id").unwrap_or(0),
-            "nom": ligne.try_get::<String, _>("nom").unwrap_or_default(),
+            "id": def.id,
+            "nom": def.nom,
             "source": critere.source,
             "motif": critere.motif,
             "id_debut": critere.debut,
             "id_fin": critere.fin,
             "a_renseigner": a_renseigner,
-            "commandable": ligne.try_get::<i64, _>("commandable").unwrap_or(0) != 0,
-            "ordre": ligne.try_get::<i64, _>("ordre").unwrap_or(0),
-            "note": ligne.try_get::<String, _>("note").ok(),
+            "commandable": def.commandable,
+            "ordre": def.ordre,
+            "note": def.note,
             "objets": objets,
         }));
     }
 
-    let mut contexte = context(&session);
+    let mut contexte = context(session);
+    contexte.insert(
+        "v5".into(),
+        match type_v5 {
+            Some(t) => json!({"code": t.code, "nom": t.nom, "source": t.source}),
+            None => Value::Null,
+        },
+    );
+    contexte.insert(
+        "types_v5".into(),
+        Value::Array(
+            TYPES_V5
+                .iter()
+                .map(|t| json!({"code": t.code, "nom": t.nom, "nombre": t.fin - t.debut + 1}))
+                .collect(),
+        ),
+    );
     contexte.insert("hote".into(), Value::String(hote));
     contexte.insert(
         "hotes".into(),
@@ -1858,7 +1971,7 @@ pub(super) async fn ipx_carte(
             None => Value::Null,
         },
     );
-    render(&state, "ambiance_carte.html", Value::Object(contexte))
+    render(state, "ambiance_carte.html", Value::Object(contexte))
 }
 
 /// Règle de rangement d'une section : par nom si un motif est donné, par plage
@@ -1972,6 +2085,9 @@ pub(super) async fn ipx_carte_affecter(
     .execute(&state.pool)
     .await?;
 
+    if let Some(page) = retour_v5(&form) {
+        return Ok(Redirect::to(&format!("{page}?hote={}", encode_query(&hote))).into_response());
+    }
     Ok(Redirect::to(&format!("/ambiance/ipx/carte?hote={}", encode_query(&hote))).into_response())
 }
 

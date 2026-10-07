@@ -214,6 +214,8 @@ pub fn router(state: AppState) -> Router {
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))
         .route("/ambiance/ipx/points.json", get(ambiance::ipx_points_json))
         .route("/ambiance/ipx/carte", get(ambiance::ipx_carte))
+        .route("/ambiance/ipx/v5", get(ambiance::ipx_v5_accueil))
+        .route("/ambiance/ipx/v5/{code}", get(ambiance::ipx_v5))
         .route(
             "/ambiance/ipx/carte/affecter",
             post(ambiance::ipx_carte_affecter),

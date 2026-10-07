@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.56.1** — rapport : repas de soupe perturbés par l'alarme débit distribution.
+Version actuelle : **2.57.0** — automate : une page par type d'entrée et de sortie de l'IPX800 V5.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.57.0 : onglet « IPX800 V5 » de l'automate (/ambiance/ipx/v5/{relais,digitales,analogiques,opto,collecteurs}) — une page par type de la carte mère, plages d'identifiants fixes (TYPES_V5 dans routes/ambiance.rs), sans réglage de section ; ipx_carte et ipx_v5 partagent ambiance::carte ; champ « retour » des formulaires affecter/commander pour revenir sur la page V5.
 
 Version Rust 2.56.1 : frise des bandes — nom du stade écrit dans chaque segment, segment en cours entouré (en_cours) ; /planning reprend la frise (accueil::frise_bandes) + tableau « Les bandes en détail » (stade, animaux, salles, prochaine étape, dates de chaque période).
 

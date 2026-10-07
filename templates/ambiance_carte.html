@@ -1,10 +1,21 @@
-{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Carte de l'automate — EO_Sevel{% endblock %}{% block content %}
-{{ onglets('carte') }}
+{% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}{% if v5 %}{{ v5.nom }} — IPX800 V5{% else %}Carte de l'automate{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{% if v5 %}{{ onglets('v5') }}
+<style>
+.v5-types{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.v5-types a{padding:7px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;background:var(--card)}
+.v5-types a.actif{background:var(--vert);border-color:var(--vert);color:#fff}
+.v5-types small{font-weight:600;opacity:.75}
+@media(max-width:640px){.v5-types{flex-wrap:nowrap;overflow-x:auto}.v5-types a{white-space:nowrap}}
+</style>
+<nav class="v5-types" aria-label="Entrées et sorties de l'IPX800 V5">
+{% for t in types_v5 %}<a href="/ambiance/ipx/v5/{{ t.code }}{% if hote %}?hote={{ hote|urlencode }}{% endif %}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }} <small>{{ t.nombre }}</small></a>{% endfor %}
+</nav>
+{% else %}{{ onglets('carte') }}{% endif %}
 
 {% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
 
 {% if hotes %}
-<form class="card rust-actions" method="get" action="/ambiance/ipx/carte">
+<form class="card rust-actions" method="get" action="{% if v5 %}/ambiance/ipx/v5/{{ v5.code }}{% else %}/ambiance/ipx/carte{% endif %}">
   <label>Automate<select name="hote" onchange="this.form.submit()">{% for h in hotes %}<option value="{{ h }}"{% if h == hote %} selected{% endif %}>{{ h }}</option>{% endfor %}</select></label>
   <button class="ghost">Relire</button>
 </form>
@@ -20,7 +31,7 @@
   {% if s.a_renseigner %}
   <p class="rust-empty">Ni motif de nom ni plage d'identifiants. Repérez un objet de ce bloc dans l'<a href="/ambiance/ipx/explorateur">explorateur</a>, puis indiquez ci-dessous soit un fragment de son nom, soit sa plage d'identifiants.</p>
   {% elif not s.objets %}
-  <p class="rust-empty">{% if s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
+  <p class="rust-empty">{% if v5 %}L'automate n'a renvoyé aucun objet de ce type. Vérifiez son adresse et sa clé dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>.{% elif s.motif %}Aucun objet dont le nom contienne « {{ s.motif }} ».{% else %}Aucun objet entre {{ s.id_debut }} et {{ s.id_fin }}. La plage est peut-être à corriger.{% endif %}</p>
   {% else %}
   <div class="rust-scroll"><table>
     <thead><tr><th>Identifiant</th><th>Nom dans l'automate</th><th>Valeur</th><th>Votre nom</th><th>Salle</th><th></th></tr></thead>
@@ -40,6 +51,7 @@
             <input type="hidden" name="hote" value="{{ hote }}">
             <input type="hidden" name="chemin" value="{{ o.chemin }}">
             <input type="hidden" name="nom_ipx" value="{{ o.nom_ipx }}">
+            {% if v5 %}<input type="hidden" name="retour" value="/ambiance/ipx/v5/{{ v5.code }}">{% endif %}
             <label>Nom<input name="nom" value="{{ o.nom or o.nom_ipx }}"></label>
             <label>Rôle<select name="role">{% for r in roles %}<option value="{{ r.code }}"{% if r.code == o.role %} selected{% endif %}>{{ r.libelle }}</option>{% endfor %}</select></label>
             <label>Salle<select name="salle_id"><option value="">—</option>{% for sa in salles %}<option value="{{ sa.id }}"{% if o.salle_id == sa.id %} selected{% endif %}>{{ sa.nom }}</option>{% endfor %}</select></label>
@@ -59,6 +71,7 @@
         <details><summary>Commander</summary>
           <form method="post" action="/ambiance/ipx/point/{{ o.point_id }}/commander" onsubmit="return confirm('Envoyer cette valeur à « {{ o.nom or o.nom_ipx }} » ? Cela agit sur le matériel.')">
             <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+            {% if v5 %}<input type="hidden" name="retour" value="/ambiance/ipx/v5/{{ v5.code }}">{% endif %}
             <label>Valeur<input name="valeur" inputmode="decimal" required placeholder="0 ou 1 pour un relais"></label>
             <button>Envoyer</button>
           </form>
@@ -72,7 +85,7 @@
   </table></div>
   {% endif %}
 
-  {% if session.peut_modifier %}
+  {% if session.peut_modifier and not v5 %}
   <details><summary>Règle de cette section</summary>
     <form method="post" action="/ambiance/ipx/section">
       <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
@@ -101,7 +114,7 @@
 </section>
 {% endfor %}
 
-{% if restes %}
+{% if restes and not v5 %}
 <section class="card"><h2>Hors section <span class="rust-badge">{{ restes|length }}</span></h2>
 <p class="muted">Ces objets existent sur l'automate mais n'entrent dans aucune section. Pour les ranger, ajoutez une section portant un fragment de leur nom comme motif.</p>
 <div class="rust-scroll"><table>
@@ -121,7 +134,7 @@
 </section>
 {% endif %}
 
-{% if session.peut_modifier %}
+{% if session.peut_modifier and not v5 %}
 <section class="card"><h2>Ajouter une section</h2>
 <form method="post" action="/ambiance/ipx/section">
   <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
