@@ -1,8 +1,16 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.52.5** —
+Version actuelle : **2.54.1** — rapport : repas de soupe perturbés par l'alarme débit distribution.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.54.1 : /rapport section « Machine à soupe » (rapport::soupe_incidents) : cycles Test circuit→Test circuit avec phase 37 ≥ 3 min, reçu par vanne = somme des passages (max par suite de relevés), consignes de la séquence/formule sur 7 j, manques > 2 kg et > 15 % ; alarmes courtes seulement comptées. Phase 37 renommée en base (48 événements).
+
+Version Rust 2.54.0 : soupe phase 37 « Alarme débit distribution » → alerte critique soupe_distribution (SMS) après 180 s.
+
+Version Rust 2.53.1 : carte Assistant Claude dans /equipements, réglages lisibles en thème sombre.
+
+Version Rust 2.53.0 : connecteur Claude MCP (/mcp/{jeton}, src/routes/mcp.rs), page /assistant (src/assistant.rs, SQL lecture seule), ancienne dictée vocale supprimée.
 
 Version Rust 2.52.5 : Proxmox — adresse http forcée en https (la redirection perdait le jeton) ; refus 403 sur /nodes/{n}/status affiché au lieu d'une page vide.
 

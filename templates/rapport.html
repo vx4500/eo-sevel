@@ -69,6 +69,7 @@
   {% if bandes %}<a href="#bandes">Bandes</a>{% endif %}
   {% if liste_mises_bas is defined %}<a href="#reproduction">Reproduction</a><a href="#maternite">Maternité</a><a href="#mortalite">Mortalité</a>{% endif %}
   {% if traitements is defined %}<a href="#sanitaire">Sanitaire</a>{% endif %}
+  {% if soupe_incidents is defined %}<a href="#soupe">Soupe</a>{% endif %}
   {% if pharmacie_basse is defined %}<a href="#stocks">Stocks</a>{% endif %}
   {% if ventes is defined %}<a href="#ventes">Ventes</a>{% endif %}
   {% if voit_ambiance %}<a href="#ambiance">Températures</a>{% endif %}
@@ -201,6 +202,29 @@
       {% for d in delais_attente %}<tr class="rouge"><td><b>{{ d.truie }}</b></td><td>{{ d.produit or '—' }}</td><td>{{ d.fin|date_fr }}</td></tr>{% endfor %}
       </tbody></table><p class="note">Ne pas envoyer à l’abattoir avant la fin du délai.</p>{% else %}<p class="vide">Aucune truie sous délai d’attente.</p>{% endif %}</div>
   </div>
+</section>
+{% endif %}
+
+{# ───────── Machine à soupe ───────── #}
+{% if soupe_incidents is defined %}
+<section class="rp-section" id="soupe">
+  <h2>Machine à soupe <small>repas perturbés par une alarme débit distribution</small></h2>
+  {% if soupe_incidents %}
+  {% for i in soupe_incidents %}
+  <div class="{% if i.manque > 0 %}rouge{% endif %}" style="margin-bottom:12px">
+    <h3>{{ i.debut }} · séquence {{ i.sequence }}{% if i.formule is not none %} formule {{ i.formule }}{% endif %} · {% if i.en_cours %}<b>EN COURS</b> depuis {{ i.duree_min }} min{% else %}alarme {{ i.duree_min }} min{% if i.alarmes > 1 %} ({{ i.alarmes }} fois){% endif %}{% endif %}</h3>
+    <p>Alarme à la vanne {{ i.en_defaut|join(', puis ') }}.
+    {% if i.manques %}<b>Manque estimé : {{ i.manque|int }} kg</b> sur {{ i.manques|length }} vanne{% if i.manques|length > 1 %}s{% endif %}.{% else %}Toutes les vannes ont reçu leur ration.{% endif %}</p>
+    {% if i.manques %}<table><thead><tr><th>Vanne</th><th class="n">Reçu</th><th class="n">Consigne</th><th class="n">Manque</th></tr></thead><tbody>
+    {% for v in i.manques %}<tr class="rouge"><td><b>{{ v.vanne }}</b></td><td class="n">{{ v.recu|decimal1 }} kg</td><td class="n">{{ v.consigne|decimal1 }} kg</td><td class="n"><b>{{ v.manque|decimal1 }} kg</b></td></tr>{% endfor %}
+    </tbody></table>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% if soupe_alarmes_courtes %}<p>{{ soupe_alarmes_courtes }} alarme{% if soupe_alarmes_courtes > 1 %}s{% endif %} de moins de 3 min, acquittée{% if soupe_alarmes_courtes > 1 %}s{% endif %} aussitôt (non détaillée{% if soupe_alarmes_courtes > 1 %}s{% endif %}).</p>{% endif %}
+  {% if soupe_incidents %}<p class="vide">Reçu = total des passages relevés par l’écoute (au kilo près) ; écarts de moins de 2 kg ou 15 % ignorés.</p>
+  {% endif %}
+  {% if not soupe_incidents and not soupe_alarmes_courtes %}<p class="vide">Aucune alarme de distribution sur la période.</p>{% endif %}
 </section>
 {% endif %}
 
