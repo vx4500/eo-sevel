@@ -46,6 +46,15 @@ fn outils() -> Value {
         {"name": "rappels",
          "description": "Rappels et tâches non faits, par échéance.",
          "input_schema": {"type": "object", "properties": {}}},
+        {"name": "memoire",
+         "description": "Ce que l'éleveur a demandé de retenir (habitudes, vocabulaire, consignes). Déjà fournies dans les consignes ; sert à retrouver un numéro pour oublier.",
+         "input_schema": {"type": "object", "properties": {}}},
+        {"name": "retenir",
+         "description": "Retient une information pour les prochaines conversations (ex. « la vanne 12 de la Verraterie est en panne », « dire IA pour insémination »). À utiliser quand l'éleveur dit « retiens », « souviens-toi », ou explique une habitude durable.",
+         "input_schema": {"type": "object", "properties": {"texte": {"type": "string"}}, "required": ["texte"]}},
+        {"name": "oublier",
+         "description": "Supprime une information retenue (numéro donné par memoire).",
+         "input_schema": {"type": "object", "properties": {"numero": {"type": "integer"}}, "required": ["numero"]}},
         {"name": "lister_tables",
          "description": "Pour les autres questions : tables de la base de l'élevage (lecture seule).",
          "input_schema": {"type": "object", "properties": {}}},
@@ -60,7 +69,23 @@ fn outils() -> Value {
 
 const CONSIGNES: &str = "Outils de l'élevage EO_Sevel. Réponds brièvement, en français parlé (l'éleveur est souvent à la voix, dans le bâtiment). \
 Avant toute écriture, appelle l'outil sans confirme, répète en une phrase ce qui va être fait et attends un « oui » ; seulement ensuite rappelle avec confirme=true. \
-N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Pour une date relative aux IA, utilise calendrier_ia.";
+N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Pour une date relative aux IA, utilise calendrier_ia. \
+Ce qui a été retenu est listé ci-dessous (pas besoin d'appeler memoire). Quand l'éleveur explique quelque chose de durable, retiens-le en une phrase courte (outil retenir).";
+
+async fn table_memoire(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("CREATE TABLE IF NOT EXISTS assistant_memoire(id INTEGER PRIMARY KEY, texte TEXT NOT NULL, cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        .execute(pool).await.map(|_| ()).map_err(|e| e.to_string())
+}
+
+async fn notes_memoire(pool: &SqlitePool) -> Result<Vec<(i64, String, String)>, String> {
+    table_memoire(pool).await?;
+    sqlx::query_as("SELECT id,texte,substr(cree_le,1,10) FROM assistant_memoire ORDER BY id")
+        .fetch_all(pool).await.map_err(|e| e.to_string())
+}
+
+fn notes_en_texte(notes: &[(i64, String, String)]) -> String {
+    notes.iter().map(|(i, t, d)| format!("{i}. {t} (le {d})")).collect::<Vec<_>>().join("\n")
+}
 
 fn texte(t: impl Into<String>, erreur: bool) -> Value {
     json!({"content": [{"type": "text", "text": t.into()}], "isError": erreur})
@@ -194,6 +219,30 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                 .fetch_all(pool).await.map_err(|e| e.to_string())?;
             Ok(json!(l.into_iter().map(|(t, e, n)| json!({"titre": t, "echeance": e, "note": n})).collect::<Vec<_>>()).to_string())
         }
+        "memoire" => {
+            let notes = notes_memoire(pool).await?;
+            Ok(if notes.is_empty() { "Rien n'a encore été retenu.".into() } else { notes_en_texte(&notes) })
+        }
+        "retenir" => {
+            let t = arg(a, "texte");
+            if t.is_empty() { return Err("Texte vide.".into()); }
+            if t.chars().count() > 200 { return Err("Trop long : une phrase courte (200 caractères au plus).".into()); }
+            if notes_memoire(pool).await?.len() >= 40 { return Err("Déjà 40 informations retenues : fais-en oublier une d'abord (memoire puis oublier).".into()); }
+            table_memoire(pool).await?;
+            sqlx::query("INSERT INTO assistant_memoire(texte) VALUES(?)").bind(t)
+                .execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "retenir", "mémoire", t).await;
+            Ok(format!("Retenu : {t}"))
+        }
+        "oublier" => {
+            let n = a.get("numero").and_then(Value::as_i64).ok_or("Numéro manquant.")?;
+            table_memoire(pool).await?;
+            let r = sqlx::query("DELETE FROM assistant_memoire WHERE id=?").bind(n)
+                .execute(pool).await.map_err(|e| e.to_string())?;
+            if r.rows_affected() == 0 { return Err(format!("Pas d'information n° {n}.")); }
+            journaliser(pool, "oublier", "mémoire", &n.to_string()).await;
+            Ok(format!("Information n° {n} oubliée."))
+        }
         "lister_tables" | "decrire_tables" | "requete" => {
             let mut cnx = assistant::connexion(&state.config.db_path).await?;
             let (_, r) = assistant::executer(&mut cnx, nom, a).await;
@@ -231,9 +280,12 @@ pub(super) async fn point_entree(
         "initialize" => {
             let demande = req["params"]["protocolVersion"].as_str().unwrap_or("");
             let version = PROTOCOLES.iter().find(|v| **v == demande).copied().unwrap_or(PROTOCOLES[0]);
+            let notes = notes_memoire(&state.pool).await.unwrap_or_default();
+            let consignes = if notes.is_empty() { CONSIGNES.to_string() }
+                else { format!("{CONSIGNES}\n\nDéjà retenu :\n{}", notes_en_texte(&notes)) };
             Ok(json!({"protocolVersion": version, "capabilities": {"tools": {}},
                       "serverInfo": {"name": "eo-sevel", "version": env!("CARGO_PKG_VERSION")},
-                      "instructions": CONSIGNES}))
+                      "instructions": consignes}))
         }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": outils()})),
@@ -319,6 +371,12 @@ mod tests {
         assert!(!e);
         let (_, t) = outil(&state, &jeton, "rappels", json!({})).await;
         assert!(t.contains("œstrogène"));
+        let (e, _) = outil(&state, &jeton, "retenir", json!({"texte":"La vanne 12 de la Verraterie est en panne"})).await;
+        assert!(!e);
+        let (_, t) = outil(&state, &jeton, "memoire", json!({})).await;
+        assert!(t.contains("vanne 12"));
+        let (_, v) = rpc(&state, &jeton, json!({"jsonrpc":"2.0","id":3,"method":"initialize","params":{}})).await;
+        assert!(v["result"]["instructions"].as_str().unwrap().contains("vanne 12"));
         let (e, _) = outil(&state, &jeton, "requete", json!({"sql":"DELETE FROM truie"})).await;
         assert!(e);
         let (e, _) = outil(&state, &jeton, "deplacer_truie", json!({"numero":"999999","salle":"Verraterie","vanne":"47","confirme":true})).await;

@@ -12808,7 +12808,20 @@ async fn planning(
         }
     }
     calculated.sort_by_key(|v| v["date"].as_str().unwrap_or_default().to_string());
+    // Frise des bandes (comme l'accueil) et détail de chaque bande.
+    let (frise, mut frise_bandes) = accueil::frise_bandes(&state.pool).await?;
+    for b in frise_bandes.iter_mut() {
+        let porcs: i64 = b["flux"]["emplacements"].as_array().into_iter().flatten()
+            .filter(|e| e["animaux"] == "Porcs").filter_map(|e| e["effectif"].as_i64()).sum();
+        b["porcs"] = json!(porcs);
+        let salles: Vec<String> = b["flux"]["emplacements"].as_array().into_iter().flatten()
+            .filter_map(|e| e["salle"].as_str().or(e["nom"].as_str()).map(str::to_string))
+            .fold(Vec::new(), |mut v, s| { if !v.contains(&s) { v.push(s); } v });
+        b["salles"] = json!(salles.join(", "));
+    }
     let mut ctx = context(&session);
+    ctx.insert("frise".into(), frise);
+    ctx.insert("frise_bandes".into(), Value::Array(frise_bandes));
     ctx.insert("evenements".into(), Value::Array(events));
     ctx.insert("taches".into(), Value::Array(tasks));
     ctx.insert("echeances".into(), Value::Array(calculated));

@@ -51,7 +51,7 @@ fn planning(bandes: &mut [Value]) -> Value {
             let (l, r) = (pct(*da), pct(*dz));
             if r - l > 0.1 {
                 segments.push(json!({"nom": nom, "classe": classe, "gauche": format!("{l:.2}"), "largeur": format!("{:.2}", r - l),
-                    "passe": *dz < today, "du": da.to_string(), "au": dz.to_string()}));
+                    "passe": *dz < today, "en_cours": *da <= today && today < *dz, "du": da.to_string(), "au": dz.to_string()}));
             }
         }
         b["segments"] = Value::Array(segments);
@@ -225,6 +225,27 @@ mod tests {
             let html = String::from_utf8(axum::body::to_bytes(r.into_body(), usize::MAX).await?.to_vec())?;
             std::fs::write(dossier.join(format!("accueil_{code}.html")), &html)?;
         }
+        Ok(())
+    }
+}
+
+/// `EO_TEST_BASE=/var/tmp/copie.db cargo test planning_sur_copie -- --ignored --nocapture`
+#[cfg(test)]
+mod tests_planning_copie {
+    #[tokio::test]
+    #[ignore]
+    async fn planning_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{chemin}?mode=ro")).await?;
+        let (frise, bandes) = super::frise_bandes(&pool).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let env = crate::templates::build()?;
+        let page = env.get_template("planning.html")?.render(serde_json::json!({
+            "session": {"pages": []}, "frise": frise, "frise_bandes": bandes, "evenements": [], "taches": [], "echeances": []
+        }))?;
+        let debut = page.find("Les bandes en détail").unwrap();
+        let extrait: String = page[debut..].chars().take(3000).collect();
+        println!("{extrait}");
+        assert!(page.contains("<em>Gestation</em>") && page.contains("en cours"));
         Ok(())
     }
 }

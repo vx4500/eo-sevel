@@ -326,3 +326,5 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-07 11:08 UTC — v2.56.0 DÉPLOYÉE (branche assistant) : /eau (relevés répartis par jour), sous-compteurs électriques (parametre elec_parent_<ieee>) ; soupe 0x60b7… déclarée après tri 0x8c8b…. Sauvegarde eo-sevel_avant_2.56.0_20261007_110813
 
 ## 2026-10-07 11:17 UTC — DISQUE PLEIN vers 11:08 UTC (target/debug 51 Go dont incremental 23 Go) : incremental supprimé, z2m a redémarré seul, base OK. Puis v2.56.0 DÉPLOYÉE (branche assistant) : /eau, sous-compteurs électriques (elec_parent_<ieee>) ; soupe déclarée après tri. Sauvegarde eo-sevel_avant_2.56.0_20261007_111708
+
+## 2026-10-07 12:46 UTC — v2.56.1 DÉPLOYÉE (branche assistant) : frise avec nom des stades, /planning frise + détail par bande. Sauvegarde eo-sevel_avant_2.56.1_20261007_124638

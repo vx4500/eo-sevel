@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.56.0** — rapport : repas de soupe perturbés par l'alarme débit distribution.
+Version actuelle : **2.56.1** — rapport : repas de soupe perturbés par l'alarme débit distribution.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.56.1 : frise des bandes — nom du stade écrit dans chaque segment, segment en cours entouré (en_cours) ; /planning reprend la frise (accueil::frise_bandes) + tableau « Les bandes en détail » (stade, animaux, salles, prochaine étape, dates de chaque période).
 
 Version Rust 2.56.0 : /eau (même page que /electricite, Genre::Eau) — conso d'eau par jour = écart entre relevés réparti par jour, vues semaine/mois/année, prix parametre eau_prix_m3 ; sous-compteurs électriques parametre elec_parent_<ieee> (barres empilées, « dont … »).
 

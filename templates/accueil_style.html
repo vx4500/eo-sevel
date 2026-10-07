@@ -32,7 +32,10 @@
 .acc-frise .ligne{display:flex;align-items:center;min-height:var(--haut,40px);border-top:1px solid var(--acc-trait)}
 .acc-frise .etiq{width:var(--etiq,150px);flex:none;font-size:13px;color:var(--acc-gris)}.acc-frise .etiq a{font-size:15px;font-weight:700;color:var(--acc-encre);text-decoration:none;margin-right:6px}
 .acc-frise .piste{position:relative;flex:1;height:var(--haut,40px)}
-.acc-frise .seg{position:absolute;top:22%;height:56%;border-radius:4px}.acc-frise .seg.passe{opacity:.4}
+.acc-frise .seg{position:absolute;top:18%;height:64%;border-radius:4px;display:flex;align-items:center;overflow:hidden}.acc-frise .seg.passe{opacity:.4}
+.acc-frise .seg em{font-style:normal;font-size:11px;font-weight:700;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:clip;letter-spacing:.01em;color:#16301f}
+.acc-frise .seg.engraissement em,.acc-frise .seg.finition em{color:#fff}.acc-frise .seg.maternite em{color:#3d1d06}.acc-frise .seg.post-sevrage em{color:#10304c}
+.acc-frise .seg.en-cours{box-shadow:0 0 0 2px var(--acc-encre)}
 .seg.gestation,.leg-gestation{background:#8fb3a0}.seg.maternite,.leg-maternite{background:#d98b52}.seg.post-sevrage,.leg-post-sevrage{background:#7fa6c9}.seg.engraissement,.leg-engraissement{background:#5c8a73}.seg.finition,.leg-finition{background:#2f5d49}
 .acc-frise .proch{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:var(--acc-fond);border:2px solid var(--acc-encre);border-radius:50%;box-sizing:border-box}
 .acc-frise .auj{position:absolute;top:18px;bottom:0;width:2px;background:var(--acc-orange)}

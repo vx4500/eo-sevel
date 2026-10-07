@@ -1,7 +1,7 @@
 <div class="acc-defile"><div class="acc-frise" style="--etiq:{{ etiq or 150 }}px;--haut:{{ haut or 40 }}px">
 <div class="mois">{% for m in frise.mois %}<span style="width:{{ m.largeur }}%">{{ m.nom }}</span>{% endfor %}</div>
 {% for b in bandes %}<div class="ligne"><div class="etiq"><a href="/bande/{{ b.id }}">{{ b.code }}</a>{{ b.stade }}</div><div class="piste">
-{% for s in b.segments %}<span class="seg {{ s.classe }}{% if s.passe %} passe{% endif %}" style="left:{{ s.gauche }}%;width:{{ s.largeur }}%" title="{{ s.nom }} : {{ s.du|date_fr }} → {{ s.au|date_fr }}"></span>{% endfor %}
+{% for s in b.segments %}<span class="seg {{ s.classe }}{% if s.passe %} passe{% endif %}{% if s.en_cours %} en-cours{% endif %}" style="left:{{ s.gauche }}%;width:{{ s.largeur }}%" title="{{ s.nom }} : {{ s.du|date_fr }} → {{ s.au|date_fr }}"><em>{{ s.nom }}</em></span>{% endfor %}
 {% if b.prochaine_pct is not none %}<span class="proch" style="left:{{ b.prochaine_pct }}%" title="{{ b.prochaine }} le {{ b.prochaine_date|date_fr }}"></span>{% endif %}
 </div></div>{% endfor %}
 <div class="auj" style="left:calc({{ etiq or 150 }}px + (100% - {{ etiq or 150 }}px) * {{ frise.aujourdhui }} / 100)"><span>AUJOURD’HUI</span></div>
