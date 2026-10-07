@@ -48,7 +48,7 @@
   <h3>Puissance <small class="muted">(moyenne par quart d'heure, échelle {{ echelle_kw|decimal1 }} kW)</small></h3>
   <svg class="el-courbe" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance de la journée">
     {% for h in [180, 360, 540] %}<line x1="{{ h }}" y1="0" x2="{{ h }}" y2="180" stroke="rgba(127,140,133,.3)" stroke-dasharray="3 4"/>{% endfor %}
-    {% if trace %}<polyline points="{{ trace }}" fill="none" stroke="#b7791f" stroke-width="2" vector-effect="non-scaling-stroke"/>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}
+    {% if trace %}<polyline points="{{ trace }}" fill="none" stroke="#b7791f" stroke-width="2" vector-effect="non-scaling-stroke"/>{% elif par_heure_seulement %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Historique Home Assistant : consommation par heure seulement</text>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}
   </svg>
   <div class="el-etiquettes"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
   <h3>Par heure (kWh)</h3>
@@ -56,7 +56,7 @@
 
   <div class="el-barres">{% for b in barres %}<div class="el-barre" title="{{ b.titre }} : {% if b.kwh is not none %}{{ b.kwh|decimal1 }} kWh{% if b.partiel %} (mesures incomplètes){% endif %}{% else %}pas de mesure{% endif %}">{% if b.kwh is not none and vue != 'jour' %}<span>{{ b.kwh|int }}</span>{% endif %}<i class="{% if b.partiel %}partiel{% endif %}" style="height:{{ b.h }}%"></i></div>{% endfor %}</div>
   <div class="el-etiquettes">{% for b in barres %}<span>{% if vue != 'mois' or loop.index is odd %}{{ b.court }}{% endif %}</span>{% endfor %}</div>
-  <p class="muted">Calcul d'après la puissance mesurée toutes les 2 minutes environ. Barres hachurées : mesures incomplètes ce jour-là (compteur injoignable, coupure). Passez le doigt ou la souris sur une barre pour la valeur exacte.</p>
+  <p class="muted">Calcul d'après la puissance mesurée toutes les 2 minutes environ. Avant le 25/09/2026 : historique repris de Home Assistant. Barres hachurées : mesures incomplètes ou consommation estimée (compteur resté muet puis rattrapé, coupure). Passez le doigt ou la souris sur une barre pour la valeur exacte.</p>
 </section>
 
 {% if session.peut_modifier %}

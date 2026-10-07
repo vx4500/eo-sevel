@@ -267,12 +267,34 @@ pub(super) async fn page(
         if let Some((ts_max, w)) = m.iter().max_by(|a, b| a.1.total_cmp(&b.1)) {
             ctx.insert("pic".into(), json!({"kw": (w / 100.0).round() / 10.0, "heure": Local.timestamp_opt(*ts_max, 0).single().map(|t| t.format("%Hh%M").to_string())}));
         }
-        let heures = (0..24)
+        // Sans mesures de puissance : consommation par heure importée.
+        let importees: Vec<(i64, f64, bool)> = if m.is_empty() {
+            sqlx::query_as("SELECT ts,kwh,estime FROM elec_heure WHERE ieee=? AND ts>=? AND ts<? ORDER BY ts")
+                .bind(&ieee)
+                .bind(t1)
+                .bind(t2)
+                .fetch_all(pool)
+                .await?
+        } else {
+            Vec::new()
+        };
+        ctx.insert("par_heure_seulement".into(), json!(!importees.is_empty()));
+        // Heures réelles du jour (23 ou 25 lors des changements d'heure).
+        let nb_heures = ((t2 - t1) / 3600).clamp(23, 25);
+        let heures = (0..nb_heures)
             .map(|h| {
                 let (a, b) = (t1 + h * 3600, t1 + (h + 1) * 3600);
+                let etiquette = Local.timestamp_opt(a, 0).single().map(|t| t.format("%H").to_string().trim_start_matches('0').to_string()).unwrap_or_default();
+                let etiquette = if etiquette.is_empty() { "0".to_string() } else { etiquette };
+                let titre = format!("{etiquette}h");
+                if !importees.is_empty() {
+                    let dans: Vec<&(i64, f64, bool)> = importees.iter().filter(|x| x.0 >= a && x.0 < b).collect();
+                    let k = (!dans.is_empty()).then(|| dans.iter().map(|x| x.1).sum::<f64>());
+                    return (etiquette, titre, k, dans.iter().any(|x| x.2));
+                }
                 let dans: Vec<(i64, f64)> = m.iter().filter(|x| x.0 >= a && x.0 < b).cloned().collect();
                 let k = (!dans.is_empty()).then(|| integrer(&m, a, b));
-                (format!("{h}"), format!("{h}h–{}h", h + 1), k.map(|k| k.0), k.is_some_and(|k| k.1 < 0.9))
+                (etiquette, titre, k.map(|k| k.0), k.is_some_and(|k| k.1 < 0.9))
             })
             .collect();
         ctx.insert("barres".into(), barres(heures));
