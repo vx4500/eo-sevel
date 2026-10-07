@@ -539,7 +539,24 @@ pub(super) async fn page(
             "nb_conditions": nb_conditions, "nb_actions": nb_actions,
         }));
     }
+    let lumieres: Vec<(i64, String, i64, i64, Option<String>, Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT g.id, g.nom, g.actif, g.essai, \
+                (SELECT group_concat(p.nom, ', ') FROM eclairage_sortie o JOIN ipx_point p ON p.id=o.point_id WHERE o.programme_id=g.id), \
+                (SELECT MAX(e.allume) FROM eclairage_etat e WHERE e.programme_id=g.id), \
+                (SELECT e.raison FROM eclairage_etat e WHERE e.programme_id=g.id ORDER BY e.maj DESC LIMIT 1) \
+         FROM eclairage_programme g ORDER BY g.nom COLLATE NOCASE",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
     let mut contexte = context(&session);
+    contexte.insert(
+        "lumieres".into(),
+        Value::Array(lumieres.into_iter().map(|(id, nom, actif, essai, lampes, allume, raison)| {
+            json!({"id": id, "nom": nom, "actif": actif != 0, "essai": essai != 0, "lampes": lampes,
+                   "allume": allume.map(|a| a != 0), "raison": raison})
+        }).collect()),
+    );
     contexte.insert("regles".into(), Value::Array(regles));
     contexte.insert("journal".into(), Value::Array(journal(&state.pool, None, 60).await?));
     contexte.insert(
@@ -549,11 +566,66 @@ pub(super) async fn page(
     render(&state, "automatique.html", Value::Object(contexte))
 }
 
+/// Modèles proposés sur « Nouvelle règle » : (code, icône, titre, explication).
+/// La lumière automatique renvoie vers les programmes d'éclairage, qui gèrent
+/// déjà seuils, temporisation et sonde muette.
+const MODELES: [(&str, &str, &str, &str); 6] = [
+    ("lumiere", "💡", "Lumière automatique", "Allumer selon l'heure et la lumière mesurée (programme d'éclairage)"),
+    ("alerte_temp", "🌡️", "Alerte température", "SMS si une salle dépasse une température pendant 10 min"),
+    ("brumisation", "💦", "Brumisation si chaud", "Allumer la brumisation au-dessus de 28 °C, l'éteindre en dessous"),
+    ("chauffage", "🔥", "Chauffage si froid", "Allumer un chauffage sous 18 °C, l'éteindre au-dessus"),
+    ("hygro", "💧", "Alerte hygrométrie", "SMS si l'humidité d'une salle reste au-dessus de 85 %"),
+    ("porte_nuit", "🚪", "Porte ouverte la nuit", "SMS si une entrée (porte, contact) s'active entre 22 h et 6 h"),
+];
+
+fn modele(code: &str) -> Option<Value> {
+    let r = |nom: &str, delai: f64, debut: &str, fin: &str, conditions: Value, actions: Value| {
+        json!({"id": null, "nom": nom, "actif": true, "essai": true, "logique": "et", "delai_min": delai,
+               "heure_debut": debut, "heure_fin": fin, "note": "", "conditions": conditions, "actions": actions})
+    };
+    Some(match code {
+        "alerte_temp" => r("Alerte température", 10.0, "", "",
+            json!([{"code": "", "operateur": ">", "valeur": 30.0}]),
+            json!([{"moment": "debut", "code": "sms", "message": "Température trop haute"}])),
+        "brumisation" => r("Brumisation si chaud", 5.0, "", "",
+            json!([{"code": "", "operateur": ">", "valeur": 28.0}]),
+            json!([{"moment": "debut", "code": "", "valeur": 1.0}, {"moment": "fin", "code": "", "valeur": 0.0}])),
+        "chauffage" => r("Chauffage si froid", 5.0, "", "",
+            json!([{"code": "", "operateur": "<", "valeur": 18.0}]),
+            json!([{"moment": "debut", "code": "", "valeur": 1.0}, {"moment": "fin", "code": "", "valeur": 0.0}])),
+        "hygro" => r("Alerte hygrométrie", 15.0, "", "",
+            json!([{"code": "", "operateur": ">", "valeur": 85.0}]),
+            json!([{"moment": "debut", "code": "sms", "message": "Humidité trop haute"}])),
+        "vide" => r("", 0.0, "", "", json!([]), json!([])),
+        "porte_nuit" => r("Porte ouverte la nuit", 0.0, "22:00", "06:00",
+            json!([{"code": "", "operateur": "=", "valeur": 1.0}]),
+            json!([{"moment": "debut", "code": "sms", "message": "Porte ouverte la nuit"}])),
+        _ => return None,
+    })
+}
+
 pub(super) async fn nouvelle(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
-) -> AppResult<Html<String>> {
-    formulaire(&state, &session, None).await
+    Query(parametres): Query<HashMap<String, String>>,
+) -> AppResult<Response> {
+    match parametres.get("modele").map(String::as_str) {
+        Some("lumiere") => return Ok(Redirect::to("/ambiance/eclairage/nouveau").into_response()),
+        Some(code) => {
+            let regle = modele(code).ok_or(AppError::NotFound)?;
+            return Ok(formulaire(&state, &session, None, Some(regle)).await?.into_response());
+        }
+        None => {}
+    }
+    require_writer(&session)?;
+    let mut contexte = context(&session);
+    contexte.insert(
+        "modeles".into(),
+        Value::Array(MODELES.iter().map(|(code, icone, titre, texte)| {
+            json!({"code": code, "icone": icone, "titre": titre, "texte": texte})
+        }).collect()),
+    );
+    Ok(render(&state, "automatique_modeles.html", Value::Object(contexte))?.into_response())
 }
 
 pub(super) async fn regle(
@@ -561,14 +633,19 @@ pub(super) async fn regle(
     Extension(session): Extension<SessionData>,
     Path(id): Path<i64>,
 ) -> AppResult<Html<String>> {
-    formulaire(&state, &session, Some(id)).await
+    formulaire(&state, &session, Some(id), None).await
 }
 
-async fn formulaire(state: &AppState, session: &SessionData, id: Option<i64>) -> AppResult<Html<String>> {
+async fn formulaire(
+    state: &AppState,
+    session: &SessionData,
+    id: Option<i64>,
+    depart: Option<Value>,
+) -> AppResult<Html<String>> {
     require_writer(session)?;
     let (lectures, sorties) = choix(&state.pool).await?;
-    let mut regle = json!({"id": null, "nom": "", "actif": true, "essai": true, "logique": "et",
-        "delai_min": 0, "heure_debut": "", "heure_fin": "", "note": "", "conditions": [], "actions": []});
+    let mut regle = depart.unwrap_or_else(|| json!({"id": null, "nom": "", "actif": true, "essai": true, "logique": "et",
+        "delai_min": 0, "heure_debut": "", "heure_fin": "", "note": "", "conditions": [], "actions": []}));
     if let Some(id) = id {
         let ligne: Option<(String, i64, i64, String, i64, Option<String>, Option<String>, Option<String>)> =
             sqlx::query_as(
@@ -695,6 +772,19 @@ pub(super) async fn enregistrer(
                 .unwrap_or(0);
             if pilotable == 0 {
                 return Err(AppError::Invalid("Cette sortie n'est pas autorisée à la commande".into()));
+            }
+            let programme: Option<String> = sqlx::query_scalar(
+                "SELECT g.nom FROM eclairage_sortie o JOIN eclairage_programme g ON g.id=o.programme_id \
+                 WHERE o.point_id=? AND g.actif=1 LIMIT 1",
+            )
+            .bind(point_id)
+            .fetch_optional(&state.pool)
+            .await?;
+            if let Some(programme) = programme {
+                return Err(AppError::Invalid(format!(
+                    "Cette lampe est déjà pilotée par le programme d'éclairage « {programme} » : \
+                     modifiez ce programme, ou arrêtez-le, pour éviter que les deux se contredisent"
+                )));
             }
             let valeur = nombre(form.get(&format!("a{i}_valeur")))
                 .ok_or_else(|| AppError::Invalid("Indiquez la valeur à envoyer à chaque sortie".into()))?;
@@ -870,8 +960,12 @@ mod tests {
             "session": session, "regle": regle, "lectures": [lecture], "sorties": [],
             "operateurs": [{"code": ">", "libelle": "supérieur à"}], "journal": []
         })).expect("automatique_regle.html");
+        env.get_template("automatique_modeles.html").unwrap().render(serde_json::json!({
+            "session": session, "modeles": [{"code": "hygro", "icone": "💧", "titre": "Alerte", "texte": "SMS"}]
+        })).expect("automatique_modeles.html");
         env.get_template("automatique.html").unwrap().render(serde_json::json!({
-            "session": session, "ok": null, "journal": [{"quand": "07/10 18:00", "nom": "Essai", "evenement": "déclenchée", "detail": "", "essai": true}],
+            "session": session, "ok": null,
+            "lumieres": [{"id": 1, "nom": "Auto Eclairage Verraterie", "actif": true, "essai": false, "lampes": "ECL_Verraterie", "allume": true, "raison": "sombre"}], "journal": [{"quand": "07/10 18:00", "nom": "Essai", "evenement": "déclenchée", "detail": "", "essai": true}],
             "regles": [{"id": 1, "nom": "Essai", "actif": true, "essai": true, "logique": "et", "delai_s": 300,
                 "heure_debut": "22:00", "heure_fin": "06:00", "declenche": true, "condition_vraie": true,
                 "dernier": "07/10 18:00", "probleme": null, "nb_conditions": 1, "nb_actions": 2}]
@@ -887,6 +981,13 @@ mod tests {
                         "salle_id": null, "formule": null, "coefficient": 1.0, "decalage": 0.0, "unite": null, "valeur_convertie": null}]}],
                 "restes": [], "roles": [], "salles": [], "ok": null
             })).expect("ambiance_carte.html");
+        }
+    }
+
+    #[test]
+    fn modeles_valides() {
+        for (code, ..) in MODELES.iter().filter(|(c, ..)| *c != "lumiere") {
+            assert!(modele(code).is_some(), "{code}");
         }
     }
 

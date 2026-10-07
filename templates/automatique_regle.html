@@ -97,8 +97,8 @@ function ajouterAction(a){a=a||{};var i=na++,d=document.createElement('div');d.c
    '<label class="ar-detail"></label><button type="button" class="ar-x" title="Retirer">✕</button>';
   var sel=d.querySelector('[name=a'+i+'_quoi]'),det=d.querySelector('.ar-detail');
   function maj(premier){var v=sel.value;
-    if(v==='sms'){det.innerHTML='Message<input name="a'+i+'_message" placeholder="ex. Brumisation lancée" value="'+esc(premier?a.message:'')+'">'}
-    else if(v){var o=trouver(SORTIES,v);det.innerHTML='Valeur'+champValeur('a'+i+'_valeur',o&&o.tor,premier?a.valeur:null)}
+    if(v==='sms'){det.innerHTML='Message<input name="a'+i+'_message" placeholder="ex. Brumisation lancée" value="'+esc(a.message||'')+'">'}
+    else if(v){var o=trouver(SORTIES,v);det.innerHTML='Valeur'+champValeur('a'+i+'_valeur',o&&o.tor,a.valeur==null?null:a.valeur)}
     else det.innerHTML=''}
   sel.addEventListener('change',function(){maj(false)});maj(true);
   d.querySelector('.ar-x').onclick=function(){d.remove()};
