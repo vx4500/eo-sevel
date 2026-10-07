@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block title %}Automatique — EO_Sevel{% endblock %}{% block content %}
+<style>
+.auto-regles{display:grid;gap:12px}
+.auto-regle{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-left:5px solid var(--line)}
+.auto-regle.marche{border-left-color:#2f7a55}.auto-regle.essai{border-left-color:#c98a3a}.auto-regle.arret{opacity:.65}
+.auto-regle h2{margin:0 0 4px;font-size:18px}.auto-regle h2 a{text-decoration:none}
+.auto-etiq{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;margin-right:4px;background:#eef1ee;color:#46524c}
+.auto-etiq.vert{background:#e1f2e8;color:#1f6b45}.auto-etiq.or{background:#fbecd6;color:#8a4c17}.auto-etiq.rouge{background:#fde3dd;color:#8f2d23}
+.auto-boutons{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.auto-boutons form{margin:0}
+.auto-journal td{vertical-align:top}
+@media(max-width:640px){.auto-regle{grid-template-columns:1fr}.auto-boutons{justify-content:flex-start}}
+</style>
+<div class="rust-actions" style="justify-content:space-between;align-items:center">
+  <div><h1 style="margin:0">Automatique</h1><p class="muted" style="margin:4px 0 0"><a href="/ambiance/automate">← Automate</a> · Règles « si… alors… » qui relient les automates, les appareils Zigbee, les salles et la machine à soupe.</p></div>
+  <a class="button" href="/automatique/nouvelle">+ Nouvelle règle</a>
+</div>
+
+{% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
+
+<section class="card">
+  <p class="muted" style="margin:0">Une règle neuve démarre en <b>essai</b> : EO_Sevel l'évalue toutes les 10 secondes et note dans le journal ce qu'elle <i>aurait</i> fait, sans rien commander. Quand le journal vous convient, passez-la « en marche ». Seules les sorties autorisées à la commande (Automate → Carte ou IPX800 V5) peuvent être pilotées, et jamais la ventilation d'une salle en régulation automatique.</p>
+</section>
+
+{% if regles %}
+<div class="auto-regles">
+{% for r in regles %}
+<section class="card auto-regle {% if not r.actif %}arret{% elif r.essai %}essai{% else %}marche{% endif %}">
+  <div>
+    <h2><a href="/automatique/{{ r.id }}">{{ r.nom }}</a></h2>
+    {% if not r.actif %}<span class="auto-etiq">Arrêtée</span>{% elif r.essai %}<span class="auto-etiq or">Essai</span>{% else %}<span class="auto-etiq vert">En marche</span>{% endif %}
+    {% if r.actif and r.declenche %}<span class="auto-etiq vert">● déclenchée</span>{% elif r.actif and r.condition_vraie %}<span class="auto-etiq or">condition vraie, délai en cours</span>{% endif %}
+    {% if r.probleme %}<span class="auto-etiq rouge">⚠ {{ r.probleme }}</span>{% endif %}
+    <div class="muted" style="font-size:13px;margin-top:4px">{{ r.nb_conditions }} condition{% if r.nb_conditions > 1 %}s{% endif %} ({% if r.logique == 'ou' %}une suffit{% else %}toutes{% endif %}){% if r.delai_s %} · pendant {{ (r.delai_s / 60)|round(1) }} min{% endif %}{% if r.heure_debut %} · de {{ r.heure_debut }} à {{ r.heure_fin }}{% endif %} · {{ r.nb_actions }} action{% if r.nb_actions > 1 %}s{% endif %}{% if r.dernier %} · dernier déclenchement {{ r.dernier }}{% endif %}</div>
+  </div>
+  <div class="auto-boutons">
+    <form method="post" action="/automatique/{{ r.id }}/basculer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="champ" value="actif"><button class="ghost">{% if r.actif %}Arrêter{% else %}Activer{% endif %}</button></form>
+    {% if r.actif %}<form method="post" action="/automatique/{{ r.id }}/basculer" {% if r.essai %}onsubmit="return confirm('Passer « {{ r.nom }} » en marche réelle ? Elle commandera le matériel.')"{% endif %}><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="champ" value="essai"><button {% if not r.essai %}class="ghost"{% endif %}>{% if r.essai %}Mettre en marche{% else %}Repasser en essai{% endif %}</button></form>{% endif %}
+    <a class="button ghost" href="/automatique/{{ r.id }}">Modifier</a>
+  </div>
+</section>
+{% endfor %}
+</div>
+{% else %}
+<div class="rust-empty">Aucune règle pour l'instant. Exemple : « Si la température de Post-sevrage 2 dépasse 30 °C pendant 5 minutes, alors allumer la brumisation et m'envoyer un SMS ; l'éteindre quand elle redescend. »</div>
+{% endif %}
+
+<section class="card auto-journal">
+  <h2>Journal</h2>
+  {% if journal %}
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Quand</th><th>Règle</th><th>Événement</th><th>Détail</th></tr></thead>
+    <tbody>{% for j in journal %}<tr><td>{{ j.quand }}</td><td>{{ j.nom }}</td><td>{{ j.evenement }}{% if j.essai %} <span class="auto-etiq or">essai</span>{% endif %}</td><td>{{ j.detail or '' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="rust-empty">Rien pour l'instant.</p>{% endif %}
+</section>
+{% endblock %}

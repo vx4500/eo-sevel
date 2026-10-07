@@ -57,6 +57,7 @@ mod sms;
 mod proxmox;
 mod assistant;
 pub(crate) mod electricite;
+pub(crate) mod automatique;
 mod mcp;
 mod soupe;
 mod soupe_pilotage;
@@ -214,6 +215,12 @@ pub fn router(state: AppState) -> Router {
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))
         .route("/ambiance/ipx/points.json", get(ambiance::ipx_points_json))
         .route("/ambiance/ipx/carte", get(ambiance::ipx_carte))
+        .route("/automatique", get(automatique::page))
+        .route("/automatique/nouvelle", get(automatique::nouvelle))
+        .route("/automatique/enregistrer", post(automatique::enregistrer))
+        .route("/automatique/{id}", get(automatique::regle))
+        .route("/automatique/{id}/basculer", post(automatique::basculer))
+        .route("/automatique/{id}/supprimer", post(automatique::supprimer))
         .route("/ambiance/ipx/v5", get(ambiance::ipx_v5_accueil))
         .route("/ambiance/ipx/v5/{code}", get(ambiance::ipx_v5))
         .route(
@@ -953,6 +960,7 @@ const EQUIP_MODULES: &[(&str, &str, &str)] = &[
     ("acces", "Accès à distance", "Tunnel Cloudflare"),
     ("cameras", "Caméras", "Image des caméras dans les salles"),
     ("soupe", "Machine à soupe", "Exa-Feeder Asserva en écoute seule"),
+    ("automatique", "Automatique", "Règles si… alors… entre automates et appareils"),
     ("laezh", "EO_Laezh", "Machine à lait pour porcelets"),
     ("treizh", "EO_Treizh", "Station de pesée et de tri Domino"),
     ("kren", "EO_Kren", "Distribution automatisée d’aliment"),
@@ -1061,6 +1069,10 @@ async fn equipements(
     } else {
         None
     };
+    let nb_regles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM automatisme WHERE actif=1")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let tunnel = crate::tunnel::instantane();
     let acces = json!({"code":"acces","nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
@@ -1078,6 +1090,7 @@ async fn equipements(
         let mut liste = json!([
             {"code":"awel","nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             ipx,
+            {"code":"automatique","nom":"Automatique", "etat": if nb_regles > 0 { "actif" } else { "attente" }, "etat_texte": if nb_regles > 0 { format!("{nb_regles} règle{} active{}", if nb_regles > 1 { "s" } else { "" }, if nb_regles > 1 { "s" } else { "" }) } else { "Aucune règle".to_string() }, "description":"Relier les automates et appareils entre eux : si une condition est vraie (sonde, entrée, salle, machine à soupe), alors commander des sorties et envoyer des SMS.", "href":"/automatique", "action":"Ouvrir Automatique"},
             zigbee,
             sms,
             proxmox,
@@ -2106,8 +2119,10 @@ fn require_writer(session: &SessionData) -> AppResult<()> {
 }
 
 /// Présentation détaillée du logiciel, publique (lien depuis la connexion).
-async fn decouvrir_page(State(state): State<AppState>) -> AppResult<Html<String>> {
-    render(&state, "decouvrir.html", json!({}))
+/// La présentation du logiciel vit sur le site vitrine, tenu à jour à un
+/// seul endroit (fonctionnalités, essai de la saisie rapide, démos).
+async fn decouvrir_page() -> Redirect {
+    Redirect::to("https://eo-elevage.fr/eo-sevel/")
 }
 
 async fn login_page(

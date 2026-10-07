@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.57.0** — automate : une page par type d'entrée et de sortie de l'IPX800 V5.
+Version actuelle : **2.58.0** — module Automatique : règles si… alors… entre automates et appareils.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.0 : module Automatique (routes/automatique.rs, migration 0028, /automatique) — règles si… alors… : conditions sur ipx_point (IPX et Zigbee via ambiance::lire_point), température/hygrométrie de salle (ambiance_etat, périmée après 15 min), phase soupe ; logique et/ou, délai, plage horaire ; actions commande (pilotable seulement, refus si ventilation en régulation, journal ipx_commande_journal utilisateur='automatique') et SMS, au début ou à la fin ; boucle 10 s lancée par main ; règles neuves en essai (journal seul) ; capteur muet = ni déclenchement ni fin. Test les_pages_se_rendent rend automatique*.html et ambiance_carte.html. 2.57.0 corrigée : filtre urlencode inconnu sur les pages IPX800 V5. /decouvrir redirige vers le site vitrine https://eo-elevage.fr/eo-sevel/.
 
 Version Rust 2.57.0 : onglet « IPX800 V5 » de l'automate (/ambiance/ipx/v5/{relais,digitales,analogiques,opto,collecteurs}) — une page par type de la carte mère, plages d'identifiants fixes (TYPES_V5 dans routes/ambiance.rs), sans réglage de section ; ipx_carte et ipx_v5 partagent ambiance::carte ; champ « retour » des formulaires affecter/commander pour revenir sur la page V5.
 

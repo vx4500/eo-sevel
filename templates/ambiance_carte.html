@@ -8,7 +8,7 @@
 @media(max-width:640px){.v5-types{flex-wrap:nowrap;overflow-x:auto}.v5-types a{white-space:nowrap}}
 </style>
 <nav class="v5-types" aria-label="Entrées et sorties de l'IPX800 V5">
-{% for t in types_v5 %}<a href="/ambiance/ipx/v5/{{ t.code }}{% if hote %}?hote={{ hote|urlencode }}{% endif %}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }} <small>{{ t.nombre }}</small></a>{% endfor %}
+{% for t in types_v5 %}<a href="/ambiance/ipx/v5/{{ t.code }}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }} <small>{{ t.nombre }}</small></a>{% endfor %}
 </nav>
 {% else %}{{ onglets('carte') }}{% endif %}
 

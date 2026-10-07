@@ -144,6 +144,12 @@ async fn main() -> anyhow::Result<()> {
         crate::tunnel::boucle(tunnel_pool).await;
     });
 
+    // Module Automatique : règles si… alors… évaluées toutes les 10 s.
+    let automatique_pool = pool.clone();
+    tokio::spawn(async move {
+        routes::automatique::boucle(automatique_pool).await;
+    });
+
     // Consommation électrique : journées finies gardées dans elec_jour.
     let elec_pool = pool.clone();
     tokio::spawn(async move {
