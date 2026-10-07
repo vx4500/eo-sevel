@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.54.2** — rapport : repas de soupe perturbés par l'alarme débit distribution.
+Version actuelle : **2.55.0** — rapport : repas de soupe perturbés par l'alarme débit distribution.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.55.0 : /electricite (src/routes/electricite.rs, section energie) — consommation par compteur Zigbee : jour (courbe ¼ h + kWh/heure), semaine, mois, année ; kWh = intégrale de total_power|power (trous > 10 min ignorés), validé contre les relevés d'index ; table elec_jour (migration 0026, sans purge) complétée toutes les 6 h et à l'ouverture ; prix parametre elec_prix_kwh.
 
 Version Rust 2.54.2 : /energie — tableau des relevés de chaque compteur replié (details.en-releves, résumé : nombre, dernier relevé, conso).
 

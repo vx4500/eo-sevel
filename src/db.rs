@@ -383,6 +383,10 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0025_depart_prevu.sql"))
         .execute(pool)
         .await?;
+    // Consommation électrique par jour (voir routes::electricite).
+    sqlx::raw_sql(include_str!("../migrations/0026_electricite.sql"))
+        .execute(pool)
+        .await?;
     // Ventilation d'une salle vide (économie) : NULL = réglage désactivé.
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
     // Classement par nom des objets de l'automate : dépend de la colonne

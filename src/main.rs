@@ -144,6 +144,12 @@ async fn main() -> anyhow::Result<()> {
         crate::tunnel::boucle(tunnel_pool).await;
     });
 
+    // Consommation électrique : journées finies gardées dans elec_jour.
+    let elec_pool = pool.clone();
+    tokio::spawn(async move {
+        routes::electricite::boucle(elec_pool).await;
+    });
+
     let templates = templates::build()?;
     routes::charger_equip_masques(&pool).await;
     let state = AppState::new(config.clone(), pool, templates);

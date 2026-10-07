@@ -56,6 +56,7 @@ mod sevrage;
 mod sms;
 mod proxmox;
 mod assistant;
+pub(crate) mod electricite;
 mod mcp;
 mod soupe;
 mod soupe_pilotage;
@@ -436,6 +437,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/causes-perte", get(api_causes_perte))
         .route("/api/alertes-elevage", get(api_alertes_elevage))
         .route("/energie", get(energie))
+        .route("/electricite", get(electricite::page))
+        .route("/electricite/prix", post(electricite::prix))
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/aliment-previsions/silo", post(silo_ajouter))
         .route("/aliment-previsions/plan/ajouter", post(parity::aliment_ajouter))

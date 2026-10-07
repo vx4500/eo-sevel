@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Consommation électrique — EO_Sevel{% endblock %}
+{% block content %}
+<style>
+.el-onglets{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.el-onglets a{padding:7px 14px;border-radius:999px;border:1px solid rgba(127,140,133,.45);text-decoration:none;color:inherit;font-weight:600}
+.el-onglets a.actif{background:#b7791f;border-color:#b7791f;color:#fff}
+.el-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 12px}
+.el-nav h2{margin:0;flex:1;min-width:180px}
+.el-nav a{text-decoration:none;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,140,133,.45);color:inherit}
+.el-nav .off{opacity:.3;pointer-events:none}
+.el-chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.el-chiffres div{border:1px solid rgba(127,140,133,.35);border-radius:10px;padding:10px 12px}
+.el-chiffres small{display:block;opacity:.75;font-size:.8rem}.el-chiffres b{font-size:1.45rem}
+.el-hausse{color:#c0392b}.el-baisse{color:#2f8f5b}
+.el-barres{display:flex;align-items:flex-end;gap:3px;height:190px;padding:0 2px;border-bottom:1px solid rgba(127,140,133,.5)}
+.el-barre{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.el-barre i{display:block;width:100%;background:#b7791f;border-radius:4px 4px 0 0;min-height:1px}
+.el-barre i.partiel{background:repeating-linear-gradient(45deg,#b7791f 0 4px,rgba(183,121,31,.35) 4px 8px)}
+.el-barre span{font-size:.68rem;opacity:.8;white-space:nowrap;margin-bottom:2px}
+.el-etiquettes{display:flex;gap:3px;padding:0 2px}
+.el-etiquettes span{flex:1;text-align:center;font-size:.72rem;opacity:.75;min-width:0;overflow:hidden}
+.el-courbe{width:100%;height:200px;display:block;border:1px solid rgba(127,140,133,.3);border-radius:8px}
+@media(max-width:600px){.el-barre span{display:none}}
+</style>
+<h1>Consommation électrique</h1>
+{% if not compteurs %}
+<section class="card"><p>Aucun compteur électrique Zigbee pour l'instant. Ils apparaissent ici dès qu'ils sont raccordés au réseau Zigbee.</p></section>
+{% else %}
+{% if compteurs|length > 1 %}<div class="el-onglets">{% for c in compteurs %}<a href="/electricite?c={{ c.ieee }}&vue={{ vue }}&d={{ d }}" class="{% if c.ieee == ieee %}actif{% endif %}">{{ c.nom }}</a>{% endfor %}</div>{% endif %}
+<div class="el-onglets">
+  {% for v, l in [('jour','Jour'),('semaine','Semaine'),('mois','Mois'),('annee','Année')] %}<a href="/electricite?c={{ ieee }}&vue={{ v }}&d={{ d }}" class="{% if vue == v %}actif{% endif %}">{{ l }}</a>{% endfor %}
+</div>
+<section class="card">
+  <div class="el-nav">
+    <a href="/electricite?c={{ ieee }}&vue={{ vue }}&d={{ precedent }}" aria-label="Période précédente">‹</a>
+    <h2>{{ nom }} · {{ titre }}</h2>
+    {% if suivant %}<a href="/electricite?c={{ ieee }}&vue={{ vue }}&d={{ suivant }}" aria-label="Période suivante">›</a><a href="/electricite?c={{ ieee }}&vue={{ vue }}">Aujourd'hui</a>{% else %}<a class="off">›</a>{% endif %}
+  </div>
+  <div class="el-chiffres">
+    <div><small>Consommation</small><b>{% if total is not none %}{{ total|decimal1 }} kWh{% else %}—{% endif %}</b></div>
+    {% if cout is not none %}<div><small>Coût estimé</small><b>{{ cout|decimal2 }} €</b></div>{% endif %}
+    <div><small>Période précédente{% if suivant is none and vue != 'jour' %} (même durée){% endif %}</small><b>{% if total_avant is not none %}{{ total_avant|decimal1 }} kWh{% else %}—{% endif %}</b>{% if ecart is not none %} <span class="{% if ecart > 0 %}el-hausse{% else %}el-baisse{% endif %}">{% if ecart > 0 %}+{% endif %}{{ ecart|int }} %</span>{% endif %}</div>
+    {% if pic %}<div><small>Puissance maximale</small><b>{{ pic.kw|decimal1 }} kW</b> <small>à {{ pic.heure }}</small></div>{% endif %}
+  </div>
+
+  {% if vue == 'jour' %}
+  <h3>Puissance <small class="muted">(moyenne par quart d'heure, échelle {{ echelle_kw|decimal1 }} kW)</small></h3>
+  <svg class="el-courbe" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance de la journée">
+    {% for h in [180, 360, 540] %}<line x1="{{ h }}" y1="0" x2="{{ h }}" y2="180" stroke="rgba(127,140,133,.3)" stroke-dasharray="3 4"/>{% endfor %}
+    {% if trace %}<polyline points="{{ trace }}" fill="none" stroke="#b7791f" stroke-width="2" vector-effect="non-scaling-stroke"/>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}
+  </svg>
+  <div class="el-etiquettes"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
+  <h3>Par heure (kWh)</h3>
+  {% endif %}
+
+  <div class="el-barres">{% for b in barres %}<div class="el-barre" title="{{ b.titre }} : {% if b.kwh is not none %}{{ b.kwh|decimal1 }} kWh{% if b.partiel %} (mesures incomplètes){% endif %}{% else %}pas de mesure{% endif %}">{% if b.kwh is not none and vue != 'jour' %}<span>{{ b.kwh|int }}</span>{% endif %}<i class="{% if b.partiel %}partiel{% endif %}" style="height:{{ b.h }}%"></i></div>{% endfor %}</div>
+  <div class="el-etiquettes">{% for b in barres %}<span>{% if vue != 'mois' or loop.index is odd %}{{ b.court }}{% endif %}</span>{% endfor %}</div>
+  <p class="muted">Calcul d'après la puissance mesurée toutes les 2 minutes environ. Barres hachurées : mesures incomplètes ce jour-là (compteur injoignable, coupure). Passez le doigt ou la souris sur une barre pour la valeur exacte.</p>
+</section>
+
+{% if session.peut_modifier %}
+<section class="card"><h2>Prix de l'électricité</h2>
+<form class="rust-actions" method="post" action="/electricite/prix"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="/electricite?c={{ ieee }}&vue={{ vue }}&d={{ d }}">
+  <label>Prix du kWh (€ TTC)<input name="prix" inputmode="decimal" value="{{ prix if prix is not none else '' }}" placeholder="0,21"></label>
+  <button type="submit">Enregistrer</button>
+</form><p class="muted">Sert seulement à afficher un coût estimé. Laisser vide pour ne pas l'afficher.</p></section>
+{% endif %}
+{% endif %}
+{% endblock %}

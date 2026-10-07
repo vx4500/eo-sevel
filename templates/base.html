@@ -249,7 +249,8 @@
     <div class="rust-sub-groupe"><h3>Stocks et consommations</h3>
       {% if 'stock' in session.pages %}<a href="/aliment-previsions"><b>Aliment</b><small>Livraisons, silos, prévisions de commande</small></a>
       <a href="/stock"><b>Stocks</b><small>Inventaires et consommables</small></a>{% endif %}
-      {% if 'energie' in session.pages %}<a href="/energie"><b>Eau et électricité</b><small>Relevés de compteurs</small></a>{% endif %}
+      {% if 'energie' in session.pages %}<a href="/energie"><b>Eau et électricité</b><small>Relevés de compteurs</small></a>
+      <a href="/electricite"><b>Consommation électrique</b><small>Courbes jour, semaine, mois, année</small></a>{% endif %}
     </div>
     <div class="rust-sub-groupe"><h3>Sanitaire et papiers</h3>
       {% if 'sanitaire' in session.pages %}<a href="/sanitaire"><b>Sanitaire</b><small>Protocoles, traitements, délais d’attente</small></a>

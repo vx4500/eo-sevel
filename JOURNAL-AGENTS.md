@@ -318,3 +318,5 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-07 06:14 UTC — v2.54.1 DÉPLOYÉE (branche assistant) : /rapport section Machine à soupe (manque par vanne lors des alarmes débit ≥ 3 min). Base : 48 soupe_evenement phase 37 renommés (sauvegarde elevage_avant_phase37_*). README/Etat/workflow réalignés. Sauvegarde eo-sevel_avant_2.54.1_20261007_061410
 
 ## 2026-10-07 07:12 UTC — v2.54.2 DÉPLOYÉE (branche assistant) : /energie relevés repliés. Sauvegarde eo-sevel_avant_2.54.2_20261007_071239
+
+## 2026-10-07 10:32 UTC — v2.55.0 DÉPLOYÉE (branche assistant) : /electricite consommation jour/semaine/mois/année, table elec_jour (migration 0026). Sauvegarde eo-sevel_avant_2.55.0_20261007_103207

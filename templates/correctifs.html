@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.55.0 — Consommation électrique</h2><ul><li>Nouvelle page « Consommation électrique » (menu Eau et électricité) : par compteur, vue Jour (courbe de puissance et kWh par heure), Semaine, Mois et Année, avec comparaison à la période précédente.</li><li>Prix du kWh facultatif pour afficher un coût estimé.</li><li>Les totaux par jour sont conservés sans limite de durée.</li></ul></section>
 <section class="card"><h2>2.54.2 — Eau et électricité plus lisible</h2><ul><li>Les relevés de chaque compteur sont repliés ; le titre donne le nombre de relevés et le dernier (date, index, consommation). Un clic les déplie.</li></ul></section>
 <section class="card"><h2>2.54.1 — Rapport : manque de soupe par vanne</h2><ul><li>Le rapport montre chaque repas perturbé par une alarme débit distribution de plus de 3 minutes : vanne en défaut, durée, et pour chaque vanne la quantité reçue, la consigne et le manque estimé.</li><li>L’étape 37 s’appelle « Alarme débit distribution » partout, historique compris.</li></ul></section>
 <section class="card"><h2>2.54.0 — Machine à soupe en sécurité</h2><ul><li>Alarme « débit distribution » reconnue : si elle dure plus de 3 minutes, alerte dans EO_Sevel et SMS (vanne et quantité servie).</li><li>L’étape 37 s’affiche « Alarme débit distribution » dans le journal de la machine.</li></ul></section>
