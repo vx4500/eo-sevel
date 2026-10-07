@@ -316,3 +316,5 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-07 05:58 UTC — v2.54.0 DÉPLOYÉE (branche assistant) : soupe phase 37 = « Alarme débit distribution » ; alerte critique soupe_distribution (→ SMS) si phase 37 ≥ 180 s. Sauvegarde eo-sevel_avant_2.54.0_20261007_055756
 
 ## 2026-10-07 06:14 UTC — v2.54.1 DÉPLOYÉE (branche assistant) : /rapport section Machine à soupe (manque par vanne lors des alarmes débit ≥ 3 min). Base : 48 soupe_evenement phase 37 renommés (sauvegarde elevage_avant_phase37_*). README/Etat/workflow réalignés. Sauvegarde eo-sevel_avant_2.54.1_20261007_061410
+
+## 2026-10-07 07:12 UTC — v2.54.2 DÉPLOYÉE (branche assistant) : /energie relevés repliés. Sauvegarde eo-sevel_avant_2.54.2_20261007_071239

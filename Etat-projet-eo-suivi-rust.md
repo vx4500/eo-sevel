@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.54.1** — rapport : repas de soupe perturbés par l'alarme débit distribution.
+Version actuelle : **2.54.2** — rapport : repas de soupe perturbés par l'alarme débit distribution.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.54.2 : /energie — tableau des relevés de chaque compteur replié (details.en-releves, résumé : nombre, dernier relevé, conso).
 
 Version Rust 2.54.1 : /rapport section « Machine à soupe » (rapport::soupe_incidents) : cycles Test circuit→Test circuit avec phase 37 ≥ 3 min, reçu par vanne = somme des passages (max par suite de relevés), consignes de la séquence/formule sur 7 j, manques > 2 kg et > 15 % ; alarmes courtes seulement comptées. Phase 37 renommée en base (48 événements).
 
