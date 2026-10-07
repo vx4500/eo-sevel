@@ -312,3 +312,5 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-06 16:40 UTC — v2.53.0 DÉPLOYÉE (branche assistant, basée sur quai) : connecteur Claude MCP, page Assistant, ancienne dictée retirée. Sauvegarde eo-sevel_avant_2.53.0_20261006_163959 (=2.52.5). Branches quai et assistant NON fusionnées dans master (WIP soupe) — la prod est désormais la branche assistant.
 
 ## 2026-10-06 16:56 UTC — v2.53.1 DÉPLOYÉE (branche assistant) : carte Assistant Claude dans /equipements, réglages lisibles (plus de <details> blanc en thème sombre). Sauvegarde eo-sevel_avant_2.53.1_20261006_165638
+
+## 2026-10-07 05:58 UTC — v2.54.0 DÉPLOYÉE (branche assistant) : soupe phase 37 = « Alarme débit distribution » ; alerte critique soupe_distribution (→ SMS) si phase 37 ≥ 180 s. Sauvegarde eo-sevel_avant_2.54.0_20261007_055756
