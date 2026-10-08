@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.2** — automate limité à l'IPX800 et ses extensions ; éclairage rangé dans Automatique.
+Version actuelle : **2.58.3** — automate renommé Ipx800v5, onglets = pages V5 + Accès.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.3 : macro onglets (ambiance_automate_onglets.html) liste les TYPES_V5 + Accès, titre Ipx800v5 ; GET /ambiance/automate, /ambiance/ipx, /ambiance/ipx/carte, /ambiance/ipx/explorateur redirigent vers /ambiance/ipx/v5/relais.
 
 Version Rust 2.58.2 : onglets de l'automate sans Éclairage ni Automatique ; TYPES_V5 en blocs (BlocV5 plage ou motif) avec extensions X-THL (ana X-THL;XTHL + io ]Fault), X-010V (ana + io x-010v), X-PSU (io [XPSU]) ; macro automatique_onglets.html (Règles, Éclairage, Nouvelle règle) utilisée par automatique*.html et ambiance_eclairage*.html.
 
