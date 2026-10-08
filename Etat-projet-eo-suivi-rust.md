@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.60.0** — plan de vaccination en frise.
+Version actuelle : **2.60.1** — soins porcelets du plan limités aux portées non sevrées.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.60.1 : synchroniser_protocole_portees ne crée des soinportee que pour les mises-bas de moins de 60 j sans sevrage ultérieur de la truie (avant : toutes les mises-bas, 162 lignes par acte).
 
 Version Rust 2.60.0 : /sanitaire/plan (src/routes/vaccination.rs, sanitaire_plan.html) — frise éditable des actes acteprotocole par ligne cochettes (réf. arrivee) / truies (J0 = IA, réf. existantes conservées) / porcelets (réf. mise_bas → soinportee) / verrats (réf. annee) ; POST JSON dans un champ de formulaire, actes retirés → actif=0.
 

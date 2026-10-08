@@ -1303,7 +1303,7 @@ async fn synchroniser_protocole_portees(pool: &SqlitePool, protocole_id: i64) ->
         .bind(protocole_id)
         .execute(pool)
         .await?;
-    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas'")
+    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas' AND e.date>=date('now','-60 day') AND NOT EXISTS(SELECT 1 FROM evenement s WHERE s.truie_id=e.truie_id AND s.type='sevrage' AND s.date>=e.date)")
         .bind(protocole_id).execute(pool).await?;
     Ok(())
 }

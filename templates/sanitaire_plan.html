@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}Plan de vaccination — EO_Sevel{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}Plan sanitaire — EO_Sevel{% endblock %}{% block content %}
 <style>
 .pv-frise{position:relative;min-width:640px}
 .pv-ligne{display:flex;border-top:1px solid var(--line);min-height:96px}
@@ -26,8 +26,8 @@
 .pv-barre{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
 @media(max-width:700px){.pv-ed{grid-template-columns:1fr 1fr}}
 </style>
-<p><a href="/sanitaire">← Sanitaire</a></p>
-<h1>💉 Plan de vaccination</h1>
+<p style="float:right"><a href="/sanitaire">Rappels, traitements et historique →</a></p>
+<h1>💉 Plan sanitaire</h1>
 <p class="muted">Chaque ligne est un cycle, les pastilles sont les vaccins et les soins au jour où ils tombent. {% if session.peut_modifier %}Glissez une pastille pour changer le jour, cliquez dessus pour la modifier, cliquez sur un endroit vide d’une ligne pour en ajouter une, puis enregistrez.{% endif %} Les vaccins des truies apparaissent dans la conduite de la semaine, ceux des porcelets dans les soins de portée.</p>
 {% if enregistre %}<p class="card" style="border-left:4px solid #2f7a55">Plan enregistré.</p>{% endif %}
 <div class="pv-leg">
