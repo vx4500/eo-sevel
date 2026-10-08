@@ -806,6 +806,7 @@ mod tests {
             include_str!("../../migrations/0011_ventilation_salle.sql"),
             include_str!("../../migrations/0012_observation_comportement.sql"),
             include_str!("../../migrations/0016_eclairage.sql"),
+            include_str!("../../migrations/0025_depart_prevu.sql"),
         ] {
             sqlx::raw_sql(sql).execute(&state.pool).await?;
         }
