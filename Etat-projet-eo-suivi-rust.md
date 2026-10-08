@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.7** — import PDF : secours pdftotext quand lopdf ne trouve pas les pages.
+Version actuelle : **2.58.8** — accueil : « À faire » cochable.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.8 : accueil_cockpit « À faire » — case = formulaire POST /taches/{id}/fait (retour=accueil → redirection /), auparavant case disabled décorative.
 
 Version Rust 2.58.7 : economic_import::extract_pdf_text — si lopdf échoue au chargement ou ne trouve aucune page (PDF Cooperl LDPRX 4.54, apport 226101280151), lecture par `pdftotext -layout` (pdftotext_secours, dossier temporaire supprimé).
 

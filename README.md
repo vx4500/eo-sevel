@@ -1,4 +1,4 @@
-# EO_Sevel — portage Rust 2.58.7
+# EO_Sevel — portage Rust 2.58.8
 
 Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
 n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà

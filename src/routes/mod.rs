@@ -12534,6 +12534,10 @@ async fn tache_fait(
         .bind(id)
         .execute(&state.pool)
         .await?;
+    // Case cochée depuis « À faire » de l'accueil : on y revient.
+    if form.get("retour").map(String::as_str) == Some("accueil") {
+        return Ok(Redirect::to("/").into_response());
+    }
     Ok(Redirect::to("/taches").into_response())
 }
 async fn tache_supprimer(
