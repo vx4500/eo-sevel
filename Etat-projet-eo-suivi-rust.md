@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.60.1** — soins porcelets du plan limités aux portées non sevrées.
+Version actuelle : **2.60.2** — mise-bas : effectif présent repéré aussi sur la ligne de la truie.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
 
 Version Rust 2.60.1 : synchroniser_protocole_portees ne crée des soinportee que pour les mises-bas de moins de 60 j sans sevrage ultérieur de la truie (avant : toutes les mises-bas, 162 lignes par acte).
 

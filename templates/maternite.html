@@ -97,7 +97,7 @@
 <td>{{ truie.case_nom or '—' }}{% if truie.num_vanne %} <small class="muted">v{{ truie.num_vanne }}</small>{% endif %}</td>
 <td><b>{{ truie.num_travail }}</b>{% if truie.rang %} <small class="muted">r{{ truie.rang }}</small>{% endif %}</td>
 <td>{% if truie.surveillance %}<span class="mb-st surv">⚑ À surveiller</span>{% else %}<span class="mb-st {{ truie.statut_code }}">{{ truie.statut_icone }} {{ truie.statut_libelle }}</span>{% endif %}{% if truie.soins_attendus %} <span class="mb-ko">{{ truie.soins_attendus }} soin(s) attendu(s)</span>{% endif %}</td>
-{% if truie.mise_bas_id %}<td><span class="n">{{ truie.nes_vifs }}</span></td><td>{{ truie.mort_nes }}</td><td>{{ truie.momifies }}</td><td>{{ truie.pertes }}</td><td><span class="n">{{ truie.porcelets_presents }}</span></td><td>{% if truie.delivrance_ok == 1 %}✓{% elif truie.delivrance_ok == 0 %}<span class="mb-ko">NOK</span>{% else %}<span class="muted">à contrôler</span>{% endif %}</td>
+{% if truie.mise_bas_id %}<td><span class="n">{{ truie.nes_vifs }}</span></td><td>{{ truie.mort_nes }}</td><td>{{ truie.momifies }}</td><td>{{ truie.pertes }}</td><td><b class="n" data-indicateur="presents">{{ truie.porcelets_presents }}</b></td><td>{% if truie.delivrance_ok == 1 %}✓{% elif truie.delivrance_ok == 0 %}<span class="mb-ko">NOK</span>{% else %}<span class="muted">à contrôler</span>{% endif %}</td>
 {% else %}<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>{% endif %}
 <td><button type="button" class="{% if truie.statut_code == 'en_cours' or not truie.mise_bas_id %}{% else %}ghost{% endif %}" data-ouvrir="{{ truie.id }}">{% if not truie.mise_bas_id %}Démarrer{% elif truie.statut_code == 'en_cours' %}Saisir{% else %}Ouvrir{% endif %}</button></td>
 </tr>{% endfor %}
