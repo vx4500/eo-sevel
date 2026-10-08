@@ -23,13 +23,19 @@ const LIGNES_MAX: usize = 200;
 const CELLULE_MAX: usize = 300;
 
 /// Tables jamais lisibles par l'assistant : mots de passe, jetons, clés.
-const TABLES_INTERDITES: [&str; 5] = [
+const TABLES_INTERDITES: [&str; 6] = [
     "utilisateur",
     "parametre",
     "sessionventedirecte",
     "reglagecommunicationventedirecte",
     "sms_envoi",
+    // Adresse et mot de passe des caméras.
+    "camera",
 ];
+
+/// Colonnes secrètes de tables par ailleurs utiles (liens de modification
+/// et de désinscription envoyés aux clients de la vente directe).
+const COLONNES_INTERDITES: [&str; 2] = ["token_modification", "token_desinscription"];
 
 /// Une étape visible par l'éleveur : quel outil, avec quoi, et le résultat.
 #[derive(Debug, Clone, Serialize)]
@@ -104,6 +110,11 @@ pub fn verifier_sql(sql: &str) -> Result<String, String> {
     for t in TABLES_INTERDITES {
         if mots.contains(&t) {
             return Err(format!("La table « {t} » n'est pas accessible à l'assistant."));
+        }
+    }
+    for c in COLONNES_INTERDITES {
+        if mots.contains(&c) {
+            return Err(format!("La colonne « {c} » n'est pas accessible à l'assistant."));
         }
     }
     Ok(s.to_string())
@@ -201,7 +212,13 @@ pub(crate) async fn executer(cnx: &mut SqliteConnection, nom: &str, entree: &Val
                     let donnees: Vec<Value> = rows
                         .iter()
                         .take(LIGNES_MAX)
-                        .map(|r| Value::Array((0..colonnes.len()).map(|i| cellule(r, i)).collect()))
+                        .map(|r| {
+                            Value::Array(
+                                (0..colonnes.len())
+                                    .map(|i| if COLONNES_INTERDITES.contains(&colonnes[i].as_str()) { json!("(masqué)") } else { cellule(r, i) })
+                                    .collect(),
+                            )
+                        })
                         .collect();
                     let tronque = total > LIGNES_MAX;
                     (
@@ -302,6 +319,8 @@ mod tests {
         assert!(verifier_sql("SELECT 1; DROP TABLE truie").is_err());
         assert!(verifier_sql("SELECT * FROM utilisateur").is_err());
         assert!(verifier_sql("select valeur from parametre where cle='x'").is_err());
+        assert!(verifier_sql("SELECT mot_de_passe FROM camera").is_err());
+        assert!(verifier_sql("SELECT token_modification FROM commandeventedirecte").is_err());
         assert!(verifier_sql("PRAGMA table_info(truie)").is_err());
     }
 }

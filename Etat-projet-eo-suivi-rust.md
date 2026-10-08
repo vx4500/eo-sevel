@@ -1,10 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.60.2** — mise-bas : effectif présent repéré aussi sur la ligne de la truie.
+Version actuelle : **2.60.3** — pharmacie : mouvements repliés ; assistant : caméras et jetons clients masqués.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
 
 Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
+
+Version Rust 2.60.3 : pharmacie.html mouvements dans <details class="card"> ; assistant.rs TABLES_INTERDITES + camera, COLONNES_INTERDITES (token_modification, token_desinscription) refusées dans la requête et masquées dans le résultat (SELECT *).
 
 Version Rust 2.60.1 : synchroniser_protocole_portees ne crée des soinportee que pour les mises-bas de moins de 60 j sans sevrage ultérieur de la truie (avant : toutes les mises-bas, 162 lignes par acte).
 
