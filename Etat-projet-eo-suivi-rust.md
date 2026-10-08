@@ -1,10 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.61.0** — listes longues repliées dans tout le logiciel.
+Version actuelle : **2.62.0** — page Économie plus visuelle.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
 
 Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
+
+Version Rust 2.62.0 : economique.html — JSON #eco-donnees (resultats_bandes + mensuel) ; JS : barres recettes/charges par bande (#eco-barres), cartes téléphone (#eco-cartes, tableau masqué < 700 px), pastilles prix/kg et coût/porc vs moyenne des bandes vendues (pas de référence IFIP économique en base), courbe SVG 12 mois (#eco-courbe), lots : frappe sans n° de semaine (regex ^[A-Z0-9]{3}\d{2}$) et TMP en couleur ; blocs secondaires en details.card.eco-pli. Test ignoré economique_sur_copie_de_la_base_reelle (EO_TEST_BASE).
 
 Version Rust 2.61.0 : base.html — tables de plus de 14 lignes (tBodies[0]) repliées à 10 lignes par la classe eo-plie (CSS nth-child, compatible tri/formulaires/impression) + bouton ; exclusions : data-sans-pli (table mises-bas de maternite.html), ancre location.hash dans la table ; relancé sur eo:contenu-actualise.
 

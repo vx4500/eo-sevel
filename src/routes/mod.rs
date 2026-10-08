@@ -14783,3 +14783,32 @@ mod suppression_salle_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod economique_visuel_tests {
+    use super::*;
+
+    /// `EO_TEST_BASE=/var/tmp/copie.db cargo test -- --ignored economique_sur_copie` :
+    /// rend chaque onglet de /economique sur une copie de la base réelle.
+    #[tokio::test]
+    #[ignore]
+    async fn economique_sur_copie_de_la_base_reelle() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{chemin}")).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse().unwrap(), db_path: chemin.clone().into(), secure_cookies: false },
+            pool,
+            crate::templates::build().unwrap(),
+        );
+        for secteur in ["", "aliment", "veterinaire", "semence", "genetique", "abattoir"] {
+            let mut q = HashMap::new();
+            if !secteur.is_empty() { q.insert("secteur".to_string(), secteur.to_string()); }
+            let html = economique(State(state.clone()), Extension(super::documents::tests::session()), Query(q)).await?.0;
+            if secteur.is_empty() {
+                assert!(html.contains("id=\"eco-donnees\"") && html.contains("eco-courbe"));
+            }
+            std::fs::write(format!("/var/tmp/eco-{}.html", if secteur.is_empty() { "synthese" } else { secteur }), html)?;
+        }
+        Ok(())
+    }
+}

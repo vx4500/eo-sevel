@@ -16,11 +16,12 @@
   <div class="card kpi"><div class="v">{{ totaux.ventes|euro }}</div><div class="l">Ventes</div></div><div class="card kpi"><div class="v">{{ totaux.aliment|euro }}</div><div class="l">Aliment</div></div><div class="card kpi"><div class="v">{{ totaux.veto|euro }}</div><div class="l">Vétérinaire</div></div><div class="card kpi"><div class="v">{{ totaux.semence|euro }}</div><div class="l">Semence</div></div><div class="card kpi"><div class="v">{{ totaux.genetique|euro }}</div><div class="l">Génétique</div></div><div class="card kpi"><div class="v">{{ totaux.marge|euro }}</div><div class="l">Marge partielle</div></div><div class="card kpi"><div class="v">{% if totaux.prix_ht_kg is not none %}{{ totaux.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</div><div class="l">Prix HT/kg</div></div>
 </div>
 <h2>Résultat par bande</h2><p>Les factures sont proposées sur la bande la plus probable. Une facture affectée à plusieurs bandes est répartie à parts égales sans être comptée plusieurs fois. Plus-values : plus-value au kg de chaque apport × poids vendu de la bande (déjà comprise dans les recettes). Retenues : frais de groupement, ramassage, équarrissage, cotisations… de l’apport, réparties au poids ; elles sont déduites de la marge.</p>{% if session.peut_modifier %}<form method="post" action="/economique/rattacher-auto"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button>Réaffecter les factures et lots en attente</button></form>{% endif %}
-<div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Porcs</th><th>Poids</th><th>Prix HT/kg</th><th>Recettes</th><th>Plus-values</th><th>Retenues</th><th>Aliment</th><th>Véto</th><th>Semence</th><th>Génétique</th><th>Coût/porc</th><th>Marge</th></tr></thead><tbody>
+<div id="eco-barres" class="eco-barres"></div><div id="eco-cartes" class="eco-cartes"></div><div class="rust-scroll eco-tableau-bandes"><table><thead><tr><th>Bande</th><th>Porcs</th><th>Poids</th><th>Prix HT/kg</th><th>Recettes</th><th>Plus-values</th><th>Retenues</th><th>Aliment</th><th>Véto</th><th>Semence</th><th>Génétique</th><th>Coût/porc</th><th>Marge</th></tr></thead><tbody>
 {% for r in resultats_bandes %}<tr><td><a href="/bande/{{ r.id }}"><b>{{ r.code }}</b></a></td><td>{{ r.porcs }}</td><td>{{ r.poids|decimal1 }} kg</td><td>{% if r.prix_ht_kg is not none %}{{ r.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</td><td>{{ r.recettes|euro }}</td><td>{{ r.plus_values|euro }}</td><td>{% if r.retenues %}−{{ r.retenues|euro }}{% else %}{{ r.retenues|euro }}{% endif %}</td><td>{{ r.aliment|euro }}</td><td>{{ r.veto|euro }}</td><td>{{ r.semence|euro }}</td><td>{{ r.genetique|euro }}</td><td>{% if r.cout_par_porc is not none %}{{ r.cout_par_porc|euro }}{% else %}—{% endif %}</td><td class="{% if r.marge < 0 %}danger{% endif %}"><b>{{ r.marge|euro }}</b></td></tr>{% else %}<tr><td colspan="13" class="rust-empty">Aucun résultat affecté à une bande</td></tr>{% endfor %}
 </tbody>{% if resultats_bandes %}<tfoot><tr style="font-weight:700;border-top:2px solid currentColor"><td>Total</td><td>{{ totaux_bandes.porcs|int }}</td><td>{{ totaux_bandes.poids|decimal1 }} kg</td><td></td><td>{{ totaux_bandes.recettes|euro }}</td><td>{{ totaux_bandes.plus_values|euro }}</td><td>−{{ totaux_bandes.retenues|euro }}</td><td>{{ totaux_bandes.aliment|euro }}</td><td>{{ totaux_bandes.veto|euro }}</td><td>{{ totaux_bandes.semence|euro }}</td><td>{{ totaux_bandes.genetique|euro }}</td><td></td><td>{{ totaux_bandes.marge|euro }}</td></tr></tfoot>{% endif %}</table></div>
-<details><summary><b>Coûts non affectés à une bande</b></summary><div class="rust-grid">{% for n in non_affectes %}<div class="card"><b>{{ n.categorie }}</b><p>{{ n.montant|euro }}</p></div>{% endfor %}</div></details>
-<h2>{% if demo_portal %}Évolution sur 5 ans et le mois en cours — données fictives{% else %}Évolution sur 12 mois{% endif %}</h2><div class="rust-scroll"><table><thead><tr><th>Mois</th><th>Dépenses</th><th>Revenus</th><th>Prix HT/kg</th></tr></thead><tbody>{% for m in mensuel %}<tr><td>{{ m.mois }}</td><td>{{ m.depenses|euro }}</td><td>{{ m.revenus|euro }}</td><td>{% if m.prix_ht_kg is not none %}{{ m.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+<script type="application/json" id="eco-donnees">{"bandes": {{ resultats_bandes|tojson }}, "mois": {{ mensuel|tojson }}}</script>
+<details class="card eco-pli"><summary><b>Coûts non affectés à une bande</b><span class="muted">{{ non_affectes|map(attribute="montant")|sum|euro }}</span></summary><div class="rust-grid">{% for n in non_affectes %}<div class="card"><b>{{ n.categorie }}</b><p>{{ n.montant|euro }}</p></div>{% endfor %}</div></details>
+<h2>{% if demo_portal %}Évolution sur 5 ans et le mois en cours — données fictives{% else %}Évolution sur 12 mois{% endif %}</h2><div id="eco-courbe" class="eco-courbe card"></div><details class="card eco-pli"><summary><b>Le détail mois par mois</b></summary><div class="rust-scroll"><table><thead><tr><th>Mois</th><th>Dépenses</th><th>Revenus</th><th>Prix HT/kg</th></tr></thead><tbody>{% for m in mensuel %}<tr><td>{{ m.mois }}</td><td>{{ m.depenses|euro }}</td><td>{{ m.revenus|euro }}</td><td>{% if m.prix_ht_kg is not none %}{{ m.prix_ht_kg|decimal3 }} €{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div></details>
 {% if session.peut_modifier %}<h2>Nouvelle saisie</h2>
 <button type="button" id="saisie-bouton" class="button">Saisir une facture, un apport ou un avoir</button>
 <div id="saisie-choix" class="fab-choix" role="radiogroup" aria-label="Quelle section ?" hidden>
@@ -72,9 +73,9 @@
 })();
 </script>
 {% endif %}
-<div class="rust-grid"><section class="card"><h2>Dernières ventes</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Apport</th><th>Lot</th><th>Porcs</th><th>€/kg</th><th>TMP</th><th>Retenues</th><th>HT</th><th></th></tr>{% for v in ventes %}<tr><td>{{ v.date|date_fr }}</td><td>{{ v.num_apport or '—' }}</td><td>{{ v.lot_ref or '—' }}</td><td>{{ v.nb_porcs or 0 }}</td><td>{% if v.prix_ht_kg is not none %}{{ v.prix_ht_kg|decimal3 }}{% else %}—{% endif %}</td><td>{{ v.tmp or '—' }}</td><td>{{ v.total_retenues|euro if v.total_retenues else '—' }}</td><td>{{ v.montant_ht|euro }}</td><td>{% if session.peut_modifier and not v.is_legacy %}<form method="post" action="/economique/vente/{{ v.id }}/supprimer" onsubmit="return confirm('Supprimer cet apport entier, ses lots et ses sorties ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Aucune vente</td></tr>{% endfor %}</table></div></section>
-<section class="card"><h2>Derniers achats</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Catégorie</th><th>Libellé</th><th>Montant</th></tr>{% for a in achats %}<tr><td>{{ a.date|date_fr }}</td><td>{{ a.categorie }}</td><td>{{ a.libelle or '—' }}</td><td>{{ a.montant_ht|euro }}</td></tr>{% else %}<tr><td colspan="4">Aucun achat</td></tr>{% endfor %}</table></div></section></div>
-<h2>Valorisations et retenues</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Apport</th><th>Type</th><th>Libellé</th><th>Montant</th><th></th></tr>{% for v in valorisations %}<tr><td>{{ v.date|date_fr }}</td><td>{{ v.num_apport or '—' }}</td><td>{% if v.est_retenue %}<span class="rust-badge danger">Retenue</span>{% else %}<span class="rust-badge">Valorisation</span>{% endif %}</td><td>{{ v.libelle }}</td><td>{{ v.montant|euro }}</td><td>{% if session.peut_modifier %}<form method="post" action="/economique/valorisation/{{ v.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="6">Aucune valorisation enregistrée</td></tr>{% endfor %}</table></div>
+<details class="card eco-pli"><summary><h2>Dernières ventes et derniers achats</h2><span class="muted">{{ ventes|length }} ventes · {{ achats|length }} achats</span></summary><div class="rust-grid"><section class="card"><h2>Dernières ventes</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Apport</th><th>Lot</th><th>Porcs</th><th>€/kg</th><th>TMP</th><th>Retenues</th><th>HT</th><th></th></tr>{% for v in ventes %}<tr><td>{{ v.date|date_fr }}</td><td>{{ v.num_apport or '—' }}</td><td class="lot-ref">{{ v.lot_ref or '—' }}</td><td>{{ v.nb_porcs or 0 }}</td><td>{% if v.prix_ht_kg is not none %}{{ v.prix_ht_kg|decimal3 }}{% else %}—{% endif %}</td><td class="lot-tmp">{{ v.tmp or '—' }}</td><td>{{ v.total_retenues|euro if v.total_retenues else '—' }}</td><td>{{ v.montant_ht|euro }}</td><td>{% if session.peut_modifier and not v.is_legacy %}<form method="post" action="/economique/vente/{{ v.id }}/supprimer" onsubmit="return confirm('Supprimer cet apport entier, ses lots et ses sorties ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="9">Aucune vente</td></tr>{% endfor %}</table></div></section>
+<section class="card"><h2>Derniers achats</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Catégorie</th><th>Libellé</th><th>Montant</th></tr>{% for a in achats %}<tr><td>{{ a.date|date_fr }}</td><td>{{ a.categorie }}</td><td>{{ a.libelle or '—' }}</td><td>{{ a.montant_ht|euro }}</td></tr>{% else %}<tr><td colspan="4">Aucun achat</td></tr>{% endfor %}</table></div></section></div></details>
+<details class="card eco-pli"><summary><h2>Valorisations et retenues</h2><span class="muted">{{ valorisations|length }} lignes · {{ valorisations|map(attribute="montant")|sum|euro }}</span></summary><div class="rust-scroll"><table><tr><th>Date</th><th>Apport</th><th>Type</th><th>Libellé</th><th>Montant</th><th></th></tr>{% for v in valorisations %}<tr><td>{{ v.date|date_fr }}</td><td>{{ v.num_apport or '—' }}</td><td>{% if v.est_retenue %}<span class="rust-badge danger">Retenue</span>{% else %}<span class="rust-badge">Valorisation</span>{% endif %}</td><td>{{ v.libelle }}</td><td>{{ v.montant|euro }}</td><td>{% if session.peut_modifier %}<form method="post" action="/economique/valorisation/{{ v.id }}/supprimer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="6">Aucune valorisation enregistrée</td></tr>{% endfor %}</table></div></details>
 {% if imports_pdf %}<details {% if imports_prets %}open{% endif %}><summary><b>Historique des imports PDF</b></summary><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Fichier</th><th>Type</th><th>Statut</th><th>Application</th><th></th></tr></thead><tbody>{% for import in imports_pdf %}<tr><td>{{ import.cree_le }}</td><td>{{ import.nom_fichier or '—' }}</td><td>{{ import.type_import }}</td><td><span class="rust-badge">{{ import.statut }}</span></td><td>{{ import.applique_le or '—' }}</td><td>{% if import.statut == 'apercu' %}<a href="/economique/import/{{ import.token }}">Ouvrir l’aperçu</a>{% endif %}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
 <section class="card" id="cahiers"><h2>Cahiers des charges — valorisations</h2><p>{{ totaux.porcs }} porcs sont rattachés aux apports enregistrés.</p>
 {% if session.peut_modifier %}<form class="inline" method="post" action="/cahiers"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Nom<input name="nom" required></label><label>Valeur par porc<input name="valeur_par_porc" inputmode="decimal"></label><label>Note<input name="note"></label><button>Ajouter un cahier</button></form>{% endif %}
@@ -92,10 +93,130 @@
 <header class="hero"><h2 style="color:white">Ventes abattoir par lot</h2><p>Un apport, plusieurs lots, plusieurs bandes : affectez chaque lot à sa bande sans dupliquer les montants.</p></header>
 {% if session.role == 'admin' or session.role == 'eleveur' %}<form class="card" method="post" action="/economique/import-pdf" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h2>1. Choisir le bon d’abattoir</h2><p>PDF Cooperl / Uniporc : les lots et montants sont lus automatiquement. Vérifiez ensuite les bandes proposées et confirmez. Jusqu’à 5 PDF, 8 Mo par fichier.</p><label>Documents PDF<input type="file" name="fichier" accept="application/pdf,.pdf" multiple required></label><button>2. Lire les PDF et proposer les bandes</button></form>{% endif %}
 {% if imports_pdf %}<section class="card"><h2>Imports à vérifier</h2>{% for imp in imports_pdf %}{% if imp.statut == 'apercu' %}<p><a href="/economique/import/{{ imp.token }}">Vérifier {{ imp.nom_fichier }}</a></p>{% endif %}{% endfor %}<a href="/imports">Tout l’historique des imports</a></section>{% endif %}
-<div class="rust-scroll"><table><thead><tr><th>Date / apport</th><th>Lot</th><th>Porcs</th><th>Poids</th><th>HT/kg</th><th>Montant HT</th><th>Bande du lot</th></tr></thead><tbody>{% for v in ventes %}<tr><td>{{ v.date|date_fr }}<br>{{ v.num_apport or '—' }}</td><td><strong>{{ v.lot_ref or 'Non renseigné' }}</strong></td><td>{{ v.nb_porcs or 0 }}</td><td>{{ v.poids_total or '—' }}</td><td>{{ v.prix_ht_kg|decimal3 if v.prix_ht_kg is not none else '—' }}</td><td>{% if v.montant_ht is not none %}{{ v.montant_ht|euro }}{% else %}<span class="rust-badge danger">HT manquant</span>{% endif %}</td><td style="min-width:260px">
+<div class="rust-scroll"><table><thead><tr><th>Date / apport</th><th>Lot</th><th>Porcs</th><th>Poids</th><th>HT/kg</th><th>Montant HT</th><th>Bande du lot</th></tr></thead><tbody>{% for v in ventes %}<tr><td>{{ v.date|date_fr }}<br>{{ v.num_apport or '—' }}</td><td class="lot-ref"><strong>{{ v.lot_ref or 'Non renseigné' }}</strong></td><td>{{ v.nb_porcs or 0 }}</td><td>{{ v.poids_total or '—' }}</td><td>{{ v.prix_ht_kg|decimal3 if v.prix_ht_kg is not none else '—' }}</td><td>{% if v.montant_ht is not none %}{{ v.montant_ht|euro }}{% else %}<span class="rust-badge danger">HT manquant</span>{% endif %}</td><td style="min-width:260px">
 <strong>{{ v.bande_code or 'Non affecté' }}</strong>{% if v.bande_site %} · {{ v.bande_site }}{% endif %}
 {% if session.role == 'admin' or session.role == 'eleveur' %}<details><summary>{{ 'Modifier' if v.bande_id else 'Choisir la bande' }}</summary><form method="post" action="/economique/vente/{{ v.id }}{% if v.is_legacy %}/lot/{{ v.lot_index }}{% endif %}/bande"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Numéro du lot<input name="lot_ref" value="{{ v.lot_ref or '' }}" required maxlength="80"></label><label>Bande pour le lot {{ v.lot_ref or v.id }}<select name="bande_id"><option value="">Sans bande</option>{% for b in bandes %}<option value="{{ b.id }}" {% if b.id == v.bande_id or (not v.bande_id and b.id == v.suggested_band) %}selected{% endif %}>{{ b.code }}{% if b.site %} · {{ b.site }}{% endif %}{% if b.date_mb %} · {{ b.date_mb|date_fr }}{% endif %}</option>{% endfor %}</select></label>{% if not v.bande_id %}<p class="help">{{ v.suggestion_note }}</p>{% endif %}<button>Enregistrer le lot et sa bande</button></form></details><form method="post" action="/economique/vente/{{ v.id }}/supprimer" onsubmit="return confirm('Supprimer tout cet apport, tous ses lots et ses sorties ? Les porcs ne seront plus décomptés des bandes.')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer l’apport</button></form>{% endif %}
 </td></tr>{% else %}<tr><td colspan="7">Aucune vente enregistrée. Importez votre premier bon ci-dessus.</td></tr>{% endfor %}</tbody></table></div>
 
 {% endif %}
-</div>{% endblock %}
+</div><style>
+.eco-barres{display:grid;gap:10px;margin:14px 0}
+.eco-b{display:grid;grid-template-columns:70px minmax(0,1fr) 110px;gap:10px;align-items:center;font-size:13px}
+.eco-b a{font-weight:700}
+.eco-piste{position:relative;height:30px}
+.eco-piste span{position:absolute;left:0;height:13px;border-radius:3px}
+.eco-piste .rec{top:0;background:#5c8a73}
+.eco-piste .chg{top:16px;display:flex;overflow:hidden;background:none}
+.eco-piste .chg i{display:block;height:13px}
+.eco-marge{text-align:right;font-weight:800}
+.eco-marge.neg{color:#b42318}.eco-marge.pos{color:#2f7a55}
+.eco-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.eco-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+.eco-pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:5px;vertical-align:1px}
+.eco-cartes{display:none;gap:10px}
+.eco-carte{border:1px solid var(--line);border-radius:12px;padding:10px 12px;border-left:5px solid #888}
+.eco-carte.neg{border-left-color:#b42318}.eco-carte.pos{border-left-color:#2f7a55}
+.eco-carte h3{margin:0 0 6px;display:flex;justify-content:space-between}
+.eco-carte dl{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:0;font-size:13px}
+.eco-carte dt{color:var(--muted)}.eco-carte dd{margin:0;font-weight:700;text-align:right}
+@media(max-width:700px){.eco-cartes{display:grid}.eco-tableau-bandes{display:none}}
+.eco-courbe svg{width:100%;height:auto;display:block}
+.eco-courbe text{fill:var(--muted);font-size:11px}
+.lot-alerte{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:999px;background:#fde3dd;color:#8f2d23;font-size:11px;font-weight:700}
+.tmp-bon{color:#2f7a55;font-weight:700}.tmp-moyen{color:#a06a00;font-weight:700}.tmp-bas{color:#b42318;font-weight:700}
+details.eco-pli>summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer}
+details.eco-pli>summary h2{margin:0;display:inline}
+</style>
+<script>
+(function(){
+  var donnees = document.getElementById('eco-donnees');
+  if(!donnees) return;
+  var D = JSON.parse(donnees.textContent), B = (D.bandes||[]).filter(function(b){ return b.porcs>0 || b.aliment>0; });
+  var euro = function(v){ return (v<0?'−':'') + Math.round(Math.abs(v)).toLocaleString('fr-FR') + ' €'; };
+  var COUL = {aliment:'#d98b52', veto:'#7fa6c9', semence:'#c9b6d9', genetique:'#8fb3a0', retenues:'#b9b4a8'};
+  var NOMS = {aliment:'Aliment', veto:'Véto', semence:'Semence', genetique:'Génétique', retenues:'Retenues'};
+  function charges(b){ return (b.aliment||0)+(b.veto||0)+(b.semence||0)+(b.genetique||0)+(b.retenues||0); }
+
+  // 1. Barres : recettes (vert) contre charges empilées, marge à droite.
+  var zb = document.getElementById('eco-barres');
+  if(zb && B.length){
+    var max = Math.max.apply(null, B.map(function(b){ return Math.max(b.recettes||0, charges(b)); })) || 1;
+    var h = '<div class="eco-leg"><span><i style="background:#5c8a73"></i>Recettes</span>';
+    Object.keys(COUL).forEach(function(k){ h += '<span><i style="background:'+COUL[k]+'"></i>'+NOMS[k]+'</span>'; });
+    h += '</div>';
+    B.forEach(function(b){
+      var seg = Object.keys(COUL).map(function(k){ var v=b[k]||0; return v>0 ? '<i title="'+NOMS[k]+' : '+euro(v)+'" style="width:'+(v/charges(b)*100)+'%;background:'+COUL[k]+'"></i>' : ''; }).join('');
+      h += '<div class="eco-b"><a href="/bande/'+b.id+'">'+b.code+'</a><div class="eco-piste">'
+        + '<span class="rec" title="Recettes : '+euro(b.recettes||0)+'" style="width:'+((b.recettes||0)/max*100)+'%"></span>'
+        + '<span class="chg" style="width:'+(charges(b)/max*100)+'%">'+seg+'</span></div>'
+        + '<div class="eco-marge '+(b.marge<0?'neg':'pos')+'">'+euro(b.marge)+'</div></div>';
+    });
+    zb.innerHTML = h;
+  }
+
+  // 3. Pastilles : prix/kg et coût/porc comparés à la moyenne des bandes vendues.
+  var vendues = B.filter(function(b){ return b.porcs>0; });
+  function moyenne(f){ var v = vendues.map(f).filter(function(x){ return x!=null; }); return v.length ? v.reduce(function(a,c){return a+c;},0)/v.length : null; }
+  var mPrix = moyenne(function(b){ return b.prix_ht_kg; }), mCout = moyenne(function(b){ return b.cout_par_porc; });
+  function pastille(v, m, hautBon){
+    if(v==null || m==null || vendues.length<2) return '';
+    var e = (v-m)/m*(hautBon?1:-1), c = e>0.03 ? '#2f7a55' : e<-0.03 ? '#b42318' : '#c98a3a';
+    return '<i class="eco-pastille" style="background:'+c+'" title="Moyenne de vos bandes : '+m.toFixed(hautBon?3:0)+' €"></i>';
+  }
+  document.querySelectorAll('.eco-tableau-bandes tbody tr').forEach(function(tr, i){
+    var b = D.bandes[i]; if(!b || !tr.cells[3]) return;
+    tr.cells[3].insertAdjacentHTML('beforeend', pastille(b.prix_ht_kg, mPrix, true));
+    tr.cells[11].insertAdjacentHTML('beforeend', pastille(b.cout_par_porc, mCout, false));
+  });
+
+  // 2. Cartes (téléphone).
+  var zc = document.getElementById('eco-cartes');
+  if(zc) zc.innerHTML = B.map(function(b){
+    return '<div class="eco-carte '+(b.marge<0?'neg':'pos')+'"><h3><a href="/bande/'+b.id+'">'+b.code+'</a><span class="eco-marge '+(b.marge<0?'neg':'pos')+'">'+euro(b.marge)+'</span></h3><dl>'
+      + '<dt>Porcs</dt><dd>'+b.porcs+'</dd>'
+      + '<dt>Prix HT/kg</dt><dd>'+(b.prix_ht_kg!=null ? b.prix_ht_kg.toFixed(3)+' €'+pastille(b.prix_ht_kg,mPrix,true) : '—')+'</dd>'
+      + '<dt>Recettes</dt><dd>'+euro(b.recettes||0)+'</dd>'
+      + '<dt>Aliment</dt><dd>'+euro(b.aliment||0)+'</dd>'
+      + '<dt>Coût/porc</dt><dd>'+(b.cout_par_porc!=null ? euro(b.cout_par_porc)+pastille(b.cout_par_porc,mCout,false) : '—')+'</dd></dl></div>';
+  }).join('');
+
+  // 4. Courbe 12 mois : revenus et dépenses en barres, prix/kg en ligne.
+  var zm = document.getElementById('eco-courbe'), M = D.mois||[];
+  if(zm && M.length){
+    var W=680, H=230, g=40, d=40, haut=14, bas=34, n=M.length, pas=(W-g-d)/n;
+    var mx = Math.max.apply(null, M.map(function(m){ return Math.max(m.revenus||0, m.depenses||0); })) || 1;
+    var prix = M.map(function(m){ return m.prix_ht_kg; }).filter(function(x){ return x!=null; });
+    var pmin = prix.length ? Math.min.apply(null,prix)*0.97 : 0, pmax = prix.length ? Math.max.apply(null,prix)*1.03 : 1;
+    var y = function(v){ return H-bas-(v/mx)*(H-bas-haut); }, yp = function(v){ return H-bas-((v-pmin)/((pmax-pmin)||1))*(H-bas-haut); };
+    var s = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Revenus, dépenses et prix au kilo sur 12 mois">';
+    [0,0.5,1].forEach(function(f){ s += '<line x1="'+g+'" x2="'+(W-d)+'" y1="'+y(mx*f)+'" y2="'+y(mx*f)+'" stroke="currentColor" stroke-opacity=".12"/><text x="'+(g-4)+'" y="'+(y(mx*f)+4)+'" text-anchor="end">'+Math.round(mx*f/1000)+' k€</text>'; });
+    var pts = [];
+    M.forEach(function(m,i){
+      var x = g+i*pas, w = pas*0.36;
+      s += '<rect x="'+(x+pas*0.12)+'" y="'+y(m.revenus||0)+'" width="'+w+'" height="'+(H-bas-y(m.revenus||0))+'" fill="#5c8a73" rx="2"><title>'+m.mois+' revenus '+euro(m.revenus||0)+'</title></rect>';
+      s += '<rect x="'+(x+pas*0.52)+'" y="'+y(m.depenses||0)+'" width="'+w+'" height="'+(H-bas-y(m.depenses||0))+'" fill="#d98b52" rx="2"><title>'+m.mois+' dépenses '+euro(m.depenses||0)+'</title></rect>';
+      s += '<text x="'+(x+pas/2)+'" y="'+(H-bas+16)+'" text-anchor="middle">'+String(m.mois).slice(5)+'/'+String(m.mois).slice(2,4)+'</text>';
+      if(m.prix_ht_kg!=null) pts.push([x+pas/2, yp(m.prix_ht_kg), m.prix_ht_kg]);
+    });
+    if(pts.length){
+      s += '<polyline fill="none" stroke="#2b6cb8" stroke-width="2.5" points="'+pts.map(function(p){return p[0]+','+p[1];}).join(' ')+'"/>';
+      pts.forEach(function(p){ s += '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="#2b6cb8"><title>'+p[2].toFixed(3)+' €/kg</title></circle>'; });
+      s += '<text x="'+(W-d+4)+'" y="'+(yp(pmax)+4)+'">'+pmax.toFixed(2)+'</text><text x="'+(W-d+4)+'" y="'+(yp(pmin)+4)+'">'+pmin.toFixed(2)+'</text>';
+    }
+    s += '</svg><div class="eco-leg"><span><i style="background:#5c8a73"></i>Revenus</span><span><i style="background:#d98b52"></i>Dépenses</span><span><i style="background:#2b6cb8"></i>Prix HT/kg (échelle de droite)</span></div>';
+    zm.innerHTML = s;
+  }
+
+  // 6. Lots : frappe sans n° de semaine, TMP en couleur.
+  document.querySelectorAll('.lot-ref').forEach(function(td){
+    var r = td.textContent.trim();
+    if(r && r!=='—' && r!=='Non renseigné' && !/^[A-Z0-9]{3}\d{2}$/.test(r))
+      td.insertAdjacentHTML('beforeend','<span class="lot-alerte" title="La frappe doit finir par le n° de semaine (2 chiffres) : sinon Cooperl la classe en anomalie de traçabilité et le lot perd l’allégation sans antibiotique.">frappe sans n° de semaine</span>');
+  });
+  document.querySelectorAll('.lot-tmp').forEach(function(td){
+    var v = parseFloat(td.textContent.replace(',','.'));
+    if(!isNaN(v)) td.classList.add(v>=61 ? 'tmp-bon' : v>=59.5 ? 'tmp-moyen' : 'tmp-bas');
+  });
+})();
+</script>
+{% endblock %}
