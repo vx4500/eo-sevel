@@ -39,15 +39,19 @@ pub fn extract_pdf_text(bytes: &[u8]) -> Result<String, String> {
     if !bytes.starts_with(b"%PDF-") {
         return Err("Le fichier ne possède pas une signature PDF valide".into());
     }
-    let document = lopdf::Document::load_mem(bytes)
-        .or_else(|_| match repair_startxref_offset(bytes) {
-            Some(patched) => lopdf::Document::load_mem(&patched),
-            None => lopdf::Document::load_mem(bytes),
-        })
-        .map_err(|_| "Le PDF est illisible, chiffré ou endommagé".to_string())?;
+    let document = match lopdf::Document::load_mem(bytes).or_else(|_| match repair_startxref_offset(bytes) {
+        Some(patched) => lopdf::Document::load_mem(&patched),
+        None => lopdf::Document::load_mem(bytes),
+    }) {
+        Ok(document) => document,
+        Err(_) => return pdftotext_secours(bytes).ok_or_else(|| "Le PDF est illisible, chiffré ou endommagé".to_string()),
+    };
     let pages: Vec<u32> = document.get_pages().keys().copied().collect();
     if pages.is_empty() {
-        return Err("Le PDF ne contient aucune page".into());
+        // Certains PDF Cooperl (générateur LDPRX 4.54, bon d'apport
+        // 226101280151 du 13/10/26) ont un arbre de pages que lopdf ne
+        // parcourt pas, alors que poppler les lit sans difficulté.
+        return pdftotext_secours(bytes).ok_or_else(|| "Le PDF ne contient aucune page".to_string());
     }
     if pages.len() > MAX_PDF_PAGES {
         return Err(format!(
@@ -61,6 +65,32 @@ pub fn extract_pdf_text(bytes: &[u8]) -> Result<String, String> {
         return Err(SCAN_SANS_TEXTE.into());
     }
     Ok(text)
+}
+
+/// Lecture de secours par `pdftotext` (poppler-utils, déjà utilisé pour
+/// la reconnaissance de caractères) quand lopdf ne trouve pas les pages.
+/// `-layout` garde les colonnes sur une même ligne, comme l'extraction lopdf.
+fn pdftotext_secours(bytes: &[u8]) -> Option<String> {
+    if bytes.len() > 20 * 1024 * 1024 || !commande_disponible("pdftotext") {
+        return None;
+    }
+    let dossier = std::env::temp_dir().join(format!("eo-pdftotext-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dossier).ok()?;
+    let fichier = dossier.join("document.pdf");
+    let texte = std::fs::write(&fichier, bytes)
+        .ok()
+        .and_then(|_| {
+            std::process::Command::new("pdftotext")
+                .args(["-layout", "-l", &MAX_PDF_PAGES.to_string()])
+                .arg(&fichier)
+                .arg("-")
+                .output()
+                .ok()
+        })
+        .filter(|sortie| sortie.status.success())
+        .map(|sortie| String::from_utf8_lossy(&sortie.stdout).into_owned());
+    let _ = std::fs::remove_dir_all(&dossier);
+    texte.filter(|t| t.trim().chars().count() >= 40)
 }
 
 /// Message renvoyé quand aucun texte n'est extractible : l'appelant peut alors
@@ -798,7 +828,7 @@ fn parse_apport(text: &str) -> Result<ImportDocument, String> {
         .map(|value| value.replace('.', ""));
     let date = capture(
         text,
-        r"(?i)ENLEVEMENT\s*DU\s*([0-9]{2}/[0-9]{2}/[0-9]{2,4})",
+        r"(?i)ENLEVEMENT\s*DU\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4})",
         1,
     )
     // Sur le modèle Cooperl réellement utilisé (« duplicata » comme
@@ -1682,6 +1712,16 @@ mod tests {
             .find(|line| line.kind == "vente")
             .expect("une ligne de vente");
         assert_eq!(vente.date.as_deref(), Some("2026-07-03"));
+    }
+
+    #[test]
+    fn apport_date_denlevement_a_un_chiffre() {
+        // Texte de `pdftotext -layout` (apport 226101280151) : le libellé
+        // ENLEVEMENT DU est présent et le jour n'a qu'un chiffre.
+        let text = "APPORT N° 226101280151\nSemaine N° 26.41\nAPPORT DE       PORCS CHARCUTIERS\nN° COMPTE       16961                  LE 13/10/26\nENLEVEMENT DU     5/10/26\n                                      NAISSEUR/ENGRAISSEUR\n Destination : COOPERL ARC ATL MONTFORT                                        Bon n° 39661\n     50   PORC (COEUR DE GAMME)                 2                           DA914    4510,200    1,824    8.226,48\n                       Total Bon.....                                                5992,000            11.581,90\n      66    : NOMBRE D'ANIMAUX                                           POIDS TOTAL :         5992,000";
+        let parsed = parse_document(text).expect("apport analysé");
+        let vente = parsed.lines.iter().find(|line| line.kind == "vente").expect("vente");
+        assert_eq!(vente.date.as_deref(), Some("2026-10-05"));
     }
 
     #[test]

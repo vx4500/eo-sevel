@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.6** — Disjoncteur : toutes les entrées de l'IPX proposées.
+Version actuelle : **2.58.7** — import PDF : secours pdftotext quand lopdf ne trouve pas les pages.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.7 : economic_import::extract_pdf_text — si lopdf échoue au chargement ou ne trouve aucune page (PDF Cooperl LDPRX 4.54, apport 226101280151), lecture par `pdftotext -layout` (pdftotext_secours, dossier temporaire supprimé).
 
 Version Rust 2.58.6 : formulaire disjoncteur liste les io 65552..65563 de chaque hôte (entrees_ipx) ; code n:hote|io crée le ipx_point (role disjoncteur, nom_entree) dans enregistrer.
 
