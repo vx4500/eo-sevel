@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.8** — accueil : « À faire » cochable.
+Version actuelle : **2.59.0** — page mise-bas refaite (tableau + panneau de saisie).
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.59.0 : /maternite vue mises-bas — modèle A choisi par Emmanuel : tableau (tr.mb-ligne#truie-ID) + panneau (div.mb-fiche#fiche-ID) ; mêmes formulaires et routes qu'avant (misebas, etat, perte), champs secondaires sous « Plus ».
 
 Version Rust 2.58.8 : accueil_cockpit « À faire » — case = formulaire POST /taches/{id}/fait (retour=accueil → redirection /), auparavant case disabled décorative.
 

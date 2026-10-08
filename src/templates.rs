@@ -526,7 +526,8 @@ mod tests {
                     vue == "mises-bas" && editable
                 );
                 if vue == "mises-bas" {
-                    assert!(html.contains("<details class=\"mat-sow\" id=\"truie-7\""));
+                    assert!(html.contains("<tr class=\"mb-ligne mat-sow\" id=\"truie-7\""));
+                    assert!(html.contains("id=\"fiche-7\""));
                     assert!(html.contains("Délivrance NOK"));
                     assert!(html.contains("1 soin(s) attendu(s)"));
                     assert!(html.contains("hashchange"));
