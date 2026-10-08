@@ -569,8 +569,10 @@ pub(super) async fn page(
 /// Modèles proposés sur « Nouvelle règle » : (code, icône, titre, explication).
 /// La lumière automatique renvoie vers les programmes d'éclairage, qui gèrent
 /// déjà seuils, temporisation et sonde muette.
-const MODELES: [(&str, &str, &str, &str); 6] = [
+const MODELES: [(&str, &str, &str, &str); 8] = [
     ("lumiere", "💡", "Lumière automatique", "Allumer selon l'heure et la lumière mesurée (programme d'éclairage)"),
+    ("minuterie", "⏱️", "Minuterie lumière", "Éteindre une lumière 30 min après qu'on l'a allumée (durée réglable)"),
+    ("disjoncteur", "⚡", "Disjoncteur ventilation", "SMS si le disjoncteur moteur d'une ventilation saute (entrée digitale), puis quand il est réarmé"),
     ("alerte_temp", "🌡️", "Alerte température", "SMS si une salle dépasse une température pendant 10 min"),
     ("brumisation", "💦", "Brumisation si chaud", "Allumer la brumisation au-dessus de 28 °C, l'éteindre en dessous"),
     ("chauffage", "🔥", "Chauffage si froid", "Allumer un chauffage sous 18 °C, l'éteindre au-dessus"),
@@ -596,6 +598,21 @@ fn modele(code: &str) -> Option<Value> {
         "hygro" => r("Alerte hygrométrie", 15.0, "", "",
             json!([{"code": "", "operateur": ">", "valeur": 85.0}]),
             json!([{"moment": "debut", "code": "sms", "message": "Humidité trop haute"}])),
+        "minuterie" => {
+            let mut regle = r("Minuterie lumière", 30.0, "", "",
+                json!([{"code": "", "operateur": "=", "valeur": 1.0}]),
+                json!([{"moment": "debut", "code": "", "valeur": 0.0}]));
+            regle["note"] = json!("Choisir la même lumière dans « Si » et dans « Alors ». Le délai est la durée d'allumage.");
+            regle
+        }
+        "disjoncteur" => {
+            let mut regle = r("Disjoncteur ventilation", 1.0, "", "",
+                json!([{"code": "", "operateur": "=", "valeur": 0.0}]),
+                json!([{"moment": "debut", "code": "sms", "message": "Disjoncteur ventilation déclenché"},
+                       {"moment": "fin", "code": "sms", "message": "Disjoncteur ventilation réarmé"}]));
+            regle["note"] = json!("Choisir l'entrée digitale du disjoncteur. « = 0 » si l'entrée s'éteint quand il saute, sinon mettre « = 1 ». Une règle par salle.");
+            regle
+        }
         "vide" => r("", 0.0, "", "", json!([]), json!([])),
         "porte_nuit" => r("Porte ouverte la nuit", 0.0, "22:00", "06:00",
             json!([{"code": "", "operateur": "=", "valeur": 1.0}]),

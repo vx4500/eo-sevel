@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.3** — automate renommé Ipx800v5, onglets = pages V5 + Accès.
+Version actuelle : **2.58.4** — Automatique : modèle Minuterie lumière.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.4 : modèle « minuterie » dans MODELES (condition point = 1 pendant 30 min → action début valeur 0 sur la même sortie).
 
 Version Rust 2.58.3 : macro onglets (ambiance_automate_onglets.html) liste les TYPES_V5 + Accès, titre Ipx800v5 ; GET /ambiance/automate, /ambiance/ipx, /ambiance/ipx/carte, /ambiance/ipx/explorateur redirigent vers /ambiance/ipx/v5/relais.
 

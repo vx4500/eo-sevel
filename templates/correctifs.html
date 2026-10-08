@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.58.4 — Minuterie lumière, disjoncteurs</h2><ul><li>Automatique → Nouvelle règle : modèle « Minuterie lumière ». Une lumière allumée s’éteint toute seule après la durée choisie (30 min par défaut).</li><li>Modèle « Disjoncteur ventilation » : SMS quand le disjoncteur moteur d’une ventilation saute (entrée digitale de l’IPX), puis quand il est réarmé.</li></ul></section>
 <section class="card"><h2>2.58.3 — Ipx800v5</h2><ul><li>L’automate s’appelle Ipx800v5. Ses onglets sont directement les relais, entrées et extensions, plus Accès pour la configuration.</li><li>Vue d’ensemble, Entrées et sorties, Carte et Explorateur sont retirés.</li></ul></section>
 <section class="card"><h2>2.58.2 — Automate et Automatique rangés</h2><ul><li>Automate : seulement l’IPX800 et ses extensions. L’onglet IPX800 V5 ajoute les sondes X-THL (et leurs défauts), les variateurs X-010V et l’alimentation X-PSU.</li><li>L’éclairage passe dans Automatique, à côté des règles.</li></ul></section>
 <section class="card"><h2>2.58.1 — Automatique : modèles</h2><ul><li>« Nouvelle règle » propose des modèles prêts à l’emploi : lumière automatique, alerte température, brumisation si chaud, chauffage si froid, alerte hygrométrie, porte ouverte la nuit.</li><li>La page Automatique montre aussi les lumières automatiques (programmes d’éclairage) et leur état.</li><li>Une règle ne peut plus commander une lampe déjà pilotée par un programme d’éclairage.</li></ul></section>
