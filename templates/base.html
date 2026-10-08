@@ -1545,6 +1545,57 @@
   if(saisir && fab){ saisir.addEventListener('click', function(){ fab.click(); }); }
 })();
 </script>
+<style>
+table.eo-plie>tbody>tr:nth-child(n+11){display:none}
+.eo-plier{display:block;margin:6px 0 14px;font-size:14px}
+@media print{table.eo-plie>tbody>tr{display:table-row!important}.eo-plier{display:none}}
+</style>
+<script>
+// Listes longues repliées dans tout le logiciel : les 10 premières lignes
+// restent visibles, un bouton affiche le reste. Par CSS (nth-child), donc
+// le tri des colonnes et les formulaires des lignes cachées fonctionnent.
+// Une table marquée data-sans-pli n'est pas repliée.
+(function(){
+  var SEUIL = 14;
+  function plier(){
+    document.querySelectorAll('main table, .rust-main table, table').forEach(function(t){
+      if(t.dataset.pli || t.hasAttribute('data-sans-pli') || t.closest('[data-sans-pli]')) return;
+      var corps = t.tBodies[0];
+      if(!corps || corps.rows.length <= SEUIL) return;
+      try { if(location.hash && t.querySelector(location.hash)) return; } catch(e) {}
+      t.dataset.pli = '1';
+      t.classList.add('eo-plie');
+      var reste = corps.rows.length - 10;
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ghost eo-plier';
+      var ferme = '▾ Afficher les ' + reste + ' autres lignes', ouvert = '▴ Replier la liste';
+      b.textContent = ferme;
+      b.addEventListener('click', function(){
+        var plie = t.classList.toggle('eo-plie');
+        b.textContent = plie ? ferme : ouvert;
+        if(plie) t.scrollIntoView({block:'nearest'});
+      });
+      var bloc = t.closest('.rust-scroll') || t;
+      bloc.insertAdjacentElement('afterend', b);
+    });
+  }
+  // Recherche ou filtre de la page : on déplie, sinon une ligne trouvée
+  // au-delà de la 10e resterait cachée.
+  function deplier(e){
+    var c = e.target;
+    if(!c.matches || !c.matches('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select') || c.closest('table,form[method=post],form[method=POST]')) return;
+    document.querySelectorAll('table.eo-plie').forEach(function(t){
+      t.classList.remove('eo-plie');
+      var b = (t.closest('.rust-scroll') || t).nextElementSibling;
+      if(b && b.classList.contains('eo-plier')) b.textContent = '▴ Replier la liste';
+    });
+  }
+  document.addEventListener('input', deplier);
+  document.addEventListener('change', deplier);
+  plier();
+  document.addEventListener('eo:contenu-actualise', plier);
+})();
+</script>
 {% include "demo_feedback.html" %}
 <footer class="rust-footer">EO_Sevel · Version {{ app_version }} · © Emmanuel ORY · <a href="/contact">Contact et propriété</a></footer>
 </body>

@@ -90,7 +90,7 @@
 </div>
 {% if truies %}
 <div class="mb-zone">
-<div class="mb-tableau"><table>
+<div class="mb-tableau"><table data-sans-pli>
 <thead><tr><th>Case</th><th>Truie</th><th>État</th><th>Nés vivants</th><th>Mort-nés</th><th>Momifiés</th><th>Pertes</th><th>Présents</th><th>Délivrance</th><th></th></tr></thead>
 <tbody>
 {% for truie in truies %}<tr class="mb-ligne mat-sow" id="truie-{{ truie.id }}" data-id="{{ truie.id }}" data-status="{{ truie.statut_code }}" data-surveillance="{{ 1 if truie.surveillance else 0 }}" data-search="{{ truie.num_travail }} {{ truie.case_nom or '' }} {{ truie.num_vanne or '' }}" tabindex="0">
