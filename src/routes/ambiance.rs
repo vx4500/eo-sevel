@@ -705,7 +705,7 @@ const CHEMINS_CANDIDATS: &[&str] = &[
 /// Hôtes que le serveur accepte d'interroger : ceux déjà enregistrés, et rien
 /// d'autre. Sans cette restriction, la page deviendrait un relais permettant de
 /// faire émettre au serveur des requêtes vers n'importe quelle adresse.
-async fn hotes_autorises(pool: &SqlitePool) -> Vec<String> {
+pub(super) async fn hotes_autorises(pool: &SqlitePool) -> Vec<String> {
     let mut hotes: Vec<String> = sqlx::query_scalar(
         "SELECT DISTINCT ipx_hote FROM ambiance_salle \
          WHERE ipx_hote IS NOT NULL AND trim(ipx_hote)<>''",

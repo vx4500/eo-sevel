@@ -648,15 +648,33 @@ pub(super) async fn nouvelle(
     Ok(render(&state, "automatique_modeles.html", Value::Object(contexte))?.into_response())
 }
 
+/// Entrées physiques de l'IPX800 V5 (8 digitales, 4 opto), qu'elles soient
+/// déjà enregistrées (« p:12 ») ou pas encore (« n:hote|65552 », créée à
+/// l'enregistrement de la règle).
+async fn entrees_ipx(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    let mut entrees = Vec::new();
+    for hote in super::ambiance::hotes_autorises(pool).await {
+        for io in 65552..=65563_i64 {
+            let numero = if io < 65560 { format!("Entrée digitale {}", io - 65551) } else { format!("Entrée opto {}", io - 65559) };
+            let chemin = format!("api/core/io/{io}");
+            let connu: Option<(i64, String)> = sqlx::query_as("SELECT id, nom FROM ipx_point WHERE hote=? AND chemin=?")
+                .bind(&hote).bind(&chemin).fetch_optional(pool).await?;
+            entrees.push(match connu {
+                Some((id, nom)) => json!({"code": format!("p:{id}"), "nom": format!("{numero} · {nom}"), "nom_court": nom}),
+                None => json!({"code": format!("n:{hote}|{io}"), "nom": numero, "nom_court": ""}),
+            });
+        }
+    }
+    Ok(entrees)
+}
+
 /// Formulaire à questions pour les modèles courants (minuterie, disjoncteur) :
 /// il remplit lui-même les champs « si / alors » du formulaire complet.
 async fn simple(state: &AppState, session: &SessionData, code: &str) -> AppResult<Html<String>> {
     require_writer(session)?;
     let (lectures, sorties) = choix(&state.pool).await?;
-    let entrees: Vec<Value> = lectures
-        .into_iter()
-        .filter(|l| l["tor"] == json!(true) && l["code"].as_str().is_some_and(|c| c.starts_with("p:")))
-        .collect();
+    let _ = lectures;
+    let entrees = entrees_ipx(&state.pool).await?;
     let (titre, explication) = if code == "minuterie" {
         ("Minuterie lumière", "La lumière s'éteint toute seule un moment après qu'on l'a allumée.")
     } else {
@@ -769,10 +787,29 @@ fn nombre(texte: Option<&String>) -> Option<f64> {
 pub(super) async fn enregistrer(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
-    Form(form): Form<HashMap<String, String>>,
+    Form(mut form): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
+    // Entrée IPX pas encore enregistrée (formulaire disjoncteur) : on la crée.
+    if let Some((hote, io)) = form.get("c0_quoi").and_then(|c| c.strip_prefix("n:")).and_then(|c| c.split_once('|')) {
+        let io: i64 = io.parse().map_err(|_| AppError::Invalid("Entrée inconnue".into()))?;
+        let hote = hote.to_string();
+        if !(65552..=65563).contains(&io) || !super::ambiance::hotes_autorises(&state.pool).await.contains(&hote) {
+            return Err(AppError::Invalid("Entrée inconnue".into()));
+        }
+        let nom = form_text(&form, "nom_entree").unwrap_or_else(|| format!("Disjoncteur entrée {io}"));
+        let chemin = format!("api/core/io/{io}");
+        sqlx::query("INSERT INTO ipx_point(hote, chemin, nom, role) VALUES(?,?,?,'disjoncteur') ON CONFLICT(hote, chemin) DO NOTHING")
+            .bind(&hote).bind(&chemin).bind(&nom).execute(&state.pool).await?;
+        let id: i64 = sqlx::query_scalar("SELECT id FROM ipx_point WHERE hote=? AND chemin=?")
+            .bind(&hote).bind(&chemin).fetch_one(&state.pool).await?;
+        form.insert("c0_quoi".into(), format!("p:{id}"));
+        if let Some(n) = form.get_mut("nom") { *n = format!("Disjoncteur · {nom}"); }
+        for (cle, debut) in [("a0_message", "Disjoncteur déclenché"), ("a1_message", "Disjoncteur réarmé")] {
+            if form.contains_key(cle) { form.insert(cle.into(), format!("{debut} : {nom}")); }
+        }
+    }
     let nom = form_text(&form, "nom").ok_or_else(|| AppError::Invalid("Donnez un nom à la règle".into()))?;
     let logique = if form.get("logique").map(String::as_str) == Some("ou") { "ou" } else { "et" };
     // Formulaire simple : boutons « Pour de vrai » / « En essai » (champ mode).

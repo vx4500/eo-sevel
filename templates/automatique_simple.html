@@ -40,8 +40,10 @@
 
 <section class="card">
   <p class="as-q"><span>1</span>Sur quelle entrée est branché le disjoncteur ?</p>
-  <select id="as-quoi" required><option value="">— choisir —</option>{% for s in entrees %}<option value="{{ s.code }}">{{ s.nom }}</option>{% endfor %}</select>
-  <p class="muted">Ce sont les entrées de l'automate (onglet Entrées digitales). Donnez-leur un nom clair là-bas, ex. « Disjoncteur ventil Mater 1 ».</p>
+  {% if entrees %}<select id="as-quoi" required><option value="">— choisir —</option>{% for s in entrees %}<option value="{{ s.code }}" data-nom="{{ s.nom_court }}">{{ s.nom }}</option>{% endfor %}</select>
+  <p class="muted">Le numéro est celui marqué sur le bornier de l'IPX800 (IN 1 à 8, opto 1 à 4).</p>
+  {% else %}<p class="rust-empty">Aucun automate raccordé : renseignez son adresse dans Ipx800v5 → Accès.</p>{% endif %}
+  <label style="margin-top:10px">Nom de ce disjoncteur<input name="nom_entree" id="as-nom-entree" placeholder="ex. Ventil Mater 1"></label>
 </section>
 <section class="card as-choix">
   <p class="as-q"><span>2</span>Quand le disjoncteur saute, le voyant de l'entrée sur l'IPX…</p>
@@ -70,7 +72,8 @@ function maj(){var n=nomChoisi(),r=document.getElementById('as-resume');
   if(type==='minuterie'){var m=f.delai_min.value||'?';
     document.getElementById('as-c0').value=sel.value;document.getElementById('as-nom').value='Minuterie · '+n;
     r.textContent=n?'Chaque fois que « '+n+' » est allumée, elle s’éteint toute seule au bout de '+m+' min.':'Choisissez la lumière ci-dessus.'}
-  else{document.getElementById('as-quoi-cache').value=sel.value;document.getElementById('as-nom').value='Disjoncteur · '+n;
+  else{var ne=document.getElementById('as-nom-entree');if(ne.value)n=ne.value;else if(sel.value&&sel.options[sel.selectedIndex].dataset.nom)n=sel.options[sel.selectedIndex].dataset.nom;
+    document.getElementById('as-quoi-cache').value=sel.value;document.getElementById('as-nom').value='Disjoncteur · '+n;
     document.getElementById('as-m0').value='Disjoncteur déclenché : '+n;document.getElementById('as-m1').value='Disjoncteur réarmé : '+n;
     r.textContent=n?'Si le disjoncteur « '+n+' » saute, vous recevez un SMS au bout d’1 minute, puis un autre quand il est réarmé.':'Choisissez l’entrée ci-dessus.'}}
 f.addEventListener('input',maj);f.addEventListener('change',maj);maj();
