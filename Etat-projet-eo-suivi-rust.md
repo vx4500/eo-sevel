@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.58.4** — Automatique : modèle Minuterie lumière.
+Version actuelle : **2.58.5** — Automatique : formulaires simples (minuterie, disjoncteur) et formulaire général expliqué.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.58.5 : automatique_simple.html (questions numérotées, remplit c0_*/a0_* cachés ; champ mode=essai|vrai lu par enregistrer) pour modele=minuterie|disjoncteur ; libellés de automatique_regle.html réécrits (Quand… / Alors faire…).
 
 Version Rust 2.58.4 : modèle « minuterie » dans MODELES (condition point = 1 pendant 30 min → action début valeur 0 sur la même sortie).
 

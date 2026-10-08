@@ -12,6 +12,7 @@
 </style>
 {{ onglets_auto('regles') }}
 <h2>{% if regle.id %}{{ regle.nom }}{% else %}Nouvelle règle{% endif %}</h2>
+<p class="muted">Une règle, c'est une phrase : <b>quand</b> quelque chose arrive (une sonde, une entrée, un relais…), <b>alors</b> le logiciel fait une action (allumer, éteindre, envoyer un SMS). Exemple : <i>quand la température de Mater 1 dépasse 28 °C depuis 5 min, alors allumer la brumisation, et l'éteindre quand ça redescend.</i></p>
 
 <form method="post" action="/automatique/enregistrer" id="ar-form">
 <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
@@ -29,10 +30,10 @@
 </section>
 
 <section class="card ar-bloc">
-  <h2>Si…</h2>
+  <h2>① Quand… <small class="muted">(ce qu'on surveille)</small></h2>
   <div class="rust-grid">
-    <div><label>Il faut que<select name="logique"><option value="et"{% if regle.logique == 'et' %} selected{% endif %}>toutes les conditions soient vraies</option><option value="ou"{% if regle.logique == 'ou' %} selected{% endif %}>une seule condition soit vraie</option></select></label></div>
-    <div><label>Pendant au moins (minutes)<input name="delai_min" inputmode="decimal" value="{{ regle.delai_min }}"></label></div>
+    <div><label>S'il y a plusieurs lignes<select name="logique"><option value="et"{% if regle.logique == 'et' %} selected{% endif %}>toutes les conditions soient vraies</option><option value="ou"{% if regle.logique == 'ou' %} selected{% endif %}>une seule condition soit vraie</option></select></label></div>
+    <div><label>Attendre que ce soit vrai depuis (minutes)<input name="delai_min" inputmode="decimal" value="{{ regle.delai_min }}"></label></div>
     <div><label>Seulement de<input type="time" name="heure_debut" value="{{ regle.heure_debut }}"></label><label>à<input type="time" name="heure_fin" value="{{ regle.heure_fin }}"></label><small class="muted">Vide = à toute heure. La plage peut passer minuit (22:00 → 06:00).</small></div>
   </div>
   <div id="ar-conditions"></div>
@@ -40,9 +41,9 @@
 </section>
 
 <section class="card ar-bloc alors">
-  <h2>Alors…</h2>
-  <p class="muted">« Au déclenchement » : quand la condition devient vraie (après le délai). « À la fin » : quand elle cesse — par exemple pour éteindre ce qu'on a allumé.</p>
-  {% if not sorties %}<p class="rust-empty">Aucune sortie n'est encore autorisée à la commande : cochez « Autoriser la commande » sur un relais dans Automate → IPX800 V5 ou Carte. Les SMS restent possibles.</p>{% endif %}
+  <h2>② Alors faire… <small class="muted">(l'action)</small></h2>
+  <p class="muted">« Dès que c'est vrai » : l'action part quand la condition ① est remplie. « Quand ça redevient normal » : l'action part quand la condition ① n'est plus remplie — pratique pour éteindre ce qu'on a allumé ou prévenir que tout est rentré dans l'ordre.</p>
+  {% if not sorties %}<p class="rust-empty">Aucune sortie n'est encore autorisée à la commande : cochez « Autoriser la commande » sur un relais dans Ipx800v5 → Relais. Les SMS restent possibles.</p>{% endif %}
   <div id="ar-actions"></div>
   <p><button type="button" class="ghost" id="ar-plus-action">+ Ajouter une action</button></p>
 </section>
@@ -76,13 +77,13 @@ function options(liste,choisi,vide){var h=vide?'<option value="">'+vide+'</optio
   return h+(g!==null?'</optgroup>':'')}
 function trouver(liste,code){for(var i=0;i<liste.length;i++)if(liste[i].code===code)return liste[i];return null}
 function champValeur(nom,tor,valeur){
-  if(tor){var v=valeur==null?1:valeur;return '<select name="'+nom+'"><option value="1"'+(v>=0.5?' selected':'')+'>Marche (1)</option><option value="0"'+(v<0.5?' selected':'')+'>Arrêt (0)</option></select>'}
+  if(tor){var v=valeur==null?1:valeur;return '<select name="'+nom+'"><option value="1"'+(v>=0.5?' selected':'')+'>Allumé / en marche</option><option value="0"'+(v<0.5?' selected':'')+'>Éteint / arrêté</option></select>'}
   return '<input name="'+nom+'" inputmode="decimal" required value="'+esc(valeur==null?'':String(valeur).replace('.',','))+'">'}
 function ajouterCondition(c){c=c||{};var i=nc++,d=document.createElement('div');d.className='ar-ligne';
   var l=trouver(LECTURES,c.code);
-  d.innerHTML='<label>Quoi<select name="c'+i+'_quoi" required>'+options(LECTURES,c.code,'— choisir —')+'</select></label>'+
-   '<label>Est<select name="c'+i+'_op">'+OPS.map(function(o){return '<option value="'+esc(o.code)+'"'+(o.code===(c.operateur||(l&&l.tor?'=':'>'))?' selected':'')+'>'+esc(o.libelle)+'</option>'}).join('')+'</select></label>'+
-   '<label>Valeur <span class="ar-unite"></span><span class="ar-v">'+champValeur('c'+i+'_valeur',l&&l.tor,c.valeur)+'</span></label>'+
+  d.innerHTML='<label>Ce qu\'on surveille<select name="c'+i+'_quoi" required>'+options(LECTURES,c.code,'— choisir —')+'</select></label>'+
+   '<label>doit être<select name="c'+i+'_op">'+OPS.map(function(o){return '<option value="'+esc(o.code)+'"'+(o.code===(c.operateur||(l&&l.tor?'=':'>'))?' selected':'')+'>'+esc(o.libelle)+'</option>'}).join('')+'</select></label>'+
+   '<label>la valeur <span class="ar-unite"></span><span class="ar-v">'+champValeur('c'+i+'_valeur',l&&l.tor,c.valeur)+'</span></label>'+
    '<button type="button" class="ar-x" title="Retirer">✕</button>';
   var sel=d.querySelector('select');
   function maj(){var o=trouver(LECTURES,sel.value);d.querySelector('.ar-unite').textContent=o&&o.unite?'('+o.unite+')':'';
@@ -92,8 +93,8 @@ function ajouterCondition(c){c=c||{};var i=nc++,d=document.createElement('div');
   document.getElementById('ar-conditions').appendChild(d)}
 function ajouterAction(a){a=a||{};var i=na++,d=document.createElement('div');d.className='ar-ligne action';
   var quoi='<option value="">— choisir —</option><option value="sms"'+(a.code==='sms'?' selected':'')+'>📱 Envoyer un SMS</option>'+options(SORTIES,a.code,null);
-  d.innerHTML='<label>Quand<select name="a'+i+'_moment"><option value="debut">Au déclenchement</option><option value="fin"'+(a.moment==='fin'?' selected':'')+'>À la fin</option></select></label>'+
-   '<label>Faire<select name="a'+i+'_quoi" required>'+quoi+'</select></label>'+
+  d.innerHTML='<label>À quel moment<select name="a'+i+'_moment"><option value="debut">Dès que c\'est vrai</option><option value="fin"'+(a.moment==='fin'?' selected':'')+'>Quand ça redevient normal</option></select></label>'+
+   '<label>Faire quoi<select name="a'+i+'_quoi" required>'+quoi+'</select></label>'+
    '<label class="ar-detail"></label><button type="button" class="ar-x" title="Retirer">✕</button>';
   var sel=d.querySelector('[name=a'+i+'_quoi]'),det=d.querySelector('.ar-detail');
   function maj(premier){var v=sel.value;

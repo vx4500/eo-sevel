@@ -628,6 +628,9 @@ pub(super) async fn nouvelle(
 ) -> AppResult<Response> {
     match parametres.get("modele").map(String::as_str) {
         Some("lumiere") => return Ok(Redirect::to("/ambiance/eclairage/nouveau").into_response()),
+        Some(code @ ("minuterie" | "disjoncteur")) => {
+            return Ok(simple(&state, &session, code).await?.into_response());
+        }
         Some(code) => {
             let regle = modele(code).ok_or(AppError::NotFound)?;
             return Ok(formulaire(&state, &session, None, Some(regle)).await?.into_response());
@@ -643,6 +646,29 @@ pub(super) async fn nouvelle(
         }).collect()),
     );
     Ok(render(&state, "automatique_modeles.html", Value::Object(contexte))?.into_response())
+}
+
+/// Formulaire à questions pour les modèles courants (minuterie, disjoncteur) :
+/// il remplit lui-même les champs « si / alors » du formulaire complet.
+async fn simple(state: &AppState, session: &SessionData, code: &str) -> AppResult<Html<String>> {
+    require_writer(session)?;
+    let (lectures, sorties) = choix(&state.pool).await?;
+    let entrees: Vec<Value> = lectures
+        .into_iter()
+        .filter(|l| l["tor"] == json!(true) && l["code"].as_str().is_some_and(|c| c.starts_with("p:")))
+        .collect();
+    let (titre, explication) = if code == "minuterie" {
+        ("Minuterie lumière", "La lumière s'éteint toute seule un moment après qu'on l'a allumée.")
+    } else {
+        ("Disjoncteur ventilation", "Un SMS quand le disjoncteur moteur d'une ventilation saute, puis quand il est réarmé. Une règle par disjoncteur.")
+    };
+    let mut contexte = context(session);
+    contexte.insert("type".into(), json!(code));
+    contexte.insert("titre".into(), json!(titre));
+    contexte.insert("explication".into(), json!(explication));
+    contexte.insert("sorties".into(), Value::Array(sorties));
+    contexte.insert("entrees".into(), Value::Array(entrees));
+    render(state, "automatique_simple.html", Value::Object(contexte))
 }
 
 pub(super) async fn regle(
@@ -749,6 +775,8 @@ pub(super) async fn enregistrer(
     verify_csrf(&session, &form)?;
     let nom = form_text(&form, "nom").ok_or_else(|| AppError::Invalid("Donnez un nom à la règle".into()))?;
     let logique = if form.get("logique").map(String::as_str) == Some("ou") { "ou" } else { "et" };
+    // Formulaire simple : boutons « Pour de vrai » / « En essai » (champ mode).
+    let essai = form.contains_key("essai") || form.get("mode").map(String::as_str) == Some("essai");
     let delai_s = (nombre(form.get("delai_min")).unwrap_or(0.0).max(0.0) * 60.0).round() as i64;
     let heure = |cle: &str| {
         form_text(&form, cle).filter(|h| crate::eclairage_core::minutes_depuis_heure(h).is_some())
@@ -820,7 +848,7 @@ pub(super) async fn enregistrer(
             )
             .bind(&nom)
             .bind(form.contains_key("actif") as i64)
-            .bind(form.contains_key("essai") as i64)
+            .bind(essai as i64)
             .bind(logique)
             .bind(delai_s)
             .bind(heure("heure_debut"))
@@ -840,7 +868,7 @@ pub(super) async fn enregistrer(
         )
         .bind(&nom)
         .bind(form.contains_key("actif") as i64)
-        .bind(form.contains_key("essai") as i64)
+        .bind(essai as i64)
         .bind(logique)
         .bind(delai_s)
         .bind(heure("heure_debut"))
@@ -977,6 +1005,12 @@ mod tests {
             "session": session, "regle": regle, "lectures": [lecture], "sorties": [],
             "operateurs": [{"code": ">", "libelle": "supérieur à"}], "journal": []
         })).expect("automatique_regle.html");
+        for type_ in ["minuterie", "disjoncteur"] {
+            env.get_template("automatique_simple.html").unwrap().render(serde_json::json!({
+                "session": session, "type": type_, "titre": "T", "explication": "E",
+                "sorties": [{"code": "p:1", "nom": "Lampe"}], "entrees": [{"code": "p:2", "nom": "Disj"}]
+            })).expect("automatique_simple.html");
+        }
         env.get_template("automatique_modeles.html").unwrap().render(serde_json::json!({
             "session": session, "modeles": [{"code": "hygro", "icone": "💧", "titre": "Alerte", "texte": "SMS"}]
         })).expect("automatique_modeles.html");

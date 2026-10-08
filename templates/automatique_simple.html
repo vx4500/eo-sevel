@@ -1,0 +1,79 @@
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}{{ titre }} — Automatique — EO_Sevel{% endblock %}{% block content %}
+<style>
+.as-q{font-size:17px;font-weight:800;margin:0 0 6px}
+.as-q span{display:inline-block;width:26px;height:26px;border-radius:50%;background:var(--vert);color:#fff;text-align:center;line-height:26px;margin-right:6px;font-size:14px}
+.as-choix label{display:flex;gap:8px;align-items:center;font-weight:600;margin:6px 0}
+.as-choix input{width:auto}
+.as-resume{border-left:5px solid var(--vert);font-size:16px}
+</style>
+{{ onglets_auto('regles') }}
+<h2>{{ titre }}</h2>
+<p class="muted">{{ explication }}</p>
+
+<form method="post" action="/automatique/enregistrer" id="as-form">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<input type="hidden" name="actif" value="on">
+<input type="hidden" name="logique" value="et">
+<input type="hidden" name="nom" id="as-nom">
+<input type="hidden" name="c0_op" value="=">
+{% if type == 'minuterie' %}
+<input type="hidden" name="c0_valeur" value="1">
+<input type="hidden" name="c0_quoi" id="as-c0">
+<input type="hidden" name="a0_moment" value="debut">
+<input type="hidden" name="a0_valeur" value="0">
+
+<section class="card">
+  <p class="as-q"><span>1</span>Quelle lumière ?</p>
+  {% if sorties %}
+  <select name="a0_quoi" id="as-quoi" required><option value="">— choisir —</option>{% for s in sorties %}<option value="{{ s.code }}">{{ s.nom }}</option>{% endfor %}</select>
+  {% else %}<p class="rust-empty">Aucune sortie n'est autorisée à la commande. Dans Ipx800v5 → Relais, cochez « Autoriser la commande » sur le relais de la lumière.</p>{% endif %}
+</section>
+<section class="card">
+  <p class="as-q"><span>2</span>Elle reste allumée combien de minutes ?</p>
+  <input name="delai_min" inputmode="decimal" value="30" required style="max-width:140px">
+</section>
+{% else %}
+<input type="hidden" name="c0_quoi" id="as-quoi-cache">
+<input type="hidden" name="delai_min" value="1">
+<input type="hidden" name="a0_moment" value="debut"><input type="hidden" name="a0_quoi" value="sms"><input type="hidden" name="a0_message" id="as-m0">
+<input type="hidden" name="a1_moment" value="fin"><input type="hidden" name="a1_quoi" value="sms"><input type="hidden" name="a1_message" id="as-m1">
+
+<section class="card">
+  <p class="as-q"><span>1</span>Sur quelle entrée est branché le disjoncteur ?</p>
+  <select id="as-quoi" required><option value="">— choisir —</option>{% for s in entrees %}<option value="{{ s.code }}">{{ s.nom }}</option>{% endfor %}</select>
+  <p class="muted">Ce sont les entrées de l'automate (onglet Entrées digitales). Donnez-leur un nom clair là-bas, ex. « Disjoncteur ventil Mater 1 ».</p>
+</section>
+<section class="card as-choix">
+  <p class="as-q"><span>2</span>Quand le disjoncteur saute, le voyant de l'entrée sur l'IPX…</p>
+  <label><input type="radio" name="c0_valeur" value="0" checked> s'éteint (cas le plus courant)</label>
+  <label><input type="radio" name="c0_valeur" value="1"> s'allume</label>
+  <p class="muted">Pas sûr ? Regardez l'onglet Entrées digitales avec le disjoncteur enclenché : si l'entrée est allumée, choisissez « s'éteint ».</p>
+</section>
+{% endif %}
+
+<section class="card as-choix">
+  <p class="as-q"><span>3</span>Démarrer comment ?</p>
+  <label><input type="radio" name="mode" value="vrai" checked> Pour de vrai</label>
+  <label><input type="radio" name="mode" value="essai"> En essai : noter dans le journal ce qu'elle aurait fait, sans rien {% if type == 'minuterie' %}éteindre{% else %}envoyer{% endif %}</label>
+</section>
+
+<section class="card as-resume"><p id="as-resume" style="margin:0">Choisissez {% if type == 'minuterie' %}la lumière{% else %}l'entrée{% endif %} ci-dessus.</p></section>
+<p><button>Enregistrer</button></p>
+</form>
+
+<script>
+(function(){
+var type={{ type|tojson }},f=document.getElementById('as-form'),sel=document.getElementById('as-quoi');
+if(!sel)return;
+function nomChoisi(){return sel.value?sel.options[sel.selectedIndex].text:''}
+function maj(){var n=nomChoisi(),r=document.getElementById('as-resume');
+  if(type==='minuterie'){var m=f.delai_min.value||'?';
+    document.getElementById('as-c0').value=sel.value;document.getElementById('as-nom').value='Minuterie · '+n;
+    r.textContent=n?'Chaque fois que « '+n+' » est allumée, elle s’éteint toute seule au bout de '+m+' min.':'Choisissez la lumière ci-dessus.'}
+  else{document.getElementById('as-quoi-cache').value=sel.value;document.getElementById('as-nom').value='Disjoncteur · '+n;
+    document.getElementById('as-m0').value='Disjoncteur déclenché : '+n;document.getElementById('as-m1').value='Disjoncteur réarmé : '+n;
+    r.textContent=n?'Si le disjoncteur « '+n+' » saute, vous recevez un SMS au bout d’1 minute, puis un autre quand il est réarmé.':'Choisissez l’entrée ci-dessus.'}}
+f.addEventListener('input',maj);f.addEventListener('change',maj);maj();
+})();
+</script>
+{% endblock %}
