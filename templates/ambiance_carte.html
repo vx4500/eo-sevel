@@ -1,17 +1,5 @@
 {% extends "base.html" %}{% from "capteurs_analogiques.html" import select_capteur %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}{% if v5 %}{{ v5.nom }} — IPX800 V5{% else %}Carte de l'automate{% endif %} — EO_Sevel{% endblock %}{% block content %}
-{% if v5 %}{{ onglets('v5') }}
-<style>
-.v5-types{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
-.v5-types a{padding:7px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);font-weight:700;font-size:14px;background:var(--card)}
-.v5-types a.actif{background:var(--vert);border-color:var(--vert);color:#fff}
-.v5-types small{font-weight:600;opacity:.75}
-.v5-sep{align-self:center;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 2px 0 8px}
-@media(max-width:640px){.v5-types{flex-wrap:nowrap;overflow-x:auto}.v5-types a{white-space:nowrap}}
-</style>
-<nav class="v5-types" aria-label="Entrées et sorties de l'IPX800 V5">
-{% for t in types_v5 %}{% if t.code == 'xthl' %}<span class="v5-sep">Extensions</span>{% endif %}<a href="/ambiance/ipx/v5/{{ t.code }}"{% if t.code == v5.code %} class="actif" aria-current="page"{% endif %}>{{ t.nom }}{% if t.nombre %} <small>{{ t.nombre }}</small>{% endif %}</a>{% endfor %}
-</nav>
-{% else %}{{ onglets('carte') }}{% endif %}
+{% if v5 %}{{ onglets(v5.code) }}{% else %}{{ onglets('') }}{% endif %}
 
 {% if ok %}<div class="card"><p><b>{{ ok }}</b></p></div>{% endif %}
 

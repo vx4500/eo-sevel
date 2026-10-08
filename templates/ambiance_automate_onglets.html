@@ -6,15 +6,20 @@
 .auto-onglets a.actif{background:var(--vert);color:#fff}
 .auto-titre{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px}
 .auto-titre h1{margin:0}
+.auto-onglets .v5-sep{align-self:center;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 2px 0 8px}
 @media(max-width:640px){.auto-onglets{flex-wrap:nowrap;overflow-x:auto}}
 </style>
-<div class="auto-titre"><h1>Automate IPX800</h1><a class="muted" href="/ambiance">← EO_Awel · Ambiance</a></div>
+<div class="auto-titre"><h1>Ipx800v5</h1><a class="muted" href="/ambiance">← EO_Awel · Ambiance</a></div>
 <nav class="auto-onglets" aria-label="Sections de l'automate">
-  <a href="/ambiance/automate"{% if actif == 'ensemble' %} class="actif" aria-current="page"{% endif %}>🏠 Vue d'ensemble</a>
-  <a href="/ambiance/ipx"{% if actif == 'points' %} class="actif" aria-current="page"{% endif %}>🔌 Entrées et sorties</a>
-  <a href="/ambiance/ipx/v5/relais"{% if actif == 'v5' %} class="actif" aria-current="page"{% endif %}>🧩 IPX800 V5</a>
-  <a href="/ambiance/ipx/carte"{% if actif == 'carte' %} class="actif" aria-current="page"{% endif %}>🗺️ Carte</a>
-  <a href="/ambiance/ipx/explorateur"{% if actif == 'explorateur' %} class="actif" aria-current="page"{% endif %}>🔍 Explorateur</a>
+  <a href="/ambiance/ipx/v5/relais"{% if actif == 'relais' %} class="actif" aria-current="page"{% endif %}>Relais</a>
+  <a href="/ambiance/ipx/v5/digitales"{% if actif == 'digitales' %} class="actif" aria-current="page"{% endif %}>Entrées digitales</a>
+  <a href="/ambiance/ipx/v5/analogiques"{% if actif == 'analogiques' %} class="actif" aria-current="page"{% endif %}>Entrées analogiques</a>
+  <a href="/ambiance/ipx/v5/opto"{% if actif == 'opto' %} class="actif" aria-current="page"{% endif %}>Entrées opto-isolées</a>
+  <a href="/ambiance/ipx/v5/collecteurs"{% if actif == 'collecteurs' %} class="actif" aria-current="page"{% endif %}>Collecteurs ouverts</a>
+  <span class="v5-sep">Extensions</span>
+  <a href="/ambiance/ipx/v5/xthl"{% if actif == 'xthl' %} class="actif" aria-current="page"{% endif %}>Sondes X-THL</a>
+  <a href="/ambiance/ipx/v5/x010v"{% if actif == 'x010v' %} class="actif" aria-current="page"{% endif %}>Variateurs X-010V</a>
+  <a href="/ambiance/ipx/v5/xpsu"{% if actif == 'xpsu' %} class="actif" aria-current="page"{% endif %}>Alimentation X-PSU</a>
   <a href="/ambiance/ipx/acces"{% if actif == 'acces' %} class="actif" aria-current="page"{% endif %}>⚙️ Accès</a>
 </nav>
 {% endmacro %}

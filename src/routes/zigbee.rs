@@ -757,7 +757,7 @@ mod tests {
         sqlx::raw_sql("INSERT INTO zigbee_pont(id,connecte,ts,messages) VALUES(1,1,strftime('%s','now'),10)")
             .execute(&state.pool).await?;
         let html = super::super::equipements(State(state.clone()), Extension(session())).await?.0;
-        assert!(html.contains("Automate IPX800") && html.contains("Adresse à renseigner"), "{html}");
+        assert!(html.contains("Ipx800v5") && html.contains("Adresse à renseigner"), "{html}");
         assert!(html.contains("Réseau Zigbee") && html.contains("Connecté · 3 appareils"), "{html}");
         Ok(())
     }

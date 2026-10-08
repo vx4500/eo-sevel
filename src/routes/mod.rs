@@ -199,7 +199,7 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/eclairage/{id}/supprimer",
             post(eclairage::supprimer),
         )
-        .route("/ambiance/automate", get(automate::page))
+        .route("/ambiance/automate", get(ambiance::ipx_v5_accueil))
         .route("/ambiance/zigbee", get(zigbee::page))
         .route("/ambiance/zigbee/rattacher", post(zigbee::rattacher))
         .route("/ambiance/zigbee/commander", post(zigbee::commander))
@@ -208,13 +208,13 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/zigbee/electricite/reglages",
             post(zigbee::electricite_reglages),
         )
-        .route("/ambiance/ipx", get(ambiance::ipx_page))
-        .route("/ambiance/ipx/explorateur", get(ambiance::ipx_explorateur))
+        .route("/ambiance/ipx", get(ambiance::ipx_v5_accueil))
+        .route("/ambiance/ipx/explorateur", get(ambiance::ipx_v5_accueil))
         .route("/ambiance/ipx/acces", get(ambiance::ipx_acces))
         .route("/ambiance/ipx/lire.json", get(ambiance::ipx_lire))
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))
         .route("/ambiance/ipx/points.json", get(ambiance::ipx_points_json))
-        .route("/ambiance/ipx/carte", get(ambiance::ipx_carte))
+        .route("/ambiance/ipx/carte", get(ambiance::ipx_v5_accueil))
         .route("/automatique", get(automatique::page))
         .route("/automatique/nouvelle", get(automatique::nouvelle))
         .route("/automatique/enregistrer", post(automatique::enregistrer))
@@ -952,7 +952,7 @@ fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String
 /// Modules d'équipement proposés sur /equipements/modules, dans l'ordre.
 const EQUIP_MODULES: &[(&str, &str, &str)] = &[
     ("awel", "EO_Awel", "Ventilation, températures, hygrométrie et alertes des salles"),
-    ("ipx", "Automate IPX800", "Sondes, relais, entrées et sorties, éclairage"),
+    ("ipx", "Ipx800v5", "Sondes, relais, entrées et sorties, éclairage"),
     ("zigbee", "Réseau Zigbee", "Sondes sans fil, interrupteurs, variateurs, compteurs"),
     ("sms", "Free SMS", "Alertes par SMS"),
     ("proxmox", "Serveur Proxmox", "État du serveur, machines et sauvegardes"),
@@ -1040,8 +1040,8 @@ async fn equipements(
         .unwrap_or(0);
     let zigbee_ok = zigbee.is_some_and(|(connecte, age)| connecte != 0 && age < 600);
     let ipx = match &ipx_hote {
-        Some(hote) => json!({"code":"ipx","nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
-        None => json!({"code":"ipx","nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
+        Some(hote) => json!({"code":"ipx","nom":"Ipx800v5", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/v5/relais", "action":"Ouvrir l’automate"}),
+        None => json!({"code":"ipx","nom":"Ipx800v5", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
     };
     let sms_actif: bool = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM parametre WHERE cle='sms_free_actif' AND valeur='1'")
         .fetch_one(&state.pool)

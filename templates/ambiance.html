@@ -44,7 +44,7 @@
 .ambiance-tile-sub{font-size:11.5px;color:var(--muted)}
 </style>
 <h1>EO_Awel · Ambiance &amp; ventilation</h1>
-<p class="muted"><a href="/ambiance/automate"><b>🔌 Automate IPX800</b> : entrées et sorties, carte, éclairage, réglages →</a> · <a href="/ambiance/comportement">Comportement &amp; climat</a></p>
+<p class="muted"><a href="/ambiance/ipx/v5/relais"><b>🔌 Ipx800v5</b> : relais, entrées, extensions, accès →</a> · <a href="/ambiance/comportement">Comportement &amp; climat</a></p>
 
 {% if demon.jamais_demarre %}
 <div class="card"><p><b class="danger">La régulation n'a jamais tourné sur cette base.</b></p><p class="muted">Le service <code>eo-regul</code> lit les réglages ci-dessous, interroge l'automate et écrit ici ce qu'il mesure. Tant qu'il n'est pas démarré, cette page reste vide — c'est normal, et c'est voulu : rien ne se met en route tout seul.</p></div>
@@ -63,7 +63,7 @@
 <section class="card"><h2>Éclairage</h2>
 <p><a class="button" href="/ambiance/eclairage">💡 Programmes d'éclairage</a> <span class="muted">— horaires, luminosité, minuterie d'extinction.</span></p>
 {% if eclairages %}
-<p class="muted">Commande manuelle des sorties d'éclairage déclarées dans <a href="/ambiance/ipx">l'inventaire IPX</a> (rôle « éclairage », pilotable). Une lampe suivie par un programme y revient au prochain changement prévu.</p>
+<p class="muted">Commande manuelle des sorties d'éclairage déclarées dans <a href="/ambiance/ipx/v5/relais">l'inventaire IPX</a> (rôle « éclairage », pilotable). Une lampe suivie par un programme y revient au prochain changement prévu.</p>
 <div class="rust-scroll"><table><tr><th>Salle</th><th>Nom</th><th></th></tr>
 {% for e in eclairages %}<tr><td>{{ e.salle or '—' }}</td><td>{{ e.nom }}</td><td>{% if session.peut_modifier %}<div class="rust-actions">
 <form method="post" action="/ambiance/ipx/point/{{ e.id }}/commander" onsubmit="return confirm('Allumer « {{ e.nom }} » ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="valeur" value="1"><button>Allumer</button></form>
@@ -149,7 +149,7 @@
         <label>Entrée hygrométrie{{ select_point('entree_h', s.entree_h, s.points_h, s.id) }}</label>
         <label>Entrée luminosité{{ select_point('entree_lux', s.entree_lux, s.points_lux, s.id) }}</label>
         <label>Sortie ventilation{{ select_point('sortie_ventil', s.sortie_ventil, s.points_ventil, s.id, ecriture=true) }}</label>
-        <p class="muted">Les capteurs proposés sont ceux déjà rangés dans <a href="/ambiance/ipx/carte">la carte de l'automate</a> ou <a href="/ambiance/ipx">l'Explorateur</a> avec le rôle correspondant. Rien à cette liste ? Rangez d'abord le point là-bas, avec le bon rôle (température, humidité, luminosité ou ventilation).</p>
+        <p class="muted">Les capteurs proposés sont ceux déjà rangés dans <a href="/ambiance/ipx/v5/relais">la carte de l'automate</a> ou <a href="/ambiance/ipx/v5/relais">l'Explorateur</a> avec le rôle correspondant. Rien à cette liste ? Rangez d'abord le point là-bas, avec le bon rôle (température, humidité, luminosité ou ventilation).</p>
         <label><input type="checkbox" name="actif" style="width:auto"{% if s.actif %} checked{% endif %}> Mesurer et enregistrer</label>
         <label><input type="checkbox" name="pilote" style="width:auto"{% if s.pilote %} checked{% endif %}> Piloter la ventilation</label>
         <p class="muted">Deux cases distinctes, et c'est volontaire. « Mesurer » se contente de lire et d'archiver. « Piloter » autorise l'écriture sur l'automate. Laissez une salle en mesure seule le temps de comparer avec la régulation en place : c'est la seule façon honnête de vérifier avant de confier.</p>
