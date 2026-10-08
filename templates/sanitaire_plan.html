@@ -1,0 +1,115 @@
+{% extends "base.html" %}{% block title %}Plan de vaccination — EO_Sevel{% endblock %}{% block content %}
+<style>
+.pv-frise{position:relative;min-width:640px}
+.pv-ligne{display:flex;border-top:1px solid var(--line);min-height:96px}
+.pv-etiq{width:120px;flex:none;padding-top:32px;font-size:13px;color:var(--muted)}
+.pv-etiq b{display:block;font-size:15px;color:var(--ink)}
+.pv-piste{position:relative;flex:1;height:96px}
+.pv-piste.edit{cursor:copy}
+.pv-seg{position:absolute;top:32px;height:26px;border-radius:4px;display:flex;align-items:center;overflow:hidden}
+.pv-seg em{font-style:normal;font-size:11px;font-weight:700;padding:0 6px;white-space:nowrap;color:#16301f}
+.pv-seg.engraissement em{color:#fff}.pv-seg.maternite em{color:#3d1d06}.pv-seg.post-sevrage em{color:#10304c}
+.pv-seg.quarantaine{background:#c9b6d9}.pv-seg.chaleur{background:#e8d27a}.pv-seg.gestation{background:#8fb3a0}.pv-seg.maternite{background:#d98b52}.pv-seg.post-sevrage{background:#7fa6c9}.pv-seg.engraissement{background:#5c8a73}
+.pv-ax{position:absolute;top:62px;font-size:11px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.pv-ax.rep{font-weight:700;color:var(--ink)}
+.pv-p{position:absolute;top:24px;width:24px;height:24px;margin-left:-12px;border-radius:50%;background:var(--card,#fff);border:2px solid #c0392b;color:#c0392b;display:flex;align-items:center;justify-content:center;font-size:13px;z-index:2;touch-action:none;box-sizing:border-box}
+.pv-piste.edit .pv-p{cursor:grab}
+.pv-p.soin{border-color:#a07a00;color:#a07a00}
+.pv-p.sel{background:#c0392b;color:#fff}.pv-p.soin.sel{background:#a07a00}
+.pv-lb{position:absolute;top:4px;font-size:11px;white-space:nowrap;transform:translateX(-50%);pointer-events:none;color:var(--ink)}
+.pv-lb.bas{top:78px}
+.pv-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 0 12px}
+.pv-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+.pv-ed{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,.8fr) 90px 110px auto;gap:8px;align-items:end}
+.pv-ed label{font-size:12px;color:var(--muted)}
+.pv-ed input,.pv-ed select{width:100%}
+.pv-barre{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+@media(max-width:700px){.pv-ed{grid-template-columns:1fr 1fr}}
+</style>
+<p><a href="/sanitaire">← Sanitaire</a></p>
+<h1>💉 Plan de vaccination</h1>
+<p class="muted">Chaque ligne est un cycle, les pastilles sont les vaccins et les soins au jour où ils tombent. {% if session.peut_modifier %}Glissez une pastille pour changer le jour, cliquez dessus pour la modifier, cliquez sur un endroit vide d’une ligne pour en ajouter une, puis enregistrez.{% endif %} Les vaccins des truies apparaissent dans la conduite de la semaine, ceux des porcelets dans les soins de portée.</p>
+{% if enregistre %}<p class="card" style="border-left:4px solid #2f7a55">Plan enregistré.</p>{% endif %}
+<div class="pv-leg">
+<span><i style="background:#c9b6d9"></i>Quarantaine, adaptation</span><span><i style="background:#e8d27a"></i>Préparation IA, retour chaleur</span><span><i style="background:#8fb3a0"></i>Gestation</span><span><i style="background:#d98b52"></i>Maternité</span><span><i style="background:#7fa6c9"></i>Post-sevrage</span><span><i style="background:#5c8a73"></i>Engraissement</span>
+<span><i style="border:2px solid #c0392b;border-radius:50%;box-sizing:border-box"></i>Vaccin</span><span><i style="border:2px solid #a07a00;border-radius:50%;box-sizing:border-box"></i>Soin</span>
+</div>
+<section class="card"><div class="rust-scroll"><div class="pv-frise" id="pv-frise"></div></div></section>
+{% if session.peut_modifier %}
+<section class="card" id="pv-panneau">
+<div class="pv-ed">
+<label>Vaccin ou soin<input id="pv-nom"></label>
+<label>Produit<input id="pv-produit"></label>
+<label>Dose<input id="pv-dose"></label>
+<label><span id="pv-jour-lib">Jour</span><input id="pv-jour" type="number" step="1"></label>
+<label>Type<select id="pv-type"><option value="v">Vaccin</option><option value="s">Soin</option></select></label>
+<button type="button" class="ghost danger" id="pv-suppr">Supprimer</button>
+</div>
+<p class="muted" id="pv-aide" style="margin:8px 0 0">Cliquez sur une pastille pour la modifier.</p>
+</section>
+<form method="post" action="/sanitaire/plan" data-no-ajax id="pv-form" class="pv-barre">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<input type="hidden" name="plan" id="pv-plan">
+<button type="submit">Enregistrer le plan</button>
+<button type="button" class="ghost" id="pv-type-plan">Ajouter le plan type</button>
+<span class="muted" id="pv-etat"></span>
+</form>
+<p class="muted" style="font-size:12px">Le plan type reprend les pratiques courantes (quarantaine, parvo-rouget, E. coli, PCV2, myco, iléite…) : à valider avec votre vétérinaire.</p>
+{% endif %}
+<script type="application/json" id="plan-donnees">{{ plan|tojson }}</script>
+<script>
+(function(){
+var P=JSON.parse(document.getElementById('plan-donnees').textContent),c=P.cycle,edit={{ session.peut_modifier|tojson }};
+var mater=c.gestation-c.mater_avant,fin=c.gestation+c.sevrage+10,depart=Math.max(c.depart,c.transfert+30);
+var LIGNES=[
+ {k:'cochettes',n:'Cochettes',s:'J0 = arrivée',L:90,seg:[['Quarantaine',0,42,'quarantaine'],['Adaptation',42,70,'quarantaine'],['Préparation IA',70,90,'chaleur']],rep:[]},
+ {k:'truies',n:'Truies',s:'J0 = IA',L:fin,seg:[['Gestation',0,mater,'gestation'],['Maternité',mater,c.gestation+c.sevrage,'maternite'],['Retour chaleur',c.gestation+c.sevrage,fin,'chaleur']],rep:[[0,'IA'],[c.gestation,'Mise bas'],[c.gestation+c.sevrage,'Sevrage']]},
+ {k:'porcelets',n:'Porcelets',s:'J0 = naissance',L:depart,seg:[['Maternité',0,c.sevrage,'maternite'],['Post-sevrage',c.sevrage,c.transfert,'post-sevrage'],['Engraissement',c.transfert,depart,'engraissement']],rep:[[0,'Naissance'],[c.sevrage,'Sevrage'],[c.transfert,'Engraissement']]},
+ {k:'verrats',n:'Verrats',s:'jour de l’année',L:365,seg:[['Verraterie',0,365,'gestation']],rep:[],mois:true}];
+var TYPE={cochettes:[['s','Prise de sang, déparasitage','',2],['v','SDRP (si élevage positif)','',7],['v','Grippe, 1re dose','',10],['v','Grippe, rappel','',31],['v','Parvo-rouget, 1re dose','',42],['v','Parvo-rouget, rappel','',63]],
+ truies:[['v','Rhinite atrophique','',c.gestation-28],['v','E. coli + clostridies','',c.gestation-21],['s','Déparasitage','',c.gestation-10],['v','Parvo-rouget','',c.gestation+12]],
+ porcelets:[['s','Fer','',2],['s','Coccidiose','',4],['v','PCV2 + mycoplasme','',21],['v','Iléite (dans l’eau)','',c.sevrage],['v','Glässer (si besoin)','',c.sevrage+12],['v','App, 1re dose','',56],['v','App, rappel','',84]],
+ verrats:[['v','Parvo-rouget','',60],['v','Parvo-rouget','',240],['v','Grippe','',30],['v','Grippe','',150],['v','Grippe','',270]]};
+var sel=null,modifie=false,fr=document.getElementById('pv-frise');
+function $(i){return document.getElementById(i)}
+function marque(){modifie=true;var e=$('pv-etat');if(e)e.textContent='Modifications non enregistrées'}
+function pct(x,L){return Math.max(0,Math.min(L,x))/L*100}
+function dessine(){
+ fr.innerHTML='';
+ LIGNES.forEach(function(li){
+  var v=P.lignes[li.k]=P.lignes[li.k]||[];
+  var w=document.createElement('div');w.className='pv-ligne';
+  w.innerHTML='<div class="pv-etiq"><b>'+li.n+'</b>'+li.s+'</div>';
+  var p=document.createElement('div');p.className='pv-piste'+(edit?' edit':'');
+  li.seg.forEach(function(s){if(s[2]<=s[1])return;var e=document.createElement('span');e.className='pv-seg '+s[3];e.style.left=pct(s[1],li.L)+'%';e.style.width=((Math.min(s[2],li.L)-s[1])/li.L*100)+'%';e.innerHTML='<em>'+s[0]+'</em>';p.appendChild(e)});
+  if(li.mois){['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'].forEach(function(m,i){var a=document.createElement('span');a.className='pv-ax';a.style.left=pct(i*30.4+15,365)+'%';a.textContent=m;p.appendChild(a)})}
+  else{var pas=li.L>200?28:14;for(var d=0;d<li.L;d+=pas){if(li.rep.some(function(r){return Math.abs(r[0]-d)<pas*0.6}))continue;var a=document.createElement('span');a.className='pv-ax';a.style.left=pct(d,li.L)+'%';a.textContent='J'+d;p.appendChild(a)}
+   li.rep.forEach(function(r){var a=document.createElement('span');a.className='pv-ax rep';a.style.left=pct(r[0],li.L)+'%';a.textContent=r[1]+(r[0]?' J'+r[0]:'');p.appendChild(a)})}
+  v.map(function(x,i){return i}).sort(function(a,b){return v[a].x-v[b].x}).forEach(function(i,k){
+   var x=v[i],l=document.createElement('span');l.className='pv-lb'+(k%2?' bas':'');l.style.left=pct(x.x,li.L)+'%';l.textContent=x.nom;p.appendChild(l);
+   var m=document.createElement('span');m.className='pv-p'+(x.type==='s'?' soin':'')+(sel&&sel[0]===li.k&&sel[1]===i?' sel':'');
+   m.style.left=l.style.left;m.title=x.nom+(x.produit?' · '+x.produit:'')+' · J'+x.x;m.textContent=x.type==='s'?'✚':'💉';
+   if(edit)m.onpointerdown=function(ev){ev.preventDefault();ev.stopPropagation();sel=[li.k,i];remplit();m.setPointerCapture(ev.pointerId);var rc=p.getBoundingClientRect(),bouge=false;
+    m.onpointermove=function(e2){var nx=Math.round(Math.max(0,Math.min(li.L,(e2.clientX-rc.left)/rc.width*li.L)));if(nx!==x.x){bouge=true;x.x=nx;m.style.left=l.style.left=pct(nx,li.L)+'%';$('pv-jour').value=nx}};
+    m.onpointerup=function(){m.onpointermove=null;if(bouge)marque();dessine();remplit()}};
+   else m.onclick=function(ev){ev.stopPropagation()};
+   p.appendChild(m)});
+  if(edit)p.onclick=function(ev){var rc=p.getBoundingClientRect();v.push({id:null,nom:'Nouveau vaccin',produit:'',dose:'',type:'v',x:Math.round((ev.clientX-rc.left)/rc.width*li.L)});sel=[li.k,v.length-1];marque();dessine();remplit();$('pv-nom').focus();$('pv-nom').select()};
+  w.appendChild(p);fr.appendChild(w)})}
+function cur(){return sel?P.lignes[sel[0]][sel[1]]:null}
+function remplit(){if(!edit)return;var x=cur();$('pv-panneau').style.opacity=x?1:.55;['nom','produit','dose'].forEach(function(f){$('pv-'+f).value=x?x[f]:''});$('pv-jour').value=x?x.x:'';$('pv-type').value=x?x.type:'v';
+ var li=sel&&LIGNES.find(function(l){return l.k===sel[0]});$('pv-jour-lib').textContent=li?'Jour ('+li.s.replace('J0 = ','depuis ')+')':'Jour';
+ $('pv-aide').textContent=x?li.n+' : '+x.nom:'Cliquez sur une pastille pour la modifier.'}
+if(edit){
+ ['nom','produit','dose'].forEach(function(f){$('pv-'+f).oninput=function(){var x=cur();if(x){x[f]=this.value;marque();if(f==='nom')dessine()}}});
+ $('pv-jour').oninput=function(){var x=cur();if(x&&this.value!==''){x.x=Math.round(+this.value);marque();dessine()}};
+ $('pv-type').onchange=function(){var x=cur();if(x){x.type=this.value;marque();dessine()}};
+ $('pv-suppr').onclick=function(){if(!sel)return;P.lignes[sel[0]].splice(sel[1],1);sel=null;marque();dessine();remplit()};
+ $('pv-type-plan').onclick=function(){var n=0;Object.keys(TYPE).forEach(function(k){TYPE[k].forEach(function(t){var noms=P.lignes[k].map(function(x){return x.nom.toLowerCase()});if(noms.indexOf(t[1].toLowerCase())<0||k==='verrats'&&!P.lignes[k].some(function(x){return x.nom===t[1]&&x.x===t[3]})){P.lignes[k].push({id:null,nom:t[1],produit:t[2],dose:'',type:t[0],x:t[3]});n++}})});if(n){marque();dessine()}$('pv-etat').textContent=n?n+' actes ajoutés, à vérifier puis enregistrer':'Le plan type est déjà là'};
+ $('pv-form').onsubmit=function(){var tout=[];Object.keys(P.lignes).forEach(function(k){P.lignes[k].forEach(function(x){tout.push({id:x.id,ligne:k,nom:x.nom,produit:x.produit||'',dose:x.dose||'',type:x.type,x:x.x})})});$('pv-plan').value=JSON.stringify(tout);modifie=false};
+ window.addEventListener('beforeunload',function(e){if(modifie){e.preventDefault();e.returnValue=''}});
+}
+dessine();remplit();
+})();
+</script>
+{% endblock %}

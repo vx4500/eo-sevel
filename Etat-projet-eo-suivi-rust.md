@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.59.0** — page mise-bas refaite (tableau + panneau de saisie).
+Version actuelle : **2.60.0** — plan de vaccination en frise.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.60.0 : /sanitaire/plan (src/routes/vaccination.rs, sanitaire_plan.html) — frise éditable des actes acteprotocole par ligne cochettes (réf. arrivee) / truies (J0 = IA, réf. existantes conservées) / porcelets (réf. mise_bas → soinportee) / verrats (réf. annee) ; POST JSON dans un champ de formulaire, actes retirés → actif=0.
 
 Version Rust 2.59.0 : /maternite vue mises-bas — modèle A choisi par Emmanuel : tableau (tr.mb-ligne#truie-ID) + panneau (div.mb-fiche#fiche-ID) ; mêmes formulaires et routes qu'avant (misebas, etat, perte), champs secondaires sous « Plus ».
 

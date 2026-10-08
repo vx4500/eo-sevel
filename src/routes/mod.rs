@@ -33,6 +33,7 @@ mod conduite;
 mod eclairage;
 mod demo_portal;
 mod departs;
+mod vaccination;
 pub(crate) mod documents;
 mod factures;
 mod factures_csv;
@@ -691,6 +692,7 @@ pub fn router(state: AppState) -> Router {
         .route("/taches/{id}/fait", post(tache_fait))
         .route("/taches/{id}/supprimer", post(tache_supprimer))
         .route("/sanitaire", get(sanitaire))
+        .route("/sanitaire/plan", get(vaccination::page).post(vaccination::enregistrer))
         .route("/resolution-problemes", get(resolution_problemes))
         .route("/pharmacie", get(pharmacie))
         .route("/sanitaire/acte/ajouter", post(sanitaire_acte_ajouter))
