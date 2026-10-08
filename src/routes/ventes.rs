@@ -608,3 +608,25 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod reaffectation_ponctuelle {
+    use super::*;
+
+    /// Réaffecte un apport (lot unique) sur une bande par le même chemin que le
+    /// bouton de la page : `EO_TEST_BASE=… EO_REAFFECTER=apport:bande cargo test
+    /// -- --ignored reaffecter_un_apport`.
+    #[tokio::test]
+    #[ignore]
+    async fn reaffecter_un_apport() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let consigne = std::env::var("EO_REAFFECTER")?;
+        let (apport, bande) = consigne.split_once(':').expect("apport:bande");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
+            .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).busy_timeout(std::time::Duration::from_secs(10))).await?;
+        let mut tx = pool.begin().await?;
+        assign(&mut tx, apport.parse()?, -1, Some(bande.parse()?)).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+}
