@@ -159,6 +159,7 @@ async fn main() -> anyhow::Result<()> {
     let templates = templates::build()?;
     routes::charger_equip_masques(&pool).await;
     let state = AppState::new(config.clone(), pool, templates);
+    routes::recharger_nom_elevage(&state.pool).await;
 
     let app = routes::router(state.clone())
         .nest_service("/static", ServeDir::new("static"))

@@ -1146,6 +1146,7 @@ pub(super) async fn parametres_maj(
     } else {
         tx.commit().await?;
     }
+    super::recharger_nom_elevage(&state.pool).await;
     Ok(Redirect::to("/parametres").into_response())
 }
 
@@ -2283,7 +2284,7 @@ pub(super) async fn communications_reglages(
             .await?
             .flatten();
     let key = form_text(&form, "brevo_api_key").or(existing);
-    sqlx::query("INSERT INTO reglagecommunicationventedirecte(id,brevo_api_key,sender_email,sender_name,sms_sender,email_list_id,sms_list_id) VALUES(1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET brevo_api_key=excluded.brevo_api_key,sender_email=excluded.sender_email,sender_name=excluded.sender_name,sms_sender=excluded.sms_sender,email_list_id=excluded.email_list_id,sms_list_id=excluded.sms_list_id").bind(key).bind(form_text(&form,"sender_email")).bind(form_text(&form,"sender_name").unwrap_or_else(||"EI ORY EMMANUEL".into())).bind(form_text(&form,"sms_sender").unwrap_or_else(||"ORYEMMANUEL".into())).bind(form_i64(&form,"email_list_id")).bind(form_i64(&form,"sms_list_id")).execute(&state.pool).await?;
+    sqlx::query("INSERT INTO reglagecommunicationventedirecte(id,brevo_api_key,sender_email,sender_name,sms_sender,email_list_id,sms_list_id) VALUES(1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET brevo_api_key=excluded.brevo_api_key,sender_email=excluded.sender_email,sender_name=excluded.sender_name,sms_sender=excluded.sms_sender,email_list_id=excluded.email_list_id,sms_list_id=excluded.sms_list_id").bind(key).bind(form_text(&form,"sender_email")).bind(form_text(&form,"sender_name").unwrap_or_else(||"EO_Sevel".into())).bind(form_text(&form,"sms_sender").unwrap_or_else(||"EOSEVEL".into())).bind(form_i64(&form,"email_list_id")).bind(form_i64(&form,"sms_list_id")).execute(&state.pool).await?;
     Ok(Redirect::to("/vente-directe/communications").into_response())
 }
 

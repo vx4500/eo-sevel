@@ -180,7 +180,7 @@
 <body class="{% block body_class %}{% endblock %}">
 {% if session %}
 <nav class="rust-nav" aria-label="Navigation principale">
-  <a class="site-brand" href="/" aria-label="EI ORY Emmanuel — Accueil"><img src="/static/favicon.png?v={{ app_version }}" alt=""><span>EI ORY EMMANUEL</span></a>
+  <a class="site-brand" href="/" aria-label="{{ entete_nom or 'EO_Sevel' }} — Accueil"><img src="/static/favicon.png?v={{ app_version }}" alt=""><span>{{ entete_nom or 'EO_Sevel' }}</span></a>
 
   {% if 'quotidien' in session.pages or 'planning' in session.pages or 'entretien' in session.pages %}
   <div class="rust-menu" data-rubrique="Aujourd’hui"><button type="button" aria-expanded="false">Aujourd’hui <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub">

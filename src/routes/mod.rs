@@ -938,7 +938,31 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String>> {
+/// Nom affiché dans l'en-tête de chaque page (Paramètres → Nom de l'élevage),
+/// lu au démarrage et à chaque enregistrement des paramètres.
+static NOM_ELEVAGE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+pub(crate) async fn recharger_nom_elevage(pool: &SqlitePool) {
+    let nom: Option<String> = sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='nom_elevage'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .map(|n: String| n.trim().to_string())
+        .filter(|n| !n.is_empty());
+    if let Ok(mut v) = NOM_ELEVAGE.write() {
+        *v = nom;
+    }
+}
+
+fn render(state: &AppState, name: &str, mut context: Value) -> AppResult<Html<String>> {
+    if let Value::Object(ctx) = &mut context {
+        if !ctx.contains_key("entete_nom") {
+            let nom = NOM_ELEVAGE.read().ok().and_then(|v| v.clone());
+            ctx.insert("entete_nom".into(), json!(nom.unwrap_or_else(|| "EO_Sevel".into())));
+        }
+    }
     let template = state
         .templates
         .get_template(name)
