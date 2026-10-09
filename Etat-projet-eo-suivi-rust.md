@@ -1,10 +1,12 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.62.0** — page Économie plus visuelle.
+Version actuelle : **2.63.0** — renommer une bande.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
 
 Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
+
+Version Rust 2.63.0 : renommer_bande (mod.rs) — champ code du formulaire rapide /bandes/{id}/modifier-rapide ; bande.code + 13 colonnes qui recopient le code (COPIES_CODE_BANDE : truie, porccharcutier, mouvementstock, saisieabattoir, tache, traitementcharcutier, porteerang.bande, achatgenetique, mouvementpharmacie, declarationmort, receptionachat, consoaliment_bande, pesee_bande) en une transaction ; doublon (insensible à la casse) et nom vide refusés ; n° de marquage recalculé avec le nouveau code.
 
 Version Rust 2.62.0 : economique.html — JSON #eco-donnees (resultats_bandes + mensuel) ; JS : barres recettes/charges par bande (#eco-barres), cartes téléphone (#eco-cartes, tableau masqué < 700 px), pastilles prix/kg et coût/porc vs moyenne des bandes vendues (pas de référence IFIP économique en base), courbe SVG 12 mois (#eco-courbe), lots : frappe sans n° de semaine (regex ^[A-Z0-9]{3}\d{2}$) et TMP en couleur ; blocs secondaires en details.card.eco-pli. Test ignoré economique_sur_copie_de_la_base_reelle (EO_TEST_BASE).
 

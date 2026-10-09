@@ -3156,6 +3156,41 @@ async fn bande_ajouter(
 }
 
 /// Édition « à la volée » depuis la liste `/bandes` (§2 des demandes en
+/// Tables qui recopient le code de la bande (texte) au lieu de son id.
+const COPIES_CODE_BANDE: [(&str, &str); 13] = [
+    ("truie", "bande_code"), ("porccharcutier", "bande_code"), ("mouvementstock", "bande_code"),
+    ("saisieabattoir", "bande_code"), ("tache", "bande_code"), ("traitementcharcutier", "bande_code"),
+    ("porteerang", "bande"), ("achatgenetique", "bande_code"), ("mouvementpharmacie", "bande_code"),
+    ("declarationmort", "bande_code"), ("receptionachat", "bande_code"), ("consoaliment_bande", "bande_code"),
+    ("pesee_bande", "bande_code"),
+];
+
+/// Renomme une bande et reporte le nouveau nom partout où il est recopié.
+/// Refusé si le nom est vide ou déjà pris par une autre bande.
+pub(crate) async fn renommer_bande(pool: &SqlitePool, id: i64, ancien: &str, nouveau: &str) -> AppResult<()> {
+    let nouveau = nouveau.trim();
+    if nouveau.is_empty() || nouveau.len() > 20 {
+        return Err(AppError::Invalid("Nom de bande vide ou trop long (20 caractères au plus).".into()));
+    }
+    let pris: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM bande WHERE lower(code)=lower(?) AND id<>?")
+        .bind(nouveau).bind(id).fetch_one(pool).await?;
+    if pris > 0 {
+        return Err(AppError::Invalid(format!("Le nom « {nouveau} » est déjà pris par une autre bande.")));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE bande SET code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(nouveau).bind(id).execute(&mut *tx).await?;
+    for (table, colonne) in COPIES_CODE_BANDE {
+        let existe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?")
+            .bind(table).bind(colonne).fetch_one(&mut *tx).await?;
+        if existe == 1 {
+            sqlx::query(&format!("UPDATE {table} SET {colonne}=? WHERE {colonne}=?"))
+                .bind(nouveau).bind(ancien).execute(&mut *tx).await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 /// attente) : chaque ligne du tableau est son propre petit formulaire (voir
 /// `form="b{{ id }}"` dans `bandes.html`), pour changer mise-bas/site/n°
 /// marquage sans ouvrir la fiche bande complète. Les champs calculés
@@ -3172,10 +3207,16 @@ async fn bande_modifier_rapide(
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
     let site = selected_site(&state.pool, &form).await?;
-    let code: Option<String> = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
+    let mut code: Option<String> = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
         .bind(id)
         .fetch_optional(&state.pool)
         .await?;
+    if let (Some(ancien), Some(nouveau)) = (code.clone(), form_text(&form, "code")) {
+        if nouveau != ancien {
+            renommer_bande(&state.pool, id, &ancien, &nouveau).await?;
+            code = Some(nouveau);
+        }
+    }
     // Le n° de marquage suit automatiquement le site : une bande qui change
     // de site (transfert de salle, correction) ne doit jamais garder le
     // numéro de son ancien site.
@@ -14812,3 +14853,24 @@ mod economique_visuel_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod renommer_bande_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn le_nouveau_nom_suit_partout_et_un_doublon_est_refuse() -> anyhow::Result<()> {
+        let state = super::documents::tests::state().await;
+        sqlx::raw_sql("INSERT INTO bande(id,code,active) VALUES(1,'B1.52',1),(2,'B2.07',1); \
+            INSERT INTO truie(id,num_travail,statut,rang,reformee,mere_cochette,bande_code) VALUES(1,'T1','vide',1,0,0,'B1.52');")
+            .execute(&state.pool).await?;
+        renommer_bande(&state.pool, 1, "B1.52", "B1.01").await?;
+        let (b, t): (String, String) = sqlx::query_as("SELECT (SELECT code FROM bande WHERE id=1),(SELECT bande_code FROM truie WHERE id=1)")
+            .fetch_one(&state.pool).await?;
+        assert_eq!((b.as_str(), t.as_str()), ("B1.01", "B1.01"));
+        assert!(renommer_bande(&state.pool, 1, "B1.01", "b2.07").await.is_err(), "nom déjà pris");
+        assert!(renommer_bande(&state.pool, 1, "B1.01", "  ").await.is_err(), "nom vide");
+        Ok(())
+    }
+}
+
