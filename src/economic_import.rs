@@ -810,6 +810,24 @@ fn parse_genetique(text: &str) -> Result<ImportDocument, String> {
     finish_document("génétique", vec![line], reference, date)
 }
 
+/// Apport de réformes : Cooperl l'indique par « Hors taxes réformes », ou à
+/// défaut il ne contient que des lignes TRUIE / VERRAT et aucun porc.
+fn is_apport_reforme(text: &str) -> bool {
+    let upper = text.to_uppercase();
+    if upper.contains("HORS TAXES RÉFORMES") || upper.contains("HORS TAXES REFORMES") {
+        return true;
+    }
+    let porc = upper.lines().any(|l| l.contains(" PORC ") || l.contains("PORC (") || l.contains(" LOURD ") || l.contains(" LEGER "));
+    !porc && (upper.contains("TRUIE VIANDE") || upper.contains("VERRAT"))
+}
+
+/// Vrai si les lots enregistrés d'un apport sont des réformes.
+pub fn lots_reforme(lots_json: &str) -> bool {
+    serde_json::from_str::<Vec<serde_json::Value>>(lots_json)
+        .map(|lots| !lots.is_empty() && lots.iter().all(|l| l["reforme"] == true))
+        .unwrap_or(false)
+}
+
 #[derive(Debug)]
 struct ApportLot {
     bon: Option<String>,
@@ -894,10 +912,14 @@ fn parse_apport(text: &str) -> Result<ImportDocument, String> {
         .filter_map(|line| line.amount)
         .map(f64::abs)
         .sum();
+    // Apport de truies (ou verrats) de réforme : facturé comme un apport,
+    // mais ce ne sont pas des porcs charcutiers d'une bande.
+    let reforme = is_apport_reforme(text);
     let lots_json = lots
         .iter()
         .map(|lot| {
             json!({
+                "reforme": reforme,
                 "bon": lot.bon,
                 "ref": lot.reference,
                 "nb_porcs": lot.pigs,
@@ -1748,6 +1770,16 @@ mod tests {
         assert_eq!(vente.quantity, Some(3.0));
         assert_eq!(import_test_detail(vente, "frappe"), Some("DA9"));
         assert_eq!(vente.amount, Some(212.38));
+        assert!(is_apport_reforme(text));
+    }
+
+    #[test]
+    fn apport_de_porcs_n_est_pas_une_reforme() {
+        let text = "Bon n° 8632\n2 PORC (COEUR DE GAMME) 57 % 2 DA9 180,400 1,430 257,97\nTotal bon..... 5067,400 8.341,49";
+        assert!(!is_apport_reforme(text));
+        assert!(lots_reforme(r#"[{"reforme":true,"nb_porcs":3}]"#));
+        assert!(!lots_reforme(r#"[{"nb_porcs":56}]"#));
+        assert!(!lots_reforme("pas du json"));
     }
 
     #[test]

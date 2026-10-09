@@ -68,6 +68,13 @@ pub(super) async fn page(
     )
     .await?;
     bandes.reverse();
+    // Ce que la bande a réellement donné : les porcs partis à l'abattoir
+    // (apports rattachés à la bande). Partiel tant que la bande se vend.
+    for b in bandes.iter_mut() {
+        let id = b["id"].as_i64().unwrap_or_default();
+        let vendus: i64 = sqlx::query_scalar(conduite::VENDUS_BANDE).bind(id).fetch_one(pool).await?;
+        b["vendus"] = json!((vendus > 0).then_some(vendus));
+    }
 
     let objectifs = generic_rows(pool, "SELECT cle,valeur,sens FROM objectif WHERE actif=1").await?;
     let objectif = |cle: &str| objectifs.iter().find(|o| o["cle"] == cle);
@@ -93,6 +100,31 @@ pub(super) async fn page(
             "sens": sens,
         }));
         // Taux de pleines juste après « Pleines à l'écho », comme CSuite.
+        if cle == "cs_total_sevres" {
+            let ratio = |num: &str, den: &str, facteur: f64| -> Vec<Option<f64>> {
+                bandes
+                    .iter()
+                    .map(|b| match (nombre(&b[num]), nombre(&b[den])) {
+                        (Some(n), Some(d)) if d > 0.0 => Some(n / d * facteur),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            let vendus: Vec<Option<f64>> = bandes.iter().map(|b| nombre(&b["vendus"])).collect();
+            for (libelle, decimales, valeurs) in [
+                ("Porcs vendus (abattoir)", 0, vendus),
+                ("Vendus / truie mise bas", 1, ratio("vendus", "cs_truies_mb", 1.0)),
+                ("Vendus / sevrés (%)", 1, ratio("vendus", "cs_total_sevres", 100.0)),
+            ] {
+                let v: Vec<f64> = valeurs.iter().flatten().copied().collect();
+                let moy = (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64);
+                lignes.push(json!({
+                    "libelle": libelle, "decimales": decimales, "vente": true,
+                    "cellules": valeurs.iter().map(|x| json!({"v": texte(*x, decimales), "etat": ""})).collect::<Vec<_>>(),
+                    "moyenne": {"v": texte(moy, decimales), "etat": ""}, "objectif": null, "sens": "haut",
+                }));
+            }
+        }
         if cle == "cs_pleines" {
             let taux: Vec<Option<f64>> = bandes
                 .iter()

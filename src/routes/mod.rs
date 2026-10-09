@@ -9796,6 +9796,11 @@ async fn synchronise_sortie_abattoir(
         .bind(sale_id)
         .execute(&mut **tx)
         .await?;
+    // Truies de réforme : ce ne sont pas des porcs de la bande, aucune sortie
+    // d'effectif de bande (elles sortent par la réforme de la truie).
+    if lots_json.is_some_and(crate::economic_import::lots_reforme) {
+        return Ok(());
+    }
     let mut allocations = Vec::<(i64, i64)>::new();
     if let Some(raw) = lots_json {
         if let Ok(Value::Array(lots)) = serde_json::from_str::<Value>(raw) {
