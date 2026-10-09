@@ -4,7 +4,7 @@
 {% macro ecart(x, ref, sens=1) %}{% if x is not none and ref is not none %}{% set d = (x - ref) * sens %}{% if d >= 0.5 %} <span class="cd-badge">▲</span>{% elif d <= -0.5 %} <span class="cd-badge rouge">▼</span>{% endif %}{% endif %}{% endmacro %}
 <div class="cd">
 <h1>Analyse des bandes</h1>
-<p class="note">Comparer les bandes entre elles, trouver ce qui les tire vers le bas et mesurer ce que ça coûte sur l’année.</p>
+<p class="note">Comparer les bandes entre elles, trouver ce qui les tire vers le bas et mesurer ce que ça coûte sur l’année. <a class="no-print" href="/analyse-bandes/tableau"><b>Tableau des bandes avec objectifs</b> (export PDF) →</a></p>
 
 <section class="cd-section">
 <h2>Les 3 bandes comparées <small>moyenne de leurs cycles récents</small></h2>

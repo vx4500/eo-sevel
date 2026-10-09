@@ -161,6 +161,10 @@
     .capacity-badge.warn{background:#fff4e6;color:#7a4b00;border:1px solid #ffdca8}
     .capacity-badge.full{background:#ffeef0;color:#87121a;border:1px solid #ffccd5}
     /* Toast notifications */
+    .eo-attente{position:fixed;left:12px;bottom:94px;z-index:9998;display:flex;gap:4px;align-items:center;background:#fff3cd;color:#664d03;border:1px solid #e0b84a;border-radius:20px;padding:4px 6px 4px 12px;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+    .eo-attente[hidden]{display:none}
+    .eo-attente button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:4px}
+    .eo-attente .eo-attente-envoyer{background:#664d03;color:#fff;border-radius:14px;padding:4px 10px}
     #toast-container{position:fixed;right:18px;bottom:94px;z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
     .toast{min-width:220px;padding:10px 14px;border-radius:8px;color:white;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.18);opacity:0;transform:translateY(8px);transition:opacity .22s,transform .22s}
     .toast.show{opacity:1;transform:translateY(0)}
@@ -350,6 +354,7 @@
   {% elif 'documents' in session.pages %}<a href="/documents-obligatoires" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>{% endif %}
 </nav>{% endif %}
 {% if session and session.peut_modifier %}
+<div id="eo-attente" class="eo-attente" hidden role="status"><button type="button" class="eo-attente-voir"><span class="eo-attente-texte"></span></button><button type="button" class="eo-attente-envoyer" title="Réessayer l’envoi">Envoyer</button></div>
 <button id="fab" type="button" title="Saisie rapide" aria-label="Ouvrir la saisie rapide" aria-controls="fab-panel" aria-expanded="false">+</button>
 <aside id="fab-panel" aria-label="Saisie rapide" aria-hidden="true">
   <div class="fab-head">Saisie rapide <button type="button" id="fab-close" class="fab-close" aria-label="Fermer la saisie rapide">✕</button></div>
@@ -1077,6 +1082,18 @@
   }
   if(caseQuai) caseQuai.addEventListener('change',function(){nombreQuai.value='';majQuai();});
 
+  function libelleSaisie(){
+    var t=document.querySelector('.fab-t[data-type="'+typeInput.value+'"]');
+    var nom=t?t.textContent.trim():typeInput.value;
+    var o=sow&&!sow.disabled&&sow.selectedIndex>0?sow.options[sow.selectedIndex].text:'';
+    var d=document.getElementById('fab-date');
+    return nom+(o?' · '+o:'')+(d&&d.value?' · '+d.value.split('-').reverse().join('/'):'');
+  }
+  function gardeHorsLigne(err){
+    if(!window.eoHorsLigne||!window.eoHorsLigne.estReseau(err)) return false;
+    if(!window.eoHorsLigne.garder(form,libelleSaisie())) return false;
+    setSubmitPending(false); setOpen(false); return true;
+  }
   form.addEventListener('submit',function(event){
     if(typeInput.value==='quai'){
       event.preventDefault();
@@ -1092,7 +1109,7 @@
           caseQuai.value=''; nombreQuai.value=''; chargerCasesQuai();
           setSubmitPending(false);
         })
-        .catch(function(err){ setSubmitPending(false); showToast(err.message,'error'); });
+        .catch(function(err){ if(gardeHorsLigne(err)) return; setSubmitPending(false); showToast(err.message,'error'); });
       return;
     }
     // La route des truies attend une case cochée par animal (`truie_<id>`) :
@@ -1135,7 +1152,7 @@
       setSubmitPending(true);
       var fd = new FormData(form);
       fd.set('ajax','1');
-      fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function(resp){
+      fetch(form.action, { method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin' }).then(function(resp){
         if(resp.ok){ return resp.json().catch(function(){ return {ok:true}; }); }
         throw new Error('Erreur serveur');
       }).then(function(data){
@@ -1171,10 +1188,110 @@
           } else { showToast('Sevrage enregistré.','success'); setOpen(false); }
       } catch(e){ showToast('Sevrage enregistré (affichage non mis à jour).','info'); setOpen(false); }
       setSubmitPending(false);
-      }).catch(function(err){ setSubmitPending(false); showToast('Erreur lors de l\'enregistrement: '+(err&&err.message?err.message:'Erreur'),'error'); });
+      }).catch(function(err){ if(gardeHorsLigne(err)) return; setSubmitPending(false); showToast('Erreur lors de l\'enregistrement: '+(err&&err.message?err.message:'Erreur'),'error'); });
       return;
     }
+    // Autres saisies : même résultat qu'un envoi classique (on suit la page
+    // renvoyée), mais sans réseau la saisie est gardée au lieu d'être perdue.
+    if(event.defaultPrevented || !window.eoHorsLigne) return;
+    event.preventDefault();
+    setSubmitPending(true);
+    fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)), credentials: 'same-origin' }).then(function(resp){
+      var type=resp.headers.get('content-type')||'';
+      if(type.indexOf('text/html')===-1){ setSubmitPending(false); form.submit(); return; }
+      return resp.text().then(function(html){
+        var d=new DOMParser().parseFromString(html,'text/html'), m=d.querySelector('[data-app-error]');
+        if(!resp.ok||m){ setSubmitPending(false); showToast(m?(m.getAttribute('data-app-error')||m.textContent.trim()):('Erreur lors de l\u2019enregistrement ('+resp.status+')'),'error'); return; }
+        window.location.href=resp.url||'/?saisie=ok';
+      });
+    }).catch(function(err){ if(gardeHorsLigne(err)) return; setSubmitPending(false); showToast('Enregistrement impossible.','error'); });
   });
+})();
+</script>
+<script>
+/* Saisie hors-ligne : quand le serveur ne répond pas (pas de réseau dans le
+   bâtiment), une saisie rapide est gardée sur le téléphone puis envoyée toute
+   seule dès que le réseau revient. Avec du réseau, rien ne change. */
+(function(){
+  var CLE='eo-saisies-en-attente', CLE_REFUS='eo-saisies-refusees';
+  var badge=document.getElementById('eo-attente');
+  var envoiEnCours=false;
+  function lire(cle){ try{ return JSON.parse(localStorage.getItem(cle)||'[]')||[]; } catch(e){ return []; } }
+  function ecrire(cle,liste){ try{ localStorage.setItem(cle,JSON.stringify(liste)); return true; } catch(e){ return false; } }
+  function toast(m,k){ if(window.eoToast) window.eoToast(m,k); }
+  function jeton(){ var c=document.querySelector('#fab-form [name="csrf_token"]'); return c?c.value:''; }
+  function afficher(){
+    if(!badge) return;
+    var n=lire(CLE).length, r=lire(CLE_REFUS).length;
+    badge.hidden=!(n||r);
+    var t=badge.querySelector('.eo-attente-texte');
+    t.textContent=(n?n+' saisie'+(n>1?'s':'')+' en attente de réseau':'')+(n&&r?' · ':'')+(r?r+' refusée'+(r>1?'s':''):'');
+  }
+  // Envoi effectif d'une saisie gardée. Rend 'ok', 'refus' (le serveur l'a
+  // lue et refusée : on ne la renverra pas) ou 'reseau' (on réessaiera).
+  function envoyer(item){
+    var p=new URLSearchParams(item.donnees); p.set('ajax','1'); p.set('csrf_token',jeton());
+    return fetch('/saisie-rapide',{method:'POST',body:p,credentials:'same-origin'}).then(function(resp){
+      var type=resp.headers.get('content-type')||'';
+      if(resp.ok && type.indexOf('json')>=0) return 'ok';
+      // session expirée : renvoi vers la connexion, on garde la saisie
+      if(/\/(login|connexion)/.test(resp.url||'')) return 'reseau';
+      return resp.text().then(function(html){
+        var d=new DOMParser().parseFromString(html,'text/html'), m=d.querySelector('[data-app-error]');
+        item.erreur=m?(m.getAttribute('data-app-error')||m.textContent.trim()):('erreur '+resp.status);
+        return 'refus';
+      });
+    }).catch(function(){ return 'reseau'; });
+  }
+  function vider(){
+    if(envoiEnCours||!lire(CLE).length||!jeton()) return;
+    envoiEnCours=true;
+    var envoyees=0, refusees=0;
+    (function suivant(){
+      var file=lire(CLE);
+      if(!file.length){ fin(); return; }
+      var item=file[0];
+      envoyer(item).then(function(res){
+        if(res==='reseau'){ fin(); return; }
+        file=lire(CLE).filter(function(x){ return x.id!==item.id; }); ecrire(CLE,file);
+        if(res==='ok'){ envoyees++; } else { refusees++; var r=lire(CLE_REFUS); r.push(item); ecrire(CLE_REFUS,r); }
+        afficher(); suivant();
+      });
+    })();
+    function fin(){
+      envoiEnCours=false; afficher();
+      if(envoyees) toast(envoyees+' saisie'+(envoyees>1?'s':'')+' hors-ligne envoyée'+(envoyees>1?'s':'')+'.','success');
+      if(refusees) toast(refusees+' saisie'+(refusees>1?'s':'')+' refusée'+(refusees>1?'s':'')+' par le serveur : touchez le bandeau pour voir.','error');
+    }
+  }
+  window.eoHorsLigne={
+    // vrai si l'erreur vient du réseau (fetch impossible), pas du serveur
+    estReseau:function(err){ return err instanceof TypeError; },
+    garder:function(form,libelle){
+      var p=new URLSearchParams(new FormData(form)); p.delete('ajax');
+      var file=lire(CLE);
+      file.push({id:Date.now()+'-'+Math.random().toString(36).slice(2,8),quand:new Date().toISOString(),libelle:libelle||'',donnees:p.toString()});
+      if(!ecrire(CLE,file)){ toast('Pas de réseau et mémoire du téléphone pleine : saisie non gardée.','error'); return false; }
+      afficher(); toast('Pas de réseau : saisie gardée sur le téléphone, envoi automatique au retour du réseau.','info');
+      return true;
+    },
+    vider:vider
+  };
+  if(badge){
+    badge.querySelector('.eo-attente-envoyer').addEventListener('click',vider);
+    badge.querySelector('.eo-attente-voir').addEventListener('click',function(){
+      var att=lire(CLE), ref=lire(CLE_REFUS), lignes=[];
+      att.forEach(function(x){ lignes.push('⏳ '+x.libelle+' ('+new Date(x.quand).toLocaleString('fr-FR')+')'); });
+      ref.forEach(function(x){ lignes.push('✕ '+x.libelle+' : '+(x.erreur||'refusée')); });
+      var msg=lignes.join('\n');
+      if(ref.length){
+        if(window.confirm(msg+'\n\nEffacer les saisies refusées ? (à ressaisir à la main)')){ ecrire(CLE_REFUS,[]); afficher(); }
+      } else { window.alert(msg); }
+    });
+  }
+  window.addEventListener('online',vider);
+  setInterval(vider,30000);
+  afficher(); vider();
 })();
 </script>
 {% endif %}

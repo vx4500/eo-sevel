@@ -42,6 +42,7 @@ mod genetique_import;
 mod gte_periode;
 mod historique_truie;
 mod improductives;
+mod tableau_bandes;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
@@ -712,6 +713,7 @@ pub fn router(state: AppState) -> Router {
         .route("/conduite/semaine/valider", post(conduite::valider))
         .route("/flux", get(conduite::flux))
         .route("/analyse-bandes", get(conduite::analyse))
+        .route("/analyse-bandes/tableau", get(tableau_bandes::page))
         .route("/rapport-hebdomadaire.pdf", get(rapport::ancien_pdf))
         .route("/calendrier.ics", get(calendrier_ics))
         .route("/imports", get(imports_page))

@@ -88,6 +88,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("accueil_saisie.html", include_str!("../templates/accueil_saisie.html"))?;
     env.add_template("etat_donnees_cases.html", include_str!("../templates/etat_donnees_cases.html"))?;
     env.add_template("truies_improductives.html", include_str!("../templates/truies_improductives.html"))?;
+    env.add_template("tableau_bandes.html", include_str!("../templates/tableau_bandes.html"))?;
     env.add_template("soupe_pilotage.html", include_str!("../templates/soupe_pilotage.html"))?;
     env.add_template("soupe_vanne.html", include_str!("../templates/soupe_vanne.html"))?;
     env.add_template("bandes.html", include_str!("../templates/bandes.html"))?;
