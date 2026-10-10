@@ -2,6 +2,7 @@
 <div class="no-print rust-actions"><button type="button" onclick="window.print()">🖨 Imprimer</button> <a href="{{ retour }}">← Changer la sélection</a></div>
 <div class="imp-zone">
 <h1 class="imp-titre">{{ titre }}</h1>
+<p class="note no-print">Cliquez sur le titre d’une colonne pour trier (Emplacement, N° travail, Dernière IA…) ; un second clic inverse l’ordre. Puis « Imprimer ».</p>
 <p class="note imp-sous">{{ lignes|length }} truie(s) · imprimé le <span id="imp-date"></span></p>
 <table class="imp-table" data-sans-pli data-no-sort><thead><tr>{% for e in entetes %}<th>{{ e }}</th>{% endfor %}{% for i in range(vides) %}<th class="imp-vide">&nbsp;</th>{% endfor %}</tr></thead><tbody>
 {% for l in lignes %}<tr>{% for c in l %}<td>{% if c.v is none or c.v == '' %}—{% elif c.date %}{{ c.v|date_fr }}{% else %}{{ c.v }}{% endif %}</td>{% endfor %}{% for i in range(vides) %}<td class="imp-vide"></td>{% endfor %}</tr>
@@ -17,6 +18,26 @@
 </style>
 <script>
 document.getElementById('imp-date').textContent=new Date().toLocaleString('fr-FR');
+/* Tri au clic sur un titre : nombres et cases dans l'ordre naturel (Mater 1 · 3 avant Mater 1 · 20), dates jj/mm/aaaa par date. */
+(function(){
+  var t=document.querySelector('.imp-table'); if(!t||!t.tBodies[0]) return;
+  function cle(td){ var s=(td?td.textContent:'').trim(); if(s==='—') return '';
+    return s.replace(/(\d{2})\/(\d{2})\/(\d{4})/g,'$3$2$1'); }
+  Array.from(t.tHead.rows[0].cells).forEach(function(th,i){
+    if(th.classList.contains('imp-vide')) return;
+    th.style.cursor='pointer'; th.title='Trier par cette colonne';
+    th.addEventListener('click',function(){
+      var sens=th.dataset.sens==='asc'?'desc':'asc';
+      Array.from(t.tHead.rows[0].cells).forEach(function(h){ delete h.dataset.sens; h.textContent=h.textContent.replace(/ [▲▼]$/,''); });
+      th.dataset.sens=sens; th.textContent+= sens==='asc'?' ▲':' ▼';
+      var lignes=Array.from(t.tBodies[0].rows).filter(function(r){return r.cells.length>1;});
+      lignes.sort(function(a,b){ var x=cle(a.cells[i]),y=cle(b.cells[i]);
+        if(x===''&&y!=='') return 1; if(y===''&&x!=='') return -1;
+        var r=x.localeCompare(y,'fr',{numeric:true,sensitivity:'base'}); return sens==='asc'?r:-r; });
+      lignes.forEach(function(r){ t.tBodies[0].appendChild(r); });
+    });
+  });
+})();
 /* Page faite pour être imprimée : la fenêtre d'impression s'ouvre seule. */
 setTimeout(function(){window.print();},400);
 </script>

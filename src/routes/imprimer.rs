@@ -5,7 +5,7 @@
 use super::*;
 
 /// (clé, libellé, expression SQL, est une date)
-const COLONNES: [(&str, &str, &str, bool); 18] = [
+const COLONNES: [(&str, &str, &str, bool); 19] = [
     ("num_travail", "N° travail", "t.num_travail", false),
     ("num_national", "N° national", "t.num_national", false),
     ("rfid", "RFID", "t.rfid", false),
@@ -17,6 +17,7 @@ const COLONNES: [(&str, &str, &str, bool); 18] = [
     ("mere_cochette", "Mère à cochettes", "CASE WHEN t.mere_cochette=1 THEN 'Oui' ELSE '' END", false),
     ("bande", "Bande", "t.bande_code", false),
     ("emplacement", "Emplacement", "TRIM(COALESCE(s.nom,'')||CASE WHEN c.nom IS NOT NULL THEN ' · '||c.nom ELSE '' END||CASE WHEN COALESCE(c.num_vanne,'')<>'' THEN ' · vanne '||c.num_vanne ELSE '' END)", false),
+    ("vanne", "N° vanne", "c.num_vanne", false),
     ("statut", "Statut", "t.statut", false),
     ("derniere_ia", "Dernière IA", "(SELECT MAX(e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type='ia')", true),
     ("echo", "Écho", "(SELECT COALESCE(e.resultat,'')||' · '||strftime('%d/%m/%Y',e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type IN('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1)", false),
@@ -109,7 +110,8 @@ pub(super) async fn liste(
         _ => ("t.reformee=0".into(), Vec::new(), "Toutes les truies présentes".into()),
     };
     let ordre = match valeur("tri").as_deref() {
-        Some("emplacement") => "s.nom IS NULL,s.nom,c.nom,t.num_travail",
+        Some("emplacement") => "s.nom IS NULL,s.nom,CAST(c.nom AS INTEGER),c.nom,t.num_travail",
+        Some("vanne") => "COALESCE(c.num_vanne,'')='',CAST(c.num_vanne AS INTEGER),c.num_vanne,t.num_travail",
         Some("bande") => "t.bande_code IS NULL,t.bande_code,t.num_travail",
         _ => "t.num_travail",
     };
