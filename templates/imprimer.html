@@ -7,6 +7,8 @@
       <select name="bande">{% for b in bandes %}<option{% if b.code == bande_choisie %} selected{% endif %}>{{ b.code }}</option>{% endfor %}</select></label>
     <label class="imp-choix"><input type="radio" name="portee" value="truies"{% if truies_choisies %} checked{% endif %}> Une ou plusieurs truies
       <input name="truies" value="{{ truies_choisies or '' }}" placeholder="N° de travail : 409298 409357…" size="34"></label>
+    <label class="imp-choix"><input type="radio" name="portee" value="sans_bande"> Truies sans bande</label>
+    <label class="imp-choix"><input type="radio" name="portee" value="improductives"> Truies improductives (dans aucune bande en cours)</label>
     <label class="imp-choix"><input type="radio" name="portee" value="toutes"> Toutes les truies présentes</label>
   </fieldset>
   <fieldset><legend>Colonnes</legend>

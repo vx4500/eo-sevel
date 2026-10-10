@@ -94,6 +94,18 @@ pub(super) async fn liste(
             let titre = if nums.len() == 1 { format!("Truie {}", nums[0]) } else { format!("{} truies choisies", nums.len()) };
             (format!("(t.num_travail IN ({marques}) OR t.num_national IN ({marques}))"), [nums.clone(), nums].concat(), titre)
         }
+        "sans_bande" => (
+            "t.reformee=0 AND COALESCE(t.bande_code,'')=''".into(),
+            Vec::new(),
+            "Truies sans bande".into(),
+        ),
+        // Même définition que la page Truies improductives : actives et dans
+        // aucune bande en cours.
+        "improductives" => (
+            "t.reformee=0 AND NOT EXISTS(SELECT 1 FROM bande b WHERE b.active=1 AND b.code=t.bande_code)".into(),
+            Vec::new(),
+            "Truies improductives".into(),
+        ),
         _ => ("t.reformee=0".into(), Vec::new(), "Toutes les truies présentes".into()),
     };
     let ordre = match valeur("tri").as_deref() {
