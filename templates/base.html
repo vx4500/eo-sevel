@@ -161,6 +161,8 @@
     .capacity-badge.warn{background:#fff4e6;color:#7a4b00;border:1px solid #ffdca8}
     .capacity-badge.full{background:#ffeef0;color:#87121a;border:1px solid #ffccd5}
     /* Toast notifications */
+    .eo-imprimer-page{border:1px solid #ffffff55!important;background:#ffffff16!important;color:#fff!important;box-shadow:none!important;cursor:pointer}
+    @media print{.eo-imprimer-page,.eo-attente,#fab{display:none!important}}
     .eo-attente{position:fixed;left:12px;bottom:94px;z-index:9998;display:flex;gap:4px;align-items:center;background:#fff3cd;color:#664d03;border:1px solid #e0b84a;border-radius:20px;padding:4px 6px 4px 12px;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
     .eo-attente[hidden]{display:none}
     .eo-attente button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:4px}
@@ -297,6 +299,7 @@
   <span class="grow"></span>
   <form class="rust-search" action="/recherche" method="get" role="search"><span aria-hidden="true">🔍</span><input name="q" placeholder="Truie, bande, facture…" aria-label="Rechercher dans l’élevage"><button type="submit">OK</button></form>
   <a class="weekly-report-button" href="/rapport" title="Rapport : températures par salle et actions à mener sous 48 h" aria-label="Rapport : températures par salle et actions à mener sous 48 h"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 2.8h7l4 4v14.4H6.5z"/><path d="M13.5 2.8v4.4h4"/><path d="M8.8 14h6.4M8.8 17h4.5"/></svg><span>Rapport</span></a>
+  <button type="button" class="weekly-report-button eo-imprimer-page" onclick="window.print()" title="Imprimer cette page" aria-label="Imprimer cette page"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg></button>
   <button type="button" id="farm-alert-button" class="farm-alert-button" aria-label="Alertes de l’élevage" aria-controls="farm-alert-panel" aria-expanded="false"><span aria-hidden="true">!</span><b id="farm-alert-count">…</b></button>
 
   <div class="rust-menu rust-menu-fin" data-rubrique="Mon compte"><button type="button" aria-expanded="false">{{ session.nom }} <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub">
@@ -1435,6 +1438,10 @@
     var form = event.target;
     if(!(form instanceof HTMLFormElement)) return;
     try{ if(skip(form)) return; } catch(e){ /* en cas de doute, on reste sur la page */ }
+    // Bouton qui envoie vers une autre adresse (formaction, ex. « Imprimer la
+    // sélection ou la bande ») : c'est une autre page, le navigateur l'ouvre.
+    // Sans ça, le fetch partait vers l'action du formulaire (affecter-bande).
+    if(event.submitter && event.submitter.hasAttribute('formaction')) return;
 
     event.preventDefault();
     hideAlert();
