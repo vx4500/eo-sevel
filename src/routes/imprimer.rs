@@ -24,7 +24,7 @@ const COLONNES: [(&str, &str, &str, bool); 19] = [
     ("derniere_mb", "Dernière mise bas", "(SELECT MAX(e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas')", true),
     ("nes_vifs", "Nés vifs (dernière MB)", "(SELECT e.nes_vifs FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' ORDER BY e.date DESC,e.id DESC LIMIT 1)", false),
     ("dernier_sevrage", "Dernier sevrage", "(SELECT MAX(e.date) FROM evenement e WHERE e.truie_id=t.id AND e.type='sevrage')", true),
-    ("note", "Note de la fiche", "t.note", false),
+    ("note", "Note de la fiche", "CASE WHEN length(t.note)>80 THEN substr(t.note,1,80)||'…' ELSE t.note END", false),
 ];
 
 const PAR_DEFAUT: [&str; 6] = ["num_travail", "rfid", "rang", "emplacement", "derniere_ia", "echo"];
