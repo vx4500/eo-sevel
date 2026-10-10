@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}{{ titre }} · Impression{% endblock %}{% block content %}
+<div class="no-print rust-actions"><button type="button" onclick="window.print()">🖨 Imprimer</button> <a href="{{ retour }}">← Changer la sélection</a></div>
+<div class="imp-zone">
+<h1 class="imp-titre">{{ titre }}</h1>
+<p class="note imp-sous">{{ lignes|length }} truie(s) · imprimé le <span id="imp-date"></span></p>
+<table class="imp-table" data-sans-pli data-no-sort><thead><tr>{% for e in entetes %}<th>{{ e }}</th>{% endfor %}{% for i in range(vides) %}<th class="imp-vide">&nbsp;</th>{% endfor %}</tr></thead><tbody>
+{% for l in lignes %}<tr>{% for c in l %}<td>{% if c.v is none or c.v == '' %}—{% elif c.date %}{{ c.v|date_fr }}{% else %}{{ c.v }}{% endif %}</td>{% endfor %}{% for i in range(vides) %}<td class="imp-vide"></td>{% endfor %}</tr>
+{% else %}<tr><td colspan="{{ entetes|length + vides }}" class="rust-empty">Aucune truie pour cette sélection.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+<style>
+.imp-table{border-collapse:collapse;width:100%;background:#fff}
+.imp-table th,.imp-table td{border:1px solid #bbb;padding:4px 6px;text-align:left}
+.imp-table th{background:#eee}
+.imp-vide{min-width:70px}
+@media print{body *{visibility:hidden}.imp-zone,.imp-zone *{visibility:visible}.imp-zone{position:absolute;left:0;top:0;width:100%}@page{size:A4 landscape;margin:10mm}body{background:#fff}.imp-table{font-size:9.5pt}.imp-table tr{break-inside:avoid}.imp-table thead{display:table-header-group}}
+</style>
+<script>
+document.getElementById('imp-date').textContent=new Date().toLocaleString('fr-FR');
+/* Page faite pour être imprimée : la fenêtre d'impression s'ouvre seule. */
+setTimeout(function(){window.print();},400);
+</script>
+{% endblock %}

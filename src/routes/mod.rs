@@ -43,6 +43,7 @@ mod gte_periode;
 mod historique_truie;
 mod improductives;
 mod tableau_bandes;
+mod imprimer;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
@@ -340,6 +341,8 @@ pub fn router(state: AppState) -> Router {
         .route("/truies/affecter-bande", post(truies_affecter_bande))
         .route("/truie/{id}", get(truie_detail))
         .route("/truie/{id}/imprimer", get(truie_imprimer))
+        .route("/imprimer", get(imprimer::page))
+        .route("/imprimer/liste", get(imprimer::liste))
         .route("/truie/{id}/bande", post(truie_bande))
         .route("/truie/{id}/lignee", post(truie_lignee))
         .route("/truie/{id}/emplacement", post(truie_emplacement))
@@ -5817,9 +5820,9 @@ async fn truies_imprimer(
         let code = form_text(&form, "bande_code").ok_or_else(|| {
             AppError::Invalid("Cochez des truies ou sélectionnez une bande".into())
         })?;
-        // Bande en cours (truie.bande_code) ou bande passée : les truies qui y
-        // ont eu un événement (IA, écho, mise-bas, sevrage), réformées comprises.
-        let result = sqlx::query("SELECT num_travail,num_national,rfid,race,rang,bande_code,statut FROM truie t WHERE (t.reformee=0 AND t.bande_code=?1) OR EXISTS(SELECT 1 FROM evenement e JOIN bande b ON b.id=e.bande_id WHERE e.truie_id=t.id AND b.code=?1) ORDER BY num_travail")
+        // Bande en cours : ses truies actuelles. Bande terminée (plus aucune
+        // truie) : celles qui y ont eu un événement, réformées comprises.
+        let result = sqlx::query("SELECT num_travail,num_national,rfid,race,rang,bande_code,statut FROM truie t WHERE (t.reformee=0 AND t.bande_code=?1) OR (NOT EXISTS(SELECT 1 FROM truie x WHERE x.reformee=0 AND x.bande_code=?1) AND EXISTS(SELECT 1 FROM evenement e JOIN bande b ON b.id=e.bande_id WHERE e.truie_id=t.id AND b.code=?1)) ORDER BY num_travail")
             .bind(&code).fetch_all(&state.pool).await?;
         rows_to_json(result)?
     } else {

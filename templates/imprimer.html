@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block title %}Imprimer · EO_Sevel{% endblock %}{% block content %}
+<h1>Imprimer</h1>
+<p class="note">Choisissez quoi imprimer et les colonnes voulues, puis « Imprimer ».</p>
+<form method="get" action="/imprimer/liste" class="card imprimer-form">
+  <fieldset><legend>Quoi imprimer</legend>
+    <label class="imp-choix"><input type="radio" name="portee" value="bande"{% if not truies_choisies %} checked{% endif %}> Une bande entière
+      <select name="bande">{% for b in bandes %}<option{% if b.code == bande_choisie %} selected{% endif %}>{{ b.code }}</option>{% endfor %}</select></label>
+    <label class="imp-choix"><input type="radio" name="portee" value="truies"{% if truies_choisies %} checked{% endif %}> Une ou plusieurs truies
+      <input name="truies" value="{{ truies_choisies or '' }}" placeholder="N° de travail : 409298 409357…" size="34"></label>
+    <label class="imp-choix"><input type="radio" name="portee" value="toutes"> Toutes les truies présentes</label>
+  </fieldset>
+  <fieldset><legend>Colonnes</legend>
+    <div class="imp-colonnes">{% for c in colonnes %}<label><input type="checkbox" name="col" value="{{ c.cle }}"{% if c.coche %} checked{% endif %}> {{ c.libelle }}</label>{% endfor %}</div>
+    <p class="note"><button type="button" class="ghost" onclick="this.form.querySelectorAll('[name=col]').forEach(x=>x.checked=true)">Tout cocher</button> <button type="button" class="ghost" onclick="this.form.querySelectorAll('[name=col]').forEach(x=>x.checked=false)">Tout décocher</button></p>
+  </fieldset>
+  <fieldset><legend>Présentation</legend>
+    <label>Trier par <select name="tri"><option value="num_travail">N° travail</option><option value="emplacement">Emplacement</option><option value="bande">Bande</option></select></label>
+    <label>Colonnes vides pour écrire à la main <select name="vides"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+  </fieldset>
+  <p><button type="submit">🖨 Imprimer</button></p>
+</form>
+<style>
+.imprimer-form fieldset{border:1px solid #ddd;border-radius:8px;margin:0 0 14px;padding:10px 14px}
+.imprimer-form legend{font-weight:700;padding:0 6px}
+.imp-choix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
+.imp-colonnes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 14px}
+.imp-colonnes label{display:flex;align-items:center;gap:6px;font-weight:normal}
+</style>
+<script>
+/* Choisir une bande ou taper un numéro coche le bon choix ; on garde les colonnes cochées pour la prochaine fois. */
+(function(){
+  var f=document.querySelector('.imprimer-form'); if(!f) return;
+  f.querySelector('[name=bande]').addEventListener('change',function(){f.querySelector('[value=bande]').checked=true;});
+  f.querySelector('[name=truies]').addEventListener('input',function(){f.querySelector('[value=truies]').checked=true;});
+  try{ var g=JSON.parse(localStorage.getItem('eo-imprimer-colonnes')||'null'); if(Array.isArray(g)&&g.length){ f.querySelectorAll('[name=col]').forEach(function(x){x.checked=g.indexOf(x.value)>=0;}); } }catch(e){}
+  f.addEventListener('submit',function(){ try{ localStorage.setItem('eo-imprimer-colonnes',JSON.stringify(Array.from(f.querySelectorAll('[name=col]:checked')).map(function(x){return x.value;}))); }catch(e){} });
+})();
+</script>
+{% endblock %}
