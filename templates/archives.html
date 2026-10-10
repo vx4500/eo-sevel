@@ -1,6 +1,20 @@
 {% extends "base.html" %}{% block content %}
-<h1>Bandes archivées</h1>
-<p class="muted">Historique conservé</p>
+<h1>Archives</h1>
+<p class="muted">Historique conservé : bandes terminées et truies sorties de l’élevage.</p>
+<h2>Truies réformées <small class="muted">{{ reformees|length }}</small></h2>
+<div class="rust-scroll"><table><thead><tr><th>Truie</th><th>N° national</th><th>Réformée le</th><th>Motif</th><th>Rang</th><th>Portées</th><th>Dernière bande</th></tr></thead><tbody>
+{% for t in reformees %}<tr>
+<td><a href="/truie/{{ t.id }}" style="color:#b42318;text-decoration:line-through"><b>{{ t.num_travail }}</b></a></td>
+<td>{{ t.num_national or '—' }}</td>
+<td>{% if t.date_reforme %}{{ t.date_reforme|date_fr }}{% else %}—{% endif %}</td>
+<td>{{ t.motif_sortie or '—' }}</td>
+<td>{{ t.rang if t.rang is not none else '—' }}</td>
+<td>{{ t.portees }}</td>
+<td>{{ t.derniere_bande or '—' }}</td>
+</tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune truie réformée</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="note">Une réforme faite par erreur s’annule depuis la fiche de la truie (rubrique « Sortie / réforme »).</p>
+<h2>Bandes archivées</h2>
 <div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Mise-bas</th><th>Site</th><th>Note</th><th></th></tr></thead><tbody>
 {% for l in bandes %}<tr>
 <td><a href="/bande/{{ l.id }}"><b>{{ l.code }}</b></a></td>

@@ -3820,8 +3820,18 @@ async fn archives(
         "SELECT id,code,date_mb,site,note FROM bande WHERE active=0 ORDER BY date_mb DESC,id DESC",
     )
     .await?;
+    // Truies réformées : sorties de l'élevage, gardées ici avec leur historique.
+    let reformees = generic_rows(
+        &state.pool,
+        "SELECT t.id,t.num_travail,t.num_national,t.rang,t.date_reforme,t.motif_sortie,t.prix_sortie, \
+         (SELECT b.code FROM evenement e JOIN bande b ON b.id=e.bande_id WHERE e.truie_id=t.id ORDER BY e.date DESC,e.id DESC LIMIT 1) AS derniere_bande, \
+         (SELECT COUNT(*) FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas') AS portees \
+         FROM truie t WHERE t.reformee=1 ORDER BY t.date_reforme IS NULL,t.date_reforme DESC,t.num_travail",
+    )
+    .await?;
     let mut ctx = context(&session);
     ctx.insert("bandes".into(), Value::Array(bandes));
+    ctx.insert("reformees".into(), Value::Array(reformees));
     render(&state, "archives.html", Value::Object(ctx))
 }
 
