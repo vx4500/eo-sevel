@@ -9847,6 +9847,23 @@ async fn synchronise_sortie_abattoir(
         .map(str::to_owned)
         .unwrap_or_else(|| Local::now().date_naive().format("%Y-%m-%d").to_string());
     for (band, count) in allocations {
+        // Départ déjà confirmé dans « Départs » (porcs retirés case par case) :
+        // le bon d'abattoir de ce même enlèvement ne doit pas les retirer une
+        // seconde fois (B3.14, 05/10 : 66 porcs comptés deux fois).
+        let deja_partis: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM transfert WHERE bande_id=? AND vente_apport_id IS NULL \
+             AND case_dest_id IS NULL AND note LIKE 'Départ du%' \
+             AND date(date) BETWEEN date(?,'-3 day') AND date(?,'+1 day')",
+        )
+        .bind(band)
+        .bind(&movement_date)
+        .bind(&movement_date)
+        .fetch_one(&mut **tx)
+        .await?;
+        let count = (count - deja_partis).max(0);
+        if count == 0 {
+            continue;
+        }
         let candidates: Vec<(i64, i64)> = sqlx::query_as(
             "SELECT c.id,CAST(COALESCE(SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE d.case_id=c.id AND b.id=? AND date(d.date)<=date(?)),0) AS INTEGER) AS disponible FROM casesalle c JOIN transfert t ON (t.case_dest_id=c.id OR t.case_source_id=c.id) WHERE t.espece='porc' AND t.bande_id=? AND date(t.date)<=date(?) GROUP BY c.id ORDER BY MAX(t.date),c.id",
         )

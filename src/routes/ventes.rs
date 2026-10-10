@@ -537,6 +537,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bon_apport_apres_depart_confirme_ne_retire_pas_deux_fois() -> anyhow::Result<()> {
+        use super::super::documents::tests::state;
+        let state = state().await;
+        // 100 porcs en case ; départ confirmé de 66 le 05/10 (page Départs),
+        // puis le bon d'abattoir du même enlèvement (66) est rattaché.
+        sqlx::raw_sql("INSERT INTO bande(id,code) VALUES(1,'A'); INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'R'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'C1'); INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-01-01','porc',1,1,100); INSERT INTO transfert(date,espece,bande_id,salle_source_id,case_source_id,nombre,note) VALUES('2026-10-05','porc',1,1,1,66,'Départ du lundi 05/10 à 01:00'); INSERT INTO venteapport(id,date,num_apport,nb_porcs,montant_ht) VALUES(1,'2026-10-05','AP',66,11000);").execute(&state.pool).await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 34);
+        let mut tx = state.pool.begin().await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        tx.commit().await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 34);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn bon_apport_reprend_les_porcs_du_quai_sans_double_sortie() -> anyhow::Result<()> {
         use super::super::documents::tests::state;
         let state = state().await;
