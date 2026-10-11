@@ -86,14 +86,17 @@ refuse de s'exécuter si une base existe déjà.
 
 ### Mise à jour
 
-La mise à jour contrôlée se fait en déposant une archive zip des sources
-(même arborescence que ce dépôt) dans
-`/var/lib/eo-sevel/maj/eo-sevel-nouvelle-version.zip` : `eo-sevel-update.path`
-la détecte et lance `/opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh`. Elle
-teste et sauvegarde avant l'arrêt, puis restaure l'ancien binaire si le
-contrôle de santé échoue. Elle redéploie `eo-regul` et le redémarre seulement
-s'il tournait déjà. Déclenchement manuel :
-`sudo /opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh /chemin/vers/archive.zip`.
+La mise à jour se fait depuis GitHub : page **/maj**, bouton « Lancer la mise
+à jour depuis GitHub » (administrateur). Le bouton dépose
+`/var/lib/eo-sevel/mise-a-jour-demandee`, que `eo-sevel-update-github.path`
+détecte. Le service récupère la branche `master` de
+`git@github.com:vx4500/eo-sevel.git` dans `/opt/eo-sevel-build` (clé
+`/root/.ssh/id_ed25519_github`), puis `scripts/mettre-a-jour-zip.sh` teste,
+sauvegarde la base, installe, et restaure l'ancien binaire si le contrôle de
+santé échoue. Le dossier de développement n'est jamais écrasé.
+
+Seul ce qui est poussé sur `master` est installé. Déclenchement manuel :
+`sudo EO_UPDATE_MODE=github /opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh`.
 
 Sur une base neuve, le compte temporaire est `admin` / `admin`. Le logiciel
 oblige à choisir immédiatement un mot de passe d'au moins huit caractères.
