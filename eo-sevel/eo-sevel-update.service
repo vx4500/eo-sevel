@@ -1,9 +1,0 @@
-[Unit]
-Description=Mise à jour contrôlée de EO_Sevel depuis GitHub
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStartPre=/usr/bin/rm -f /var/lib/eo-sevel/mise-a-jour-demandee
-ExecStart=/opt/eo-sevel-src/scripts/mettre-a-jour-debian13.sh

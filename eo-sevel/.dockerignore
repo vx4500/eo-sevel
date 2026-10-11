@@ -1,7 +1,0 @@
-.git
-target
-data
-donnees-demo
-*.db
-*.db-wal
-*.db-shm
