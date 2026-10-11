@@ -27,7 +27,6 @@
   <a class="auto-tuile{% if not demon.actif %} alerte{% endif %}" href="/ambiance"><small>Régulation (eo-regul)</small><b style="font-size:1.2rem">{% if demon.actif %}✅ en marche{% else %}⛔ à l'arrêt{% endif %}</b><span>{{ demon.texte }}</span></a>
   <a class="auto-tuile" href="/ambiance/ipx"><small>Entrées et sorties</small><b>{{ nb_points }}</b><span>{{ nb_pilotables }} pilotable{% if nb_pilotables > 1 %}s{% endif %}</span></a>
   <a class="auto-tuile" href="/ambiance"><small>Salles raccordées</small><b>{{ salles.mesurees }}</b><span>{{ salles.pilotees }} en régulation automatique</span></a>
-  <a class="auto-tuile" href="/ambiance/eclairage"><small>Éclairage</small><b>{{ eclairage.programmes }}</b><span>programme{% if eclairage.programmes > 1 %}s{% endif %} · {{ eclairage.en_service }} en service · {{ eclairage.essai }} en essai</span></a>
   <a class="auto-tuile{% if alertes > 0 %} alerte{% endif %}" href="/ambiance"><small>Alertes ouvertes</small><b>{{ alertes }}</b><span>ambiance et liaison</span></a>
 </div>
 

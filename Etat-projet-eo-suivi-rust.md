@@ -1,8 +1,84 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.48.2** —
+Version actuelle : **2.63.1** — en-tête au nom de l’élevage (plus de nom codé en dur).
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
+
+Version Rust 2.63.1 : base.html site-brand = entete_nom (render() injecte NOM_ELEVAGE, static RwLock rechargé au démarrage et par parametres_maj ; défaut « EO_Sevel ») au lieu de « EI ORY EMMANUEL » en dur ; Brevo : expéditeurs par défaut sans nom de personne ; aliment_previsions tonnage_90j|decimal1.
+
+Version Rust 2.63.0 : renommer_bande (mod.rs) — champ code du formulaire rapide /bandes/{id}/modifier-rapide ; bande.code + 13 colonnes qui recopient le code (COPIES_CODE_BANDE : truie, porccharcutier, mouvementstock, saisieabattoir, tache, traitementcharcutier, porteerang.bande, achatgenetique, mouvementpharmacie, declarationmort, receptionachat, consoaliment_bande, pesee_bande) en une transaction ; doublon (insensible à la casse) et nom vide refusés ; n° de marquage recalculé avec le nouveau code.
+
+Version Rust 2.62.0 : economique.html — JSON #eco-donnees (resultats_bandes + mensuel) ; JS : barres recettes/charges par bande (#eco-barres), cartes téléphone (#eco-cartes, tableau masqué < 700 px), pastilles prix/kg et coût/porc vs moyenne des bandes vendues (pas de référence IFIP économique en base), courbe SVG 12 mois (#eco-courbe), lots : frappe sans n° de semaine (regex ^[A-Z0-9]{3}\d{2}$) et TMP en couleur ; blocs secondaires en details.card.eco-pli. Test ignoré economique_sur_copie_de_la_base_reelle (EO_TEST_BASE).
+
+Version Rust 2.61.0 : base.html — tables de plus de 14 lignes (tBodies[0]) repliées à 10 lignes par la classe eo-plie (CSS nth-child, compatible tri/formulaires/impression) + bouton ; exclusions : data-sans-pli (table mises-bas de maternite.html), ancre location.hash dans la table ; relancé sur eo:contenu-actualise.
+
+Version Rust 2.60.3 : pharmacie.html mouvements dans <details class="card"> ; assistant.rs TABLES_INTERDITES + camera, COLONNES_INTERDITES (token_modification, token_desinscription) refusées dans la requête et masquées dans le résultat (SELECT *).
+
+Version Rust 2.60.1 : synchroniser_protocole_portees ne crée des soinportee que pour les mises-bas de moins de 60 j sans sevrage ultérieur de la truie (avant : toutes les mises-bas, 162 lignes par acte).
+
+Version Rust 2.60.0 : /sanitaire/plan (src/routes/vaccination.rs, sanitaire_plan.html) — frise éditable des actes acteprotocole par ligne cochettes (réf. arrivee) / truies (J0 = IA, réf. existantes conservées) / porcelets (réf. mise_bas → soinportee) / verrats (réf. annee) ; POST JSON dans un champ de formulaire, actes retirés → actif=0.
+
+Version Rust 2.59.0 : /maternite vue mises-bas — modèle A choisi par Emmanuel : tableau (tr.mb-ligne#truie-ID) + panneau (div.mb-fiche#fiche-ID) ; mêmes formulaires et routes qu'avant (misebas, etat, perte), champs secondaires sous « Plus ».
+
+Version Rust 2.58.8 : accueil_cockpit « À faire » — case = formulaire POST /taches/{id}/fait (retour=accueil → redirection /), auparavant case disabled décorative.
+
+Version Rust 2.58.7 : economic_import::extract_pdf_text — si lopdf échoue au chargement ou ne trouve aucune page (PDF Cooperl LDPRX 4.54, apport 226101280151), lecture par `pdftotext -layout` (pdftotext_secours, dossier temporaire supprimé).
+
+Version Rust 2.58.6 : formulaire disjoncteur liste les io 65552..65563 de chaque hôte (entrees_ipx) ; code n:hote|io crée le ipx_point (role disjoncteur, nom_entree) dans enregistrer.
+
+Version Rust 2.58.5 : automatique_simple.html (questions numérotées, remplit c0_*/a0_* cachés ; champ mode=essai|vrai lu par enregistrer) pour modele=minuterie|disjoncteur ; libellés de automatique_regle.html réécrits (Quand… / Alors faire…).
+
+Version Rust 2.58.4 : modèle « minuterie » dans MODELES (condition point = 1 pendant 30 min → action début valeur 0 sur la même sortie).
+
+Version Rust 2.58.3 : macro onglets (ambiance_automate_onglets.html) liste les TYPES_V5 + Accès, titre Ipx800v5 ; GET /ambiance/automate, /ambiance/ipx, /ambiance/ipx/carte, /ambiance/ipx/explorateur redirigent vers /ambiance/ipx/v5/relais.
+
+Version Rust 2.58.2 : onglets de l'automate sans Éclairage ni Automatique ; TYPES_V5 en blocs (BlocV5 plage ou motif) avec extensions X-THL (ana X-THL;XTHL + io ]Fault), X-010V (ana + io x-010v), X-PSU (io [XPSU]) ; macro automatique_onglets.html (Règles, Éclairage, Nouvelle règle) utilisée par automatique*.html et ambiance_eclairage*.html.
+
+Version Rust 2.58.1 : /automatique/nouvelle propose des modèles (MODELES : lumière → /ambiance/eclairage/nouveau, alerte température, brumisation, chauffage, hygrométrie, porte la nuit, règle vide) ; /automatique liste aussi les programmes d'éclairage (eclairage_programme/eclairage_etat) ; une règle ne peut pas commander une lampe d'un programme d'éclairage actif (conflit avec eo-regul).
+
+Version Rust 2.58.0 : module Automatique (routes/automatique.rs, migration 0028, /automatique) — règles si… alors… : conditions sur ipx_point (IPX et Zigbee via ambiance::lire_point), température/hygrométrie de salle (ambiance_etat, périmée après 15 min), phase soupe ; logique et/ou, délai, plage horaire ; actions commande (pilotable seulement, refus si ventilation en régulation, journal ipx_commande_journal utilisateur='automatique') et SMS, au début ou à la fin ; boucle 10 s lancée par main ; règles neuves en essai (journal seul) ; capteur muet = ni déclenchement ni fin. Test les_pages_se_rendent rend automatique*.html et ambiance_carte.html. 2.57.0 corrigée : filtre urlencode inconnu sur les pages IPX800 V5. /decouvrir redirige vers le site vitrine https://eo-elevage.fr/eo-sevel/.
+
+Version Rust 2.57.0 : onglet « IPX800 V5 » de l'automate (/ambiance/ipx/v5/{relais,digitales,analogiques,opto,collecteurs}) — une page par type de la carte mère, plages d'identifiants fixes (TYPES_V5 dans routes/ambiance.rs), sans réglage de section ; ipx_carte et ipx_v5 partagent ambiance::carte ; champ « retour » des formulaires affecter/commander pour revenir sur la page V5.
+
+Version Rust 2.56.1 : frise des bandes — nom du stade écrit dans chaque segment, segment en cours entouré (en_cours) ; /planning reprend la frise (accueil::frise_bandes) + tableau « Les bandes en détail » (stade, animaux, salles, prochaine étape, dates de chaque période).
+
+Version Rust 2.56.0 : /eau (même page que /electricite, Genre::Eau) — conso d'eau par jour = écart entre relevés réparti par jour, vues semaine/mois/année, prix parametre eau_prix_m3 ; sous-compteurs électriques parametre elec_parent_<ieee> (barres empilées, « dont … »).
+
+Version Rust 2.55.1 : table elec_heure (migration 0027) — historique horaire importé de Home Assistant (statistiques sensor.tri_energy / sensor.machine_a_soupe_energy, 08/03→25/09/2026, rattrapages après silence répartis, estime=1) ; vue Jour sans mesures → barres par heure importées.
+
+Version Rust 2.55.0 : /electricite (src/routes/electricite.rs, section energie) — consommation par compteur Zigbee : jour (courbe ¼ h + kWh/heure), semaine, mois, année ; kWh = intégrale de total_power|power (trous > 10 min ignorés), validé contre les relevés d'index ; table elec_jour (migration 0026, sans purge) complétée toutes les 6 h et à l'ouverture ; prix parametre elec_prix_kwh.
+
+Version Rust 2.54.2 : /energie — tableau des relevés de chaque compteur replié (details.en-releves, résumé : nombre, dernier relevé, conso).
+
+Version Rust 2.54.1 : /rapport section « Machine à soupe » (rapport::soupe_incidents) : cycles Test circuit→Test circuit avec phase 37 ≥ 3 min, reçu par vanne = somme des passages (max par suite de relevés), consignes de la séquence/formule sur 7 j, manques > 2 kg et > 15 % ; alarmes courtes seulement comptées. Phase 37 renommée en base (48 événements).
+
+Version Rust 2.54.0 : soupe phase 37 « Alarme débit distribution » → alerte critique soupe_distribution (SMS) après 180 s.
+
+Version Rust 2.53.1 : carte Assistant Claude dans /equipements, réglages lisibles en thème sombre.
+
+Version Rust 2.53.0 : connecteur Claude MCP (/mcp/{jeton}, src/routes/mcp.rs), page /assistant (src/assistant.rs, SQL lecture seule), ancienne dictée vocale supprimée.
+
+Version Rust 2.52.5 : Proxmox — adresse http forcée en https (la redirection perdait le jeton) ; refus 403 sur /nodes/{n}/status affiché au lieu d'une page vide.
+
+Version Rust 2.52.4 : « QR code » au lieu de « code QR » (page Découvrir).
+
+Version Rust 2.52.3 : suppression de salle — bloquée seulement par cases, truies ou transferts ; contrôles/alertes/observations/IPX/caméras détachés (salle_id NULL, nom conservé), réglages et mesures d'ambiance supprimés.
+
+Version Rust 2.52.2 : synchronise_sortie_abattoir — une case avec inventaire (daté avant l'apport) prend l'effectif compté (case_pig_count) au lieu de l'estimation par transferts. Données prod 05/10 : inventaire Case 1 La Berru (id 1) dernier_transfert_id=146, apport 12 = 109 porcs de la case 47.
+
+Version Rust 2.52.1 : téléphone — entrée « Salles » dans la barre du bas, groupe « Salles et ambiance » (.menu-tel, ignoré par le fil d'Ariane) dans le menu du compte : les menus du haut sont masqués sous 850 px.
+
+Version Rust 2.52.0 : module Serveur Proxmox (/equipements/proxmox, src/proxmox.rs) : lecture seule par jeton PVEAuditor (parametre proxmox_url/jeton/secret), nœuds, VM/CT, stockages, sauvegardes vzdump ; boucle 5 min, SMS via Free SMS (proxmox_alertes, proxmox_suivis, proxmox_signales).
+
+Version Rust 2.51.3 : /decouvrir alignée sur les rôles réels (salarié en consultation, conseillers via sections, prestataire) ; /contact public sans la note interne « Avant une ouverture publique ».
+
+Version Rust 2.51.2 : /decouvrir enrichie (accueil, salles, automate, éclairage, soupe, GTE, résultats, vente directe, rôles, modules à la demande) ; bandeau vert plus fixe (section au lieu de header, sticky global).
+
+Version Rust 2.51.1 : pied de page sans « Rust » ; page publique /decouvrir (présentation détaillée, maquettes qui se déplient au défilement), lien depuis la page de connexion.
+
+Version Rust 2.51.0 : saisie rapide « Quai abattoir » — porcs sortis des salles mais encore à l'élevage jusqu'au bon d'apport (quai_porc/quai_affectation, repris en priorité par synchronise_sortie_abattoir) ; affichage /departs et Mes salles.
 
 Version Rust 2.48.2 : accueils « cockpit » et « flux » : le bandeau rouge des alertes (accueil_alertes.html, supprimé) faisait doublon avec le bouton « ! » du menu (État de l’élevage) ; retiré. Bouton « Gérer les bandes » lisible : la règle `.rust-main a:not(…)` imposait sa couleur de lien au bouton plein (texte vert sur fond vert).
 

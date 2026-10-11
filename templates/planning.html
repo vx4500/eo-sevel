@@ -1,5 +1,21 @@
 {% extends "base.html" %}{% block title %}Planning · EO_Sevel{% endblock %}{% block content %}
 <h1>Planning</h1><p><a href="/conduite"><b>Voir le calendrier de conduite semaine par semaine →</b></a> · <a href="/calendrier.ics">Télécharger le calendrier ICS</a> · les échéances calculées utilisent les réglages de conduite.</p>
+{% include "accueil_style.html" %}
+<style>.pl-detail td,.pl-detail th{white-space:nowrap}.pl-detail .actuel{font-weight:700;background:rgba(183,121,31,.14);border-radius:6px}.pl-detail .passe{opacity:.55}.pl-detail small{display:block;opacity:.75}</style>
+<div class="acc" style="gap:12px;margin-bottom:16px">
+<section class="acc-carte" style="display:flex;flex-direction:column;gap:12px;min-width:0"><div class="acc-tete"><div><h2>Conduite des bandes</h2></div></div>
+{% set bandes = frise_bandes %}{% set etiq = 190 %}{% set haut = 56 %}{% include "accueil_frise.html" %}</section>
+<section class="acc-carte" style="min-width:0"><h2>Les bandes en détail</h2>
+<div class="rust-scroll"><table class="pl-detail"><thead><tr><th>Bande</th><th>Stade</th><th>Animaux</th><th>Prochaine étape</th><th>Gestation</th><th>Maternité</th><th>Post-sevrage</th><th>Engraissement</th><th>Finition</th></tr></thead><tbody>
+{% for b in frise_bandes %}<tr>
+<td><a href="/bande/{{ b.id }}"><b>{{ b.code }}</b></a>{% if b.salles %}<small>{{ b.salles }}</small>{% endif %}</td>
+<td>{{ b.stade or '—' }}</td>
+<td>{% if b.truies %}{{ b.truies }} truies{% endif %}{% if b.truies and b.porcs %}<br>{% endif %}{% if b.porcs %}{{ b.porcs }} porcs{% endif %}{% if not b.truies and not b.porcs %}—{% endif %}</td>
+<td>{% if b.prochaine %}<b>{{ b.prochaine }}</b><small>{{ b.prochaine_date|date_fr }}{% if b.prochaine_delai %} · {{ b.prochaine_delai }}{% endif %}</small>{% else %}—{% endif %}</td>
+{% for nom in ['Gestation','Maternité','Post-sevrage','Engraissement','Finition'] %}{% set seg = b.segments|selectattr('nom','equalto',nom)|first %}<td>{% if seg %}<span class="{% if seg.en_cours %}actuel{% elif seg.passe %}passe{% endif %}">{{ seg.du|date_fr }} → {{ seg.au|date_fr }}</span>{% if seg.en_cours %}<small>en cours</small>{% endif %}{% else %}—{% endif %}</td>{% endfor %}
+</tr>{% else %}<tr><td colspan="9">Aucune bande active.</td></tr>{% endfor %}
+</tbody></table></div></section>
+</div>
 <div class="rust-grid"><section class="card"><h2>Échéances des bandes</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Bande</th><th>Étape</th><th>État</th></tr>{% for e in echeances %}<tr><td>{{ e.date|date_fr }}</td><td>{{ e.bande }}</td><td>{{ e.type }}</td><td>{{ e.etat }}</td></tr>{% else %}<tr><td colspan="4">Aucune date de mise-bas renseignée</td></tr>{% endfor %}</table></div></section>
 <section class="card"><h2>Tâches ouvertes</h2>{% for t in taches %}<p><b>{{ t.echeance|date_fr if t.echeance else 'Sans date' }}</b> — {{ t.titre }}{% if t.bande_code %} · {{ t.bande_code }}{% endif %}</p>{% else %}<p>Aucune tâche ouverte.</p>{% endfor %}<p><a href="/taches">Gérer les tâches</a></p></section></div>
 <section class="card"><h2>Événements enregistrés</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Type</th><th>Truie</th><th>Bande</th><th>Produit</th><th>Note</th></tr>{% for e in evenements %}<tr><td>{{ e.date|date_fr }}</td><td>{{ e.type }}</td><td>{{ e.num_travail or '—' }}</td><td>{{ e.bande or '—' }}</td><td>{{ e.produit or '—' }}</td><td>{{ e.note or '' }}</td></tr>{% endfor %}</table></div></section>

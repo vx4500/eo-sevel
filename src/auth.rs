@@ -230,7 +230,7 @@ fn section_for_path(path: &str) -> Option<&'static str> {
         "transfert" | "transferts" => Some("transferts"),
         "reception" => Some("reception"),
         "genetique" => Some("genetique"),
-        "energie" => Some("energie"),
+        "energie" | "electricite" | "eau" => Some("energie"),
         "ambiance" | "equipements" => Some("ambiance"),
         "vente-directe" | "commande" => Some("vente"),
         "documents-obligatoires" => Some("documents"),
@@ -285,6 +285,8 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
     // Le tunnel de commande publique (vente directe) est fermé en mode démo :
     // seule la page de connexion reste accessible sans session dans ce cas.
     let public = path == "/login"
+        || path == "/decouvrir"
+        || path == "/contact"
         || (!crate::demo_portal::enabled()
             && (path == "/commande"
                 || path.starts_with("/commande/")
@@ -292,7 +294,9 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
                 || path.starts_with("/desinscription/")))
         // Service d'écoute de la machine à soupe : authentifié par son jeton.
         || path == "/api/soupe/trames"
-        || path == "/api/soupe/script";
+        || path == "/api/soupe/script"
+        // Connecteur Claude : authentifié par le jeton contenu dans l'adresse.
+        || path.starts_with("/mcp/");
     let session_id = cookie_value(request.headers(), "eo_session");
     let session = session_id
         .as_ref()

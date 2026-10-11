@@ -52,6 +52,132 @@ fn heure_locale(ts: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Repas de soupe perturbés par une alarme « débit distribution » (phase 37)
+/// depuis `depuis` (horodatage). Un cycle va d'un « Test circuit » (phase
+/// 15) au suivant ; dans chaque cycle touché on compare les vannes servies
+/// à la consigne de chaque vanne (vannes de la séquence et formule sur les 7
+/// jours précédents incluses). Chaque repas se sert en plusieurs passages :
+/// le reçu d'une vanne est la somme de ses passages. Estimation au kilo près.
+pub(super) async fn soupe_incidents(pool: &SqlitePool, depuis: i64, maintenant: i64) -> AppResult<(Vec<Value>, i64)> {
+    let evenements: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT ts,phase FROM soupe_evenement WHERE phase IS NOT NULL AND ts>=? ORDER BY ts,id",
+    )
+    .bind(depuis - 86_400)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    // Cycles : (début, fin, épisodes d'alarme (début, fin)).
+    let mut cycles: Vec<(i64, i64, Vec<(i64, i64)>)> = Vec::new();
+    let mut en_alarme: Option<i64> = None;
+    for (i, (ts, phase)) in evenements.iter().enumerate() {
+        if *phase == 15 {
+            if let Some(c) = cycles.last_mut() {
+                c.1 = *ts;
+            }
+            cycles.push((*ts, maintenant, Vec::new()));
+        }
+        match (*phase == 37, en_alarme) {
+            (true, None) => en_alarme = Some(*ts),
+            (false, Some(d)) => {
+                if let Some(c) = cycles.last_mut() {
+                    c.2.push((d, *ts));
+                }
+                en_alarme = None;
+            }
+            _ => {}
+        }
+        if i + 1 == evenements.len() {
+            if let (Some(d), Some(c)) = (en_alarme, cycles.last_mut()) {
+                c.2.push((d, maintenant));
+            }
+        }
+    }
+    let mut sortie = Vec::new();
+    let mut courtes = 0;
+    for (debut, fin, alarmes) in cycles.into_iter().filter(|c| !c.2.is_empty() && c.2[0].0 >= depuis) {
+        // Alarme acquittée aussitôt et distribution reprise : pas de détail
+        // (les quelques relevés manqués par l'écoute fausseraient le manque).
+        let duree: i64 = alarmes.iter().map(|(d, f)| f - d).sum();
+        if duree < 180 {
+            courtes += 1;
+            continue;
+        }
+        let lignes: Vec<(i64, Option<i64>, Option<i64>, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
+            "SELECT ts,sequence,formule,vanne,consigne,distribue FROM soupe_distribution WHERE ts BETWEEN ? AND ? ORDER BY ts,id",
+        )
+        .bind(debut)
+        .bind(fin)
+        .fetch_all(pool)
+        .await?;
+        let (Some(sequence), formule) = (lignes.iter().find_map(|l| l.1), lignes.iter().find_map(|l| l.2)) else { continue };
+        // Vannes en cours au début de chaque alarme.
+        let mut en_defaut: Vec<i64> = Vec::new();
+        for (a0, _) in &alarmes {
+            if let Some(l) = lignes.iter().find(|l| l.0 >= a0 - 5).or_else(|| lignes.last()) {
+                if !en_defaut.contains(&l.3) {
+                    en_defaut.push(l.3);
+                }
+            }
+        }
+        // Reçu par vanne : somme des passages, un passage = suite de relevés
+        // consécutifs sur la même vanne, dont on garde le plus haut.
+        let mut recu: std::collections::BTreeMap<i64, f64> = Default::default();
+        let mut consignes: std::collections::BTreeMap<i64, f64> = Default::default();
+        let mut i = 0;
+        while i < lignes.len() {
+            let vanne = lignes[i].3;
+            let mut haut: f64 = 0.0;
+            while i < lignes.len() && lignes[i].3 == vanne {
+                haut = haut.max(lignes[i].5.unwrap_or(0.0));
+                if let Some(c) = lignes[i].4 {
+                    consignes.insert(vanne, c);
+                }
+                i += 1;
+            }
+            *recu.entry(vanne).or_insert(0.0) += haut;
+        }
+        // Vannes habituelles de cette séquence et formule (7 jours précédents).
+        let habituelles: Vec<(i64, Option<f64>)> = sqlx::query_as(
+            "SELECT vanne, (SELECT consigne FROM soupe_distribution d2 WHERE d2.vanne=d.vanne AND d2.sequence=d.sequence AND d2.formule IS d.formule AND d2.ts<?1 ORDER BY ts DESC LIMIT 1) \
+             FROM soupe_distribution d WHERE sequence=?2 AND formule IS ?3 AND ts BETWEEN ?1-7*86400 AND ?1 GROUP BY vanne",
+        )
+        .bind(debut)
+        .bind(sequence)
+        .bind(formule)
+        .fetch_all(pool)
+        .await?;
+        for (vanne, c) in habituelles {
+            if let Some(c) = c {
+                consignes.entry(vanne).or_insert(c);
+            }
+        }
+        let mut manques = Vec::new();
+        let mut total = 0.0;
+        for (vanne, consigne) in &consignes {
+            let r = recu.get(vanne).copied().unwrap_or(0.0).max(0.0);
+            let manque = consigne - r;
+            // Les relevés sont au kilo près : on ignore les petits écarts.
+            if manque > 2.0 && manque > 0.15 * consigne {
+                total += manque;
+                manques.push(json!({"vanne": vanne, "recu": (r * 10.0).round() / 10.0, "consigne": consigne, "manque": (manque * 10.0).round() / 10.0}));
+            }
+        }
+        sortie.push(json!({
+            "debut": heure_locale(alarmes[0].0),
+            "sequence": sequence,
+            "formule": formule,
+            "alarmes": alarmes.len(),
+            "duree_min": duree / 60,
+            "en_cours": alarmes.last().is_some_and(|a| a.1 == maintenant),
+            "en_defaut": en_defaut,
+            "manques": manques,
+            "manque": total.round(),
+        }));
+    }
+    sortie.reverse();
+    Ok((sortie, courtes))
+}
+
 fn maintenant_ts() -> i64 {
     Local::now().timestamp()
 }
@@ -745,6 +871,12 @@ pub(super) async fn page(
             .await
             .ok()
             .flatten();
+    if crate::templates::equip_actif("soupe") {
+        let depuis = maintenant - jours * 86_400;
+        let (incidents, courtes) = soupe_incidents(pool, depuis, maintenant).await?;
+        ctx.insert("soupe_incidents".into(), Value::Array(incidents));
+        ctx.insert("soupe_alarmes_courtes".into(), json!(courtes));
+    }
     ctx.insert("jours".into(), json!(jours));
     ctx.insert("debut".into(), json!(debut));
     ctx.insert("fin".into(), json!(fin));
@@ -769,4 +901,22 @@ pub(super) async fn page(
 /// vers la page imprimable pour ne pas casser les favoris.
 pub(super) async fn ancien_pdf() -> Redirect {
     Redirect::to("/rapport")
+}
+
+/// `EO_TEST_BASE=/var/tmp/copie.db cargo test incidents_soupe_sur_copie -- --ignored --nocapture`
+#[cfg(test)]
+mod tests_soupe_copie {
+    #[tokio::test]
+    #[ignore]
+    async fn incidents_soupe_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{chemin}?mode=ro")).await?;
+        let maintenant = super::maintenant_ts();
+        let (incidents, courtes) = super::soupe_incidents(&pool, maintenant - 8 * 86_400, maintenant).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        println!("courtes : {courtes}");
+        for i in incidents {
+            println!("{i}");
+        }
+        Ok(())
+    }
 }

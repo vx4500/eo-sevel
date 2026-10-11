@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}{% if programme.id %}Modifier l'éclairage{% else %}Nouveau programme d'éclairage{% endif %} — EO_Sevel{% endblock %}{% block content %}
-{{ onglets('eclairage') }}
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}{% if programme.id %}Modifier l'éclairage{% else %}Nouveau programme d'éclairage{% endif %} — EO_Sevel{% endblock %}{% block content %}
+{{ onglets_auto('eclairage') }}
 {% include "ambiance_eclairage_style.html" %}
 <div class="ecl">
 <p class="muted" style="margin:0"><a href="/ambiance/eclairage">← Programmes d'éclairage</a></p>
@@ -82,7 +82,7 @@
         <label><input type="radio" name="lux_si_muet" value="eteindre"{% if programme.lux_si_muet == 'eteindre' %} checked{% endif %}> considérer qu'il fait jour (ne pas allumer)</label>
       </div>
       {% else %}
-      <div class="ecl-message alerte">Aucun capteur de luminosité déclaré. Enregistrez-en un avec le rôle « Luminosité » dans l'<a href="/ambiance/ipx">inventaire de l'automate</a>.</div>
+      <div class="ecl-message alerte">Aucun capteur de luminosité déclaré. Enregistrez-en un avec le rôle « Luminosité » dans l'<a href="/ambiance/ipx/v5/relais">inventaire de l'automate</a>.</div>
       {% endif %}
     </div>
   </section>

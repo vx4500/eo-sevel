@@ -300,6 +300,10 @@ pub(super) async fn remove_apport(
             .bind(sale)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("DELETE FROM quai_affectation WHERE vente_id=?")
+            .bind(sale)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM venteapport WHERE id=?")
             .bind(sale)
             .execute(&mut *tx)
@@ -532,6 +536,39 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn bon_apport_apres_depart_confirme_ne_retire_pas_deux_fois() -> anyhow::Result<()> {
+        use super::super::documents::tests::state;
+        let state = state().await;
+        // 100 porcs en case ; départ confirmé de 66 le 05/10 (page Départs),
+        // puis le bon d'abattoir du même enlèvement (66) est rattaché.
+        sqlx::raw_sql("INSERT INTO bande(id,code) VALUES(1,'A'); INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'R'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'C1'); INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-01-01','porc',1,1,100); INSERT INTO transfert(date,espece,bande_id,salle_source_id,case_source_id,nombre,note) VALUES('2026-10-05','porc',1,1,1,66,'Départ du lundi 05/10 à 01:00'); INSERT INTO venteapport(id,date,num_apport,nb_porcs,montant_ht) VALUES(1,'2026-10-05','AP',66,11000);").execute(&state.pool).await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 34);
+        let mut tx = state.pool.begin().await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        tx.commit().await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 34);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bon_apport_reprend_les_porcs_du_quai_sans_double_sortie() -> anyhow::Result<()> {
+        use super::super::documents::tests::state;
+        let state = state().await;
+        sqlx::raw_sql("INSERT INTO bande(id,code) VALUES(1,'A'); INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'R'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'C1'); INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-01-01','porc',1,1,50); INSERT INTO venteapport(id,date,num_apport,nb_porcs,montant_ht) VALUES(1,'2026-02-02','AP',40,2000);").execute(&state.pool).await?;
+        super::super::departs::sortie_quai(&state.pool, 1, 30, "2026-02-01", None).await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 20);
+        assert_eq!(super::super::departs::quai_en_attente(&state.pool).await?.len(), 1);
+        let mut tx = state.pool.begin().await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        tx.commit().await?;
+        // 30 pris sur le quai, 10 seulement retirés de la case.
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 10);
+        assert!(super::super::departs::quai_en_attente(&state.pool).await?.is_empty());
+        Ok(())
+    }
+
     #[test]
     fn correspondance_exacte_et_ambiguites() {
         let bands = vec![
@@ -583,6 +620,28 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(moved, 20);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reaffectation_ponctuelle {
+    use super::*;
+
+    /// Réaffecte un apport (lot unique) sur une bande par le même chemin que le
+    /// bouton de la page : `EO_TEST_BASE=… EO_REAFFECTER=apport:bande cargo test
+    /// -- --ignored reaffecter_un_apport`.
+    #[tokio::test]
+    #[ignore]
+    async fn reaffecter_un_apport() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let consigne = std::env::var("EO_REAFFECTER")?;
+        let (apport, bande) = consigne.split_once(':').expect("apport:bande");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1)
+            .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).busy_timeout(std::time::Duration::from_secs(10))).await?;
+        let mut tx = pool.begin().await?;
+        assign(&mut tx, apport.parse()?, -1, Some(bande.parse()?)).await?;
+        tx.commit().await?;
         Ok(())
     }
 }

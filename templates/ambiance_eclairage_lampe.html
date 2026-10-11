@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "ambiance_automate_onglets.html" import onglets %}{% block title %}Ajouter une lampe — EO_Sevel{% endblock %}{% block content %}
-{{ onglets('eclairage') }}
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}Ajouter une lampe — EO_Sevel{% endblock %}{% block content %}
+{{ onglets_auto('eclairage') }}
 {% include "ambiance_eclairage_style.html" %}
 <style>
 .lp-etapes{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px;padding:0;list-style:none;counter-reset:e}
@@ -37,7 +37,7 @@
 {% elif sorties is none %}
 <div class="ecl-message alerte"><b>L'automate {{ hote }} ne répond pas.</b> Vérifiez qu'il est allumé et que l'adresse et la clé sont justes dans <a href="/ambiance/ipx/acces">⚙️ Accès</a>, puis <a href="">réessayez</a>.</div>
 {% elif not sorties %}
-<div class="ecl-message alerte">L'automate répond mais aucune sortie commandable n'a été trouvée. Vérifiez sur la <a href="/ambiance/ipx/carte">carte</a> que la section des relais est bien marquée « commandable ».</div>
+<div class="ecl-message alerte">L'automate répond mais aucune sortie commandable n'a été trouvée. Vérifiez sur la <a href="/ambiance/ipx/v5/relais">carte</a> que la section des relais est bien marquée « commandable ».</div>
 {% else %}
 {% set groupes = sorties|groupby('section') %}
 {% for g in groupes %}
@@ -74,7 +74,7 @@
   </div>
 </div>
 {% endfor %}
-<p class="muted" style="margin-top:16px">Seules les sorties des blocs marqués « commandable » sur la <a href="/ambiance/ipx/carte">carte</a> sont proposées : relais, collecteurs ouverts, bits virtuels. État affiché : celui lu à l'ouverture de la page.</p>
+<p class="muted" style="margin-top:16px">Seules les sorties des blocs marqués « commandable » sur la <a href="/ambiance/ipx/v5/relais">carte</a> sont proposées : relais, collecteurs ouverts, bits virtuels. État affiché : celui lu à l'ouverture de la page.</p>
 {% endif %}
 </div>
 {% endblock %}

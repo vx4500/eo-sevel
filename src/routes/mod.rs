@@ -33,6 +33,7 @@ mod conduite;
 mod eclairage;
 mod demo_portal;
 mod departs;
+mod vaccination;
 pub(crate) mod documents;
 mod factures;
 mod factures_csv;
@@ -41,6 +42,8 @@ mod genetique_import;
 mod gte_periode;
 mod historique_truie;
 mod improductives;
+mod tableau_bandes;
+mod imprimer;
 mod import_historique;
 mod maternite_suivi;
 mod parity;
@@ -54,12 +57,16 @@ mod regression_tests;
 mod scan;
 mod sevrage;
 mod sms;
+mod proxmox;
+mod assistant;
+pub(crate) mod electricite;
+pub(crate) mod automatique;
+mod mcp;
 mod soupe;
 mod soupe_pilotage;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
-pub(crate) mod vocal;
 
 /// Encodage minimal pour glisser un message dans une redirection.
 fn encode_query(value: &str) -> String {
@@ -123,6 +130,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(dashboard))
         .route("/login", get(login_page).post(login_post))
+        .route("/decouvrir", get(decouvrir_page))
         .route(
             "/demo/acces",
             get(demo_portal::acces).post(demo_portal::creer),
@@ -138,6 +146,11 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/kren", get(equipement_kren))
         .route("/equipements/sms", get(sms::page).post(sms::enregistrer))
         .route("/equipements/sms/test", post(sms::test))
+        .route("/equipements/proxmox", get(proxmox::page).post(proxmox::enregistrer))
+        .route("/equipements/assistant", get(assistant::page).post(assistant::reglages))
+        .route("/assistant", get(assistant::page).post(assistant::demander))
+        .route("/equipements/assistant/connecteur", post(assistant::nouveau_jeton))
+        .route("/mcp/{jeton}", get(mcp::get_refuse).post(mcp::point_entree))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
         .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))
@@ -189,7 +202,7 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/eclairage/{id}/supprimer",
             post(eclairage::supprimer),
         )
-        .route("/ambiance/automate", get(automate::page))
+        .route("/ambiance/automate", get(ambiance::ipx_v5_accueil))
         .route("/ambiance/zigbee", get(zigbee::page))
         .route("/ambiance/zigbee/rattacher", post(zigbee::rattacher))
         .route("/ambiance/zigbee/commander", post(zigbee::commander))
@@ -198,13 +211,21 @@ pub fn router(state: AppState) -> Router {
             "/ambiance/zigbee/electricite/reglages",
             post(zigbee::electricite_reglages),
         )
-        .route("/ambiance/ipx", get(ambiance::ipx_page))
-        .route("/ambiance/ipx/explorateur", get(ambiance::ipx_explorateur))
+        .route("/ambiance/ipx", get(ambiance::ipx_v5_accueil))
+        .route("/ambiance/ipx/explorateur", get(ambiance::ipx_v5_accueil))
         .route("/ambiance/ipx/acces", get(ambiance::ipx_acces))
         .route("/ambiance/ipx/lire.json", get(ambiance::ipx_lire))
         .route("/ambiance/ipx/reglages", post(ambiance::ipx_reglages))
         .route("/ambiance/ipx/points.json", get(ambiance::ipx_points_json))
-        .route("/ambiance/ipx/carte", get(ambiance::ipx_carte))
+        .route("/ambiance/ipx/carte", get(ambiance::ipx_v5_accueil))
+        .route("/automatique", get(automatique::page))
+        .route("/automatique/nouvelle", get(automatique::nouvelle))
+        .route("/automatique/enregistrer", post(automatique::enregistrer))
+        .route("/automatique/{id}", get(automatique::regle))
+        .route("/automatique/{id}/basculer", post(automatique::basculer))
+        .route("/automatique/{id}/supprimer", post(automatique::supprimer))
+        .route("/ambiance/ipx/v5", get(ambiance::ipx_v5_accueil))
+        .route("/ambiance/ipx/v5/{code}", get(ambiance::ipx_v5))
         .route(
             "/ambiance/ipx/carte/affecter",
             post(ambiance::ipx_carte_affecter),
@@ -320,6 +341,8 @@ pub fn router(state: AppState) -> Router {
         .route("/truies/affecter-bande", post(truies_affecter_bande))
         .route("/truie/{id}", get(truie_detail))
         .route("/truie/{id}/imprimer", get(truie_imprimer))
+        .route("/imprimer", get(imprimer::page))
+        .route("/imprimer/liste", get(imprimer::liste))
         .route("/truie/{id}/bande", post(truie_bande))
         .route("/truie/{id}/lignee", post(truie_lignee))
         .route("/truie/{id}/emplacement", post(truie_emplacement))
@@ -424,20 +447,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/bande/{id}/cases", get(api_bande_cases))
         .route("/api/lignees", get(api_lignees))
         .route("/api/cases-capacity", get(api_cases_capacity))
+        .route("/api/cases-porcs", get(departs::api_cases_porcs))
         .route("/api/causes-perte", get(api_causes_perte))
-        // Saisie vocale : analyse sans écriture, puis validation après
-        // relecture à l'écran. Les deux étapes sont volontairement séparées.
-        .route("/api/vocal/contexte", get(vocal::contexte))
-        .route(
-            "/api/vocal/analyser",
-            post(vocal::analyser).layer(DefaultBodyLimit::max(vocal::TAILLE_MAX_AUDIO)),
-        )
-        .route("/api/vocal/valider", post(vocal::valider))
-        .route("/api/vocal/journal", get(vocal::journal))
-        .route("/api/vocal/{id}/abandonner", post(vocal::abandonner))
-        .route("/api/vocal/{id}/audio", get(vocal::audio))
         .route("/api/alertes-elevage", get(api_alertes_elevage))
         .route("/energie", get(energie))
+        .route("/electricite", get(electricite::page))
+        .route("/eau", get(electricite::page_eau))
+        .route("/electricite/prix", post(electricite::prix))
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/aliment-previsions/silo", post(silo_ajouter))
         .route("/aliment-previsions/plan/ajouter", post(parity::aliment_ajouter))
@@ -634,6 +650,7 @@ pub fn router(state: AppState) -> Router {
         .route("/departs/nouveau", post(departs::creer))
         .route("/departs/{id}/confirmer", post(departs::confirmer))
         .route("/departs/{id}/supprimer", post(departs::supprimer))
+        .route("/departs/quai/{id}/annuler", post(departs::quai_annuler))
         .route("/salles/{id}", get(salles::fiche))
         .route("/salles/{id}/reglages", post(salles::reglages))
         .route("/structure/site", post(structure_site))
@@ -679,6 +696,7 @@ pub fn router(state: AppState) -> Router {
         .route("/taches/{id}/fait", post(tache_fait))
         .route("/taches/{id}/supprimer", post(tache_supprimer))
         .route("/sanitaire", get(sanitaire))
+        .route("/sanitaire/plan", get(vaccination::page).post(vaccination::enregistrer))
         .route("/resolution-problemes", get(resolution_problemes))
         .route("/pharmacie", get(pharmacie))
         .route("/sanitaire/acte/ajouter", post(sanitaire_acte_ajouter))
@@ -698,6 +716,7 @@ pub fn router(state: AppState) -> Router {
         .route("/conduite/semaine/valider", post(conduite::valider))
         .route("/flux", get(conduite::flux))
         .route("/analyse-bandes", get(conduite::analyse))
+        .route("/analyse-bandes/tableau", get(tableau_bandes::page))
         .route("/rapport-hebdomadaire.pdf", get(rapport::ancien_pdf))
         .route("/calendrier.ics", get(calendrier_ics))
         .route("/imports", get(imports_page))
@@ -924,7 +943,31 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String>> {
+/// Nom affiché dans l'en-tête de chaque page (Paramètres → Nom de l'élevage),
+/// lu au démarrage et à chaque enregistrement des paramètres.
+static NOM_ELEVAGE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+pub(crate) async fn recharger_nom_elevage(pool: &SqlitePool) {
+    let nom: Option<String> = sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='nom_elevage'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .map(|n: String| n.trim().to_string())
+        .filter(|n| !n.is_empty());
+    if let Ok(mut v) = NOM_ELEVAGE.write() {
+        *v = nom;
+    }
+}
+
+fn render(state: &AppState, name: &str, mut context: Value) -> AppResult<Html<String>> {
+    if let Value::Object(ctx) = &mut context {
+        if !ctx.contains_key("entete_nom") {
+            let nom = NOM_ELEVAGE.read().ok().and_then(|v| v.clone());
+            ctx.insert("entete_nom".into(), json!(nom.unwrap_or_else(|| "EO_Sevel".into())));
+        }
+    }
     let template = state
         .templates
         .get_template(name)
@@ -940,12 +983,15 @@ fn render(state: &AppState, name: &str, context: Value) -> AppResult<Html<String
 /// Modules d'équipement proposés sur /equipements/modules, dans l'ordre.
 const EQUIP_MODULES: &[(&str, &str, &str)] = &[
     ("awel", "EO_Awel", "Ventilation, températures, hygrométrie et alertes des salles"),
-    ("ipx", "Automate IPX800", "Sondes, relais, entrées et sorties, éclairage"),
+    ("ipx", "Ipx800v5", "Sondes, relais, entrées et sorties, éclairage"),
     ("zigbee", "Réseau Zigbee", "Sondes sans fil, interrupteurs, variateurs, compteurs"),
     ("sms", "Free SMS", "Alertes par SMS"),
+    ("proxmox", "Serveur Proxmox", "État du serveur, machines et sauvegardes"),
+    ("assistant", "Assistant", "Questions en langage courant sur les données de l'élevage"),
     ("acces", "Accès à distance", "Tunnel Cloudflare"),
     ("cameras", "Caméras", "Image des caméras dans les salles"),
     ("soupe", "Machine à soupe", "Exa-Feeder Asserva en écoute seule"),
+    ("automatique", "Automatique", "Règles si… alors… entre automates et appareils"),
     ("laezh", "EO_Laezh", "Machine à lait pour porcelets"),
     ("treizh", "EO_Treizh", "Station de pesée et de tri Domino"),
     ("kren", "EO_Kren", "Distribution automatisée d’aliment"),
@@ -1025,8 +1071,8 @@ async fn equipements(
         .unwrap_or(0);
     let zigbee_ok = zigbee.is_some_and(|(connecte, age)| connecte != 0 && age < 600);
     let ipx = match &ipx_hote {
-        Some(hote) => json!({"code":"ipx","nom":"Automate IPX800", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/automate", "action":"Ouvrir l’automate"}),
-        None => json!({"code":"ipx","nom":"Automate IPX800", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
+        Some(hote) => json!({"code":"ipx","nom":"Ipx800v5", "etat":"actif", "etat_texte":format!("{hote} · {ipx_points} points"), "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/v5/relais", "action":"Ouvrir l’automate"}),
+        None => json!({"code":"ipx","nom":"Ipx800v5", "etat":"attente", "etat_texte":"Adresse à renseigner", "description":"Sondes des salles, relais, entrées et sorties de l’automate, carte du matériel et programmes d’éclairage.", "href":"/ambiance/ipx/acces", "action":"Raccorder l’automate"}),
     };
     let sms_actif: bool = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM parametre WHERE cle='sms_free_actif' AND valeur='1'")
         .fetch_one(&state.pool)
@@ -1034,6 +1080,10 @@ async fn equipements(
         .unwrap_or(0)
         > 0;
     let sms = json!({"code":"sms","nom":"Free SMS", "etat": if sms_actif { "actif" } else { "attente" }, "etat_texte": if sms_actif { "Alertes par SMS actives" } else { "À configurer" }, "description":"Alertes des salles et retour après coupure de courant, par SMS sur votre portable Free.", "href":"/equipements/sms", "action":"Régler les SMS"});
+    let proxmox_ok = crate::proxmox::parametre(&state.pool, "proxmox_secret").await.is_some();
+    let proxmox = json!({"code":"proxmox","nom":"Serveur Proxmox", "etat": if proxmox_ok { "actif" } else { "attente" }, "etat_texte": if proxmox_ok { "Jeton enregistré" } else { "À configurer" }, "description":"Le serveur qui fait tourner EO_Sevel : processeur, mémoire, disques, machines et sauvegardes, en lecture seule.", "href":"/equipements/proxmox", "action":"Voir le serveur"});
+    let assistant_ok = crate::proxmox::parametre(&state.pool, "mcp_jeton").await.is_some();
+    let assistant = json!({"code":"assistant","nom":"Assistant Claude", "etat": if assistant_ok { "actif" } else { "attente" }, "etat_texte": if assistant_ok { "Connecteur créé" } else { "À configurer" }, "description":"Parler à l’élevage depuis l’application Claude : truies, cases et vannes, dates d’IA, déplacements et rappels, toujours après votre « oui ».", "href":"/equipements/assistant", "action":"Régler l’assistant"});
     let nb_cameras: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM camera WHERE actif=1")
         .fetch_one(&state.pool)
         .await
@@ -1050,6 +1100,10 @@ async fn equipements(
     } else {
         None
     };
+    let nb_regles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM automatisme WHERE actif=1")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
     let tunnel = crate::tunnel::instantane();
     let acces = json!({"code":"acces","nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
@@ -1067,8 +1121,11 @@ async fn equipements(
         let mut liste = json!([
             {"code":"awel","nom":"EO_Awel", "etat":"actif", "etat_texte":"Gestion disponible", "description":"Ventilation, températures, hygrométrie et alertes des salles.", "href":"/ambiance", "action":"Ouvrir EO_Awel"},
             ipx,
+            {"code":"automatique","nom":"Automatique", "etat": if nb_regles > 0 { "actif" } else { "attente" }, "etat_texte": if nb_regles > 0 { format!("{nb_regles} règle{} active{}", if nb_regles > 1 { "s" } else { "" }, if nb_regles > 1 { "s" } else { "" }) } else { "Aucune règle".to_string() }, "description":"Relier les automates et appareils entre eux : si une condition est vraie (sonde, entrée, salle, machine à soupe), alors commander des sorties et envoyer des SMS.", "href":"/automatique", "action":"Ouvrir Automatique"},
             zigbee,
             sms,
+            proxmox,
+            assistant,
             acces,
             cameras,
             {"code":"laezh","nom":"EO_Laezh", "etat":"attente", "etat_texte":"Raccordement à prévoir", "description":"Machine à lait pour porcelets : préparation, distribution et nettoyage.", "href":"/equipements/laezh", "action":"Préparer EO_Laezh"},
@@ -1076,7 +1133,7 @@ async fn equipements(
             {"code":"kren","nom":"EO_Kren", "etat":"attente", "etat_texte":"Architecture définie", "description":"Distribution d’aliment filaire : passerelle centrale et nœuds d’auge sur bus CAN.", "href":"/equipements/kren", "action":"Préparer EO_Kren"}
         ]);
         if let (Some(s), Value::Array(l)) = (soupe, &mut liste) {
-            l.insert(6, s);
+            l.insert(8, s);
         }
         if let Value::Array(l) = &mut liste {
             l.retain(|e| crate::templates::equip_actif(e["code"].as_str().unwrap_or("")));
@@ -1275,7 +1332,7 @@ async fn synchroniser_protocole_portees(pool: &SqlitePool, protocole_id: i64) ->
         .bind(protocole_id)
         .execute(pool)
         .await?;
-    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas'")
+    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas' AND e.date>=date('now','-60 day') AND NOT EXISTS(SELECT 1 FROM evenement s WHERE s.truie_id=e.truie_id AND s.type='sevrage' AND s.date>=e.date)")
         .bind(protocole_id).execute(pool).await?;
     Ok(())
 }
@@ -2090,6 +2147,13 @@ fn require_writer(session: &SessionData) -> AppResult<()> {
     } else {
         Err(AppError::Forbidden)
     }
+}
+
+/// Présentation détaillée du logiciel, publique (lien depuis la connexion).
+/// La présentation du logiciel vit sur le site vitrine, tenu à jour à un
+/// seul endroit (fonctionnalités, essai de la saisie rapide, démos).
+async fn decouvrir_page() -> Redirect {
+    Redirect::to("https://eo-elevage.fr/eo-sevel/")
 }
 
 async fn login_page(
@@ -3121,6 +3185,41 @@ async fn bande_ajouter(
 }
 
 /// Édition « à la volée » depuis la liste `/bandes` (§2 des demandes en
+/// Tables qui recopient le code de la bande (texte) au lieu de son id.
+const COPIES_CODE_BANDE: [(&str, &str); 13] = [
+    ("truie", "bande_code"), ("porccharcutier", "bande_code"), ("mouvementstock", "bande_code"),
+    ("saisieabattoir", "bande_code"), ("tache", "bande_code"), ("traitementcharcutier", "bande_code"),
+    ("porteerang", "bande"), ("achatgenetique", "bande_code"), ("mouvementpharmacie", "bande_code"),
+    ("declarationmort", "bande_code"), ("receptionachat", "bande_code"), ("consoaliment_bande", "bande_code"),
+    ("pesee_bande", "bande_code"),
+];
+
+/// Renomme une bande et reporte le nouveau nom partout où il est recopié.
+/// Refusé si le nom est vide ou déjà pris par une autre bande.
+pub(crate) async fn renommer_bande(pool: &SqlitePool, id: i64, ancien: &str, nouveau: &str) -> AppResult<()> {
+    let nouveau = nouveau.trim();
+    if nouveau.is_empty() || nouveau.len() > 20 {
+        return Err(AppError::Invalid("Nom de bande vide ou trop long (20 caractères au plus).".into()));
+    }
+    let pris: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM bande WHERE lower(code)=lower(?) AND id<>?")
+        .bind(nouveau).bind(id).fetch_one(pool).await?;
+    if pris > 0 {
+        return Err(AppError::Invalid(format!("Le nom « {nouveau} » est déjà pris par une autre bande.")));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE bande SET code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(nouveau).bind(id).execute(&mut *tx).await?;
+    for (table, colonne) in COPIES_CODE_BANDE {
+        let existe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?")
+            .bind(table).bind(colonne).fetch_one(&mut *tx).await?;
+        if existe == 1 {
+            sqlx::query(&format!("UPDATE {table} SET {colonne}=? WHERE {colonne}=?"))
+                .bind(nouveau).bind(ancien).execute(&mut *tx).await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 /// attente) : chaque ligne du tableau est son propre petit formulaire (voir
 /// `form="b{{ id }}"` dans `bandes.html`), pour changer mise-bas/site/n°
 /// marquage sans ouvrir la fiche bande complète. Les champs calculés
@@ -3137,10 +3236,16 @@ async fn bande_modifier_rapide(
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
     let site = selected_site(&state.pool, &form).await?;
-    let code: Option<String> = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
+    let mut code: Option<String> = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
         .bind(id)
         .fetch_optional(&state.pool)
         .await?;
+    if let (Some(ancien), Some(nouveau)) = (code.clone(), form_text(&form, "code")) {
+        if nouveau != ancien {
+            renommer_bande(&state.pool, id, &ancien, &nouveau).await?;
+            code = Some(nouveau);
+        }
+    }
     // Le n° de marquage suit automatiquement le site : une bande qui change
     // de site (transfert de salle, correction) ne doit jamais garder le
     // numéro de son ancien site.
@@ -3715,8 +3820,18 @@ async fn archives(
         "SELECT id,code,date_mb,site,note FROM bande WHERE active=0 ORDER BY date_mb DESC,id DESC",
     )
     .await?;
+    // Truies réformées : sorties de l'élevage, gardées ici avec leur historique.
+    let reformees = generic_rows(
+        &state.pool,
+        "SELECT t.id,t.num_travail,t.num_national,t.rang,t.date_reforme,t.motif_sortie,t.prix_sortie, \
+         (SELECT b.code FROM evenement e JOIN bande b ON b.id=e.bande_id WHERE e.truie_id=t.id ORDER BY e.date DESC,e.id DESC LIMIT 1) AS derniere_bande, \
+         (SELECT COUNT(*) FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas') AS portees \
+         FROM truie t WHERE t.reformee=1 ORDER BY t.date_reforme IS NULL,t.date_reforme DESC,t.num_travail",
+    )
+    .await?;
     let mut ctx = context(&session);
     ctx.insert("bandes".into(), Value::Array(bandes));
+    ctx.insert("reformees".into(), Value::Array(reformees));
     render(&state, "archives.html", Value::Object(ctx))
 }
 
@@ -5715,7 +5830,9 @@ async fn truies_imprimer(
         let code = form_text(&form, "bande_code").ok_or_else(|| {
             AppError::Invalid("Cochez des truies ou sélectionnez une bande".into())
         })?;
-        let result = sqlx::query("SELECT num_travail,num_national,rfid,race,rang,bande_code,statut FROM truie WHERE reformee=0 AND bande_code=? ORDER BY num_travail")
+        // Bande en cours : ses truies actuelles. Bande terminée (plus aucune
+        // truie) : celles qui y ont eu un événement, réformées comprises.
+        let result = sqlx::query("SELECT num_travail,num_national,rfid,race,rang,bande_code,statut FROM truie t WHERE (t.reformee=0 AND t.bande_code=?1) OR (NOT EXISTS(SELECT 1 FROM truie x WHERE x.reformee=0 AND x.bande_code=?1) AND EXISTS(SELECT 1 FROM evenement e JOIN bande b ON b.id=e.bande_id WHERE e.truie_id=t.id AND b.code=?1)) ORDER BY num_travail")
             .bind(&code).fetch_all(&state.pool).await?;
         rows_to_json(result)?
     } else {
@@ -9690,6 +9807,15 @@ async fn synchronise_sortie_abattoir(
         .bind(sale_id)
         .execute(&mut **tx)
         .await?;
+    sqlx::query("DELETE FROM quai_affectation WHERE vente_id=?")
+        .bind(sale_id)
+        .execute(&mut **tx)
+        .await?;
+    // Truies de réforme : ce ne sont pas des porcs de la bande, aucune sortie
+    // d'effectif de bande (elles sortent par la réforme de la truie).
+    if lots_json.is_some_and(crate::economic_import::lots_reforme) {
+        return Ok(());
+    }
     let mut allocations = Vec::<(i64, i64)>::new();
     if let Some(raw) = lots_json {
         if let Ok(Value::Array(lots)) = serde_json::from_str::<Value>(raw) {
@@ -9721,8 +9847,25 @@ async fn synchronise_sortie_abattoir(
         .map(str::to_owned)
         .unwrap_or_else(|| Local::now().date_naive().format("%Y-%m-%d").to_string());
     for (band, count) in allocations {
-        let cases: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT c.id,CAST(COALESCE(SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE d.case_id=c.id AND b.id=? AND date(d.date)<=date(?)),0) AS INTEGER) AS disponible FROM casesalle c JOIN transfert t ON (t.case_dest_id=c.id OR t.case_source_id=c.id) WHERE t.espece='porc' AND t.bande_id=? AND date(t.date)<=date(?) GROUP BY c.id HAVING disponible>0 ORDER BY MAX(t.date),c.id",
+        // Départ déjà confirmé dans « Départs » (porcs retirés case par case) :
+        // le bon d'abattoir de ce même enlèvement ne doit pas les retirer une
+        // seconde fois (B3.14, 05/10 : 66 porcs comptés deux fois).
+        let deja_partis: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM transfert WHERE bande_id=? AND vente_apport_id IS NULL \
+             AND case_dest_id IS NULL AND note LIKE 'Départ du%' \
+             AND date(date) BETWEEN date(?,'-3 day') AND date(?,'+1 day')",
+        )
+        .bind(band)
+        .bind(&movement_date)
+        .bind(&movement_date)
+        .fetch_one(&mut **tx)
+        .await?;
+        let count = (count - deja_partis).max(0);
+        if count == 0 {
+            continue;
+        }
+        let candidates: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT c.id,CAST(COALESCE(SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d JOIN bande b ON b.code=d.bande_code WHERE d.case_id=c.id AND b.id=? AND date(d.date)<=date(?)),0) AS INTEGER) AS disponible FROM casesalle c JOIN transfert t ON (t.case_dest_id=c.id OR t.case_source_id=c.id) WHERE t.espece='porc' AND t.bande_id=? AND date(t.date)<=date(?) GROUP BY c.id ORDER BY MAX(t.date),c.id",
         )
         .bind(band)
         .bind(&movement_date)
@@ -9730,7 +9873,43 @@ async fn synchronise_sortie_abattoir(
         .bind(&movement_date)
         .fetch_all(&mut **tx)
         .await?;
+        // Un inventaire saisi dans la case fait foi : l'effectif compté
+        // (inventaire + mouvements suivants) remplace l'estimation par les
+        // seuls transferts, sinon un bon d'apport après inventaire laissait
+        // des porcs « fantômes » dans la case (Case 1 La Berru, 24/08).
+        let mut cases = Vec::new();
+        for (case_id, estime) in candidates {
+            let inventaire: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM inventairecase WHERE case_id=? AND date(date)<=date(?)")
+                .bind(case_id)
+                .bind(&movement_date)
+                .fetch_one(&mut **tx)
+                .await?;
+            let disponible = if inventaire > 0 { case_pig_count_conn(&mut **tx, case_id).await? } else { estime };
+            if disponible > 0 {
+                cases.push((case_id, disponible));
+            }
+        }
         let mut remaining = count;
+        // Porcs déjà mis sur le quai : sortis de case, ils partent avec ce
+        // bon d'apport sans être retirés une seconde fois des cases.
+        let quai: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT q.id,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) AS reste \
+             FROM quai_porc q WHERE q.bande_id=? AND date(q.date)<=date(?) AND reste>0 ORDER BY q.date,q.id",
+        )
+        .bind(band)
+        .bind(&movement_date)
+        .fetch_all(&mut **tx)
+        .await?;
+        for (quai_id, reste) in quai {
+            if remaining <= 0 {
+                break;
+            }
+            let pris = remaining.min(reste);
+            sqlx::query("INSERT INTO quai_affectation(quai_id,vente_id,nombre) VALUES(?,?,?)")
+                .bind(quai_id).bind(sale_id).bind(pris)
+                .execute(&mut **tx).await?;
+            remaining -= pris;
+        }
         for (case_id, available) in cases {
             if remaining <= 0 {
                 break;
@@ -12362,21 +12541,50 @@ async fn structure_salle_supprimer(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let children: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM casesalle WHERE salle_id=?)+(SELECT COUNT(*) FROM truie WHERE salle_id=?)+(SELECT COUNT(*) FROM transfert WHERE salle_source_id=? OR salle_dest_id=?)+(SELECT COUNT(*) FROM controlequotidien WHERE salle_id=?)")
+    let (cases, truies, mouvements): (i64, i64, i64) = sqlx::query_as("SELECT (SELECT COUNT(*) FROM casesalle WHERE salle_id=?1),(SELECT COUNT(*) FROM truie WHERE salle_id=?1),(SELECT COUNT(*) FROM transfert WHERE salle_source_id=?1 OR salle_dest_id=?1)")
         .bind(id)
-        .bind(id).bind(id).bind(id).bind(id)
         .fetch_one(&state.pool)
         .await?;
-    if children > 0 {
-        return Err(AppError::Invalid(
-            "Cette salle contient des cases, animaux, contrôles ou mouvements. Conservez-la pour préserver l’historique, ou déplacez d’abord les éléments actifs.".into(),
-        ));
+    if cases + truies + mouvements > 0 {
+        let mut raisons = Vec::new();
+        if cases > 0 {
+            raisons.push(format!("{cases} case(s) — supprimez-les d’abord, leurs animaux vont dans la case choisie"));
+        }
+        if truies > 0 {
+            raisons.push(format!("{truies} truie(s) rattachée(s)"));
+        }
+        if mouvements > 0 {
+            raisons.push(format!("{mouvements} mouvement(s) d’animaux dans l’historique"));
+        }
+        return Err(AppError::Invalid(format!("Salle non supprimée : {}.", raisons.join(", "))));
     }
-    sqlx::query("DELETE FROM salle WHERE id=?")
+    let nom: String = sqlx::query_scalar("SELECT nom FROM salle WHERE id=?")
         .bind(id)
-        .execute(&state.pool)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    // Salle vide : l'historique (contrôles, alertes, observations) garde le
+    // nom de la salle et perd seulement le lien ; réglages et mesures
+    // d'ambiance propres à la salle partent avec elle.
+    let tables: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table'")
+        .fetch_all(&state.pool)
         .await?;
-    Ok(Redirect::to("/structure").into_response())
+    let mut tx = state.pool.begin().await?;
+    for table in ["controlequotidien", "ambiance_alerte", "observation_comportement", "ipx_point", "camera"] {
+        if tables.iter().any(|t| t == table) {
+            sqlx::query(&format!("UPDATE {table} SET salle_id=NULL WHERE salle_id=?")).bind(id).execute(&mut *tx).await?;
+        }
+    }
+    for table in ["ambiance_mesure", "ambiance_heure", "ambiance_jour", "ambiance_etat", "ambiance_preconditionnement", "ventilateur_salle", "ambiance_salle"] {
+        if tables.iter().any(|t| t == table) {
+            sqlx::query(&format!("DELETE FROM {table} WHERE salle_id=?")).bind(id).execute(&mut *tx).await?;
+        }
+    }
+    sqlx::query("DELETE FROM salle WHERE id=?").bind(id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    db::journal(&state.pool, &session.nom, "supprimer", "salle", &nom, "/structure").await;
+    let message = format!("Salle « {nom} » supprimée");
+    Ok(Redirect::to(&format!("/structure?ok={}", encode_query(&message))).into_response())
 }
 
 async fn structure_site_supprimer(
@@ -12432,6 +12640,10 @@ async fn tache_fait(
         .bind(id)
         .execute(&state.pool)
         .await?;
+    // Case cochée depuis « À faire » de l'accueil : on y revient.
+    if form.get("retour").map(String::as_str) == Some("accueil") {
+        return Ok(Redirect::to("/").into_response());
+    }
     Ok(Redirect::to("/taches").into_response())
 }
 async fn tache_supprimer(
@@ -12723,7 +12935,20 @@ async fn planning(
         }
     }
     calculated.sort_by_key(|v| v["date"].as_str().unwrap_or_default().to_string());
+    // Frise des bandes (comme l'accueil) et détail de chaque bande.
+    let (frise, mut frise_bandes) = accueil::frise_bandes(&state.pool).await?;
+    for b in frise_bandes.iter_mut() {
+        let porcs: i64 = b["flux"]["emplacements"].as_array().into_iter().flatten()
+            .filter(|e| e["animaux"] == "Porcs").filter_map(|e| e["effectif"].as_i64()).sum();
+        b["porcs"] = json!(porcs);
+        let salles: Vec<String> = b["flux"]["emplacements"].as_array().into_iter().flatten()
+            .filter_map(|e| e["salle"].as_str().or(e["nom"].as_str()).map(str::to_string))
+            .fold(Vec::new(), |mut v, s| { if !v.contains(&s) { v.push(s); } v });
+        b["salles"] = json!(salles.join(", "));
+    }
     let mut ctx = context(&session);
+    ctx.insert("frise".into(), frise);
+    ctx.insert("frise_bandes".into(), Value::Array(frise_bandes));
     ctx.insert("evenements".into(), Value::Array(events));
     ctx.insert("taches".into(), Value::Array(tasks));
     ctx.insert("echeances".into(), Value::Array(calculated));
@@ -14263,11 +14488,15 @@ async fn apropos(
 ) -> AppResult<Html<String>> {
     render(&state, "apropos.html", Value::Object(context(&session)))
 }
+/// Publique : lien « Contact et propriété » du pied de page, connecté ou non.
 async fn contact(
     State(state): State<AppState>,
-    Extension(session): Extension<SessionData>,
+    session: Option<Extension<SessionData>>,
 ) -> AppResult<Html<String>> {
-    render(&state, "contact.html", Value::Object(context(&session)))
+    match session {
+        Some(Extension(session)) => render(&state, "contact.html", Value::Object(context(&session))),
+        None => render(&state, "contact.html", json!({})),
+    }
 }
 
 async fn list_page(
@@ -14636,3 +14865,75 @@ mod band_code_tests {
         assert_ne!(normalize_band_code("A12"), normalize_band_code("B12"));
     }
 }
+
+#[cfg(test)]
+mod suppression_salle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn salle_vide_supprimee_historique_conserve() -> anyhow::Result<()> {
+        use super::documents::tests::{session, state};
+        let state = state().await;
+        sqlx::raw_sql("INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'Quai'),(2,1,'Pleine'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,2,'C1'); INSERT INTO controlequotidien(date,horodatage,categorie,salle_id,salle_nom,statut,utilisateur) VALUES('2026-08-11','2026-08-11 05:00','vannes_auges',1,'Quai','ok','x');")
+            .execute(&state.pool)
+            .await?;
+        let form = || Form(HashMap::from([("csrf_token".to_string(), "test".to_string())]));
+        structure_salle_supprimer(State(state.clone()), Extension(session()), Path(1), form()).await?;
+        assert!(structure_salle_supprimer(State(state.clone()), Extension(session()), Path(2), form()).await.is_err());
+        let salles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM salle").fetch_one(&state.pool).await?;
+        assert_eq!(salles, 1);
+        let controle: (Option<i64>, String) = sqlx::query_as("SELECT salle_id,salle_nom FROM controlequotidien").fetch_one(&state.pool).await?;
+        assert_eq!(controle, (None, "Quai".to_string()));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod economique_visuel_tests {
+    use super::*;
+
+    /// `EO_TEST_BASE=/var/tmp/copie.db cargo test -- --ignored economique_sur_copie` :
+    /// rend chaque onglet de /economique sur une copie de la base réelle.
+    #[tokio::test]
+    #[ignore]
+    async fn economique_sur_copie_de_la_base_reelle() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{chemin}")).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse().unwrap(), db_path: chemin.clone().into(), secure_cookies: false },
+            pool,
+            crate::templates::build().unwrap(),
+        );
+        for secteur in ["", "aliment", "veterinaire", "semence", "genetique", "abattoir"] {
+            let mut q = HashMap::new();
+            if !secteur.is_empty() { q.insert("secteur".to_string(), secteur.to_string()); }
+            let html = economique(State(state.clone()), Extension(super::documents::tests::session()), Query(q)).await?.0;
+            if secteur.is_empty() {
+                assert!(html.contains("id=\"eco-donnees\"") && html.contains("eco-courbe"));
+            }
+            std::fs::write(format!("/var/tmp/eco-{}.html", if secteur.is_empty() { "synthese" } else { secteur }), html)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod renommer_bande_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn le_nouveau_nom_suit_partout_et_un_doublon_est_refuse() -> anyhow::Result<()> {
+        let state = super::documents::tests::state().await;
+        sqlx::raw_sql("INSERT INTO bande(id,code,active) VALUES(1,'B1.52',1),(2,'B2.07',1); \
+            INSERT INTO truie(id,num_travail,statut,rang,reformee,mere_cochette,bande_code) VALUES(1,'T1','vide',1,0,0,'B1.52');")
+            .execute(&state.pool).await?;
+        renommer_bande(&state.pool, 1, "B1.52", "B1.01").await?;
+        let (b, t): (String, String) = sqlx::query_as("SELECT (SELECT code FROM bande WHERE id=1),(SELECT bande_code FROM truie WHERE id=1)")
+            .fetch_one(&state.pool).await?;
+        assert_eq!((b.as_str(), t.as_str()), ("B1.01", "B1.01"));
+        assert!(renommer_bande(&state.pool, 1, "B1.01", "b2.07").await.is_err(), "nom déjà pris");
+        assert!(renommer_bande(&state.pool, 1, "B1.01", "  ").await.is_err(), "nom vide");
+        Ok(())
+    }
+}
+

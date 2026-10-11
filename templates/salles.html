@@ -7,6 +7,7 @@
   {% for d in departs %}
   <div>{% if d.a_confirmer %}<a href="/departs" style="color:#b3261e;font-weight:600">⚠ {{ d.quand }} — {{ d.nombre }} porcs : à confirmer (salles prélevées)</a>{% else %}<b>{{ d.quand }}</b> — {{ d.nombre }} porcs{% if d.note %} · {{ d.note }}{% endif %}{% endif %}</div>
   {% else %}<p class="muted" style="margin:0">Aucun départ prévu.</p>{% endfor %}
+  {% if quai %}<div style="margin-top:6px"><a href="/departs">🅿 Sur le quai : <b>{{ quai | map(attribute="reste") | sum }} porcs</b> en attente du bon d'apport</a></div>{% endif %}
 </section>
 {% for s in salles %}
 {% if loop.first or s.stade != loop.previtem.stade %}{% if not loop.first %}</div>{% endif %}

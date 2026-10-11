@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Assistant — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<style>
+.as-question textarea{width:100%;min-height:70px;font-size:1.05rem}
+.as-reponse{white-space:pre-wrap;line-height:1.5}
+.as-exemples button{margin:3px 4px 3px 0}
+.as-etapes code{white-space:pre-wrap;font-size:.82rem}
+.as-erreur{border-left:4px solid #b3261e;background:#fff2f0}
+</style>
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Assistant</h1><p>Posez une question sur l'élevage en langage courant. L'assistant consulte les données en lecture seule et ne modifie rien.</p></div>
+  <span class="equipment-state {% if cle_enregistree or mcp_jeton %}actif{% else %}attente{% endif %}">{% if mcp_jeton %}Connecteur créé{% elif cle_enregistree %}Prêt{% else %}À configurer{% endif %}</span>
+</section>
+
+{% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b></p></section>{% endif %}
+
+{% if cle_enregistree %}
+<section class="card as-question">
+<form method="post" action="/assistant"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <textarea name="question" id="as-q" placeholder="Ex. : combien de truies sont en maternité ?" required>{{ question or '' }}</textarea>
+  <p class="as-exemples">
+    <button type="button" class="secondary" data-q="Combien de truies sont présentes, par stade ?">Truies par stade</button>
+    <button type="button" class="secondary" data-q="Quelles sont les prochaines mises bas prévues ?">Prochaines mises bas</button>
+    <button type="button" class="secondary" data-q="Combien de porcelets sont morts ce mois-ci, par cause ?">Pertes du mois</button>
+    <button type="button" class="secondary" data-q="Quelle est la température actuelle de chaque salle ?">Températures</button>
+  </p>
+  <button type="submit">Demander</button> <small class="muted">La réponse peut prendre 10 à 30 secondes.</small>
+</form>
+<script>document.querySelectorAll('.as-exemples [data-q]').forEach(b=>b.onclick=()=>{document.getElementById('as-q').value=b.dataset.q;});</script>
+</section>
+{% endif %}
+
+{% if erreur %}<section class="card as-erreur"><p><b>{{ erreur }}</b></p></section>{% endif %}
+{% if reponse %}
+<section class="card"><h2>Réponse</h2><div class="as-reponse">{{ reponse.texte }}</div>
+{% if reponse.etapes %}<details class="as-etapes"><summary>Comment j'ai trouvé ({{ reponse.etapes|length }} étape{% if reponse.etapes|length > 1 %}s{% endif %})</summary><ol>
+{% for e in reponse.etapes %}<li><b>{{ e.outil }}</b> — {{ e.resume }}{% if e.entree %}<br><code>{{ e.entree }}</code>{% endif %}</li>{% endfor %}
+</ol></details>{% endif %}
+</section>
+{% endif %}
+
+{% if session.est_admin %}
+<section class="card" id="connecteur"><h2>Connecteur pour l'application Claude</h2>
+<p>Pour parler à l'élevage depuis l'application Claude du téléphone (mode vocal) : Claude peut chercher une truie, voir les places des cases, calculer les dates d'IA, <b>déplacer une truie</b> et <b>créer un rappel</b> — toujours après votre « oui ».</p>
+{% if resultat == 'jeton' %}<p><b>✓ Nouvelle adresse créée.</b> L'ancienne ne fonctionne plus.</p>{% endif %}
+{% if mcp_jeton %}<p>Adresse à coller dans claude.ai → <b>Paramètres → Connecteurs → Ajouter un connecteur personnalisé</b> :</p>
+<p><code id="mcp-url">/mcp/{{ mcp_jeton }}</code> <button type="button" class="secondary" id="mcp-copier">Copier</button></p>
+<p class="muted">Elle doit commencer par l'adresse <b>https</b> de l'accès à distance (pas 192.168…). Gardez-la secrète : elle sert de mot de passe.</p>
+<script>(function(){var c=document.getElementById('mcp-url');if(location.protocol==='https:')c.textContent=location.origin+c.textContent;document.getElementById('mcp-copier').onclick=function(){navigator.clipboard&&navigator.clipboard.writeText(c.textContent);};})();</script>
+{% endif %}
+<form method="post" action="/equipements/assistant/connecteur"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button type="submit" {% if mcp_jeton %}class="secondary"{% endif %}>{% if mcp_jeton %}Changer l'adresse{% else %}Créer l'adresse du connecteur{% endif %}</button></form>
+</section>
+<section class="card"><h2>Questions écrites (facultatif)</h2>
+<p>Seulement pour poser des questions écrites sur cette page (pas nécessaire pour le connecteur). L'assistant utilise l'API Claude d'Anthropic. Créez une clé sur <b>console.anthropic.com → API Keys</b>. La question et les résultats des requêtes sont envoyés à l'API ; les comptes, mots de passe et paramètres ne sont jamais lisibles par l'assistant.</p>
+<form class="rust-actions" method="post" action="/equipements/assistant"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Clé API<input type="password" name="cle" autocomplete="new-password" placeholder="{% if cle_enregistree %}enregistrée — laisser vide pour la garder{% else %}sk-ant-…{% endif %}"></label>
+  <label>Modèle<input name="modele" value="{{ modele or '' }}" placeholder="{{ modele_defaut }}"></label>
+  <button type="submit">Enregistrer</button>
+</form></section>
+{% endif %}
+</div>{% endblock %}

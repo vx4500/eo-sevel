@@ -4,7 +4,7 @@
 {% if session.peut_modifier %}<p><a class="rust-page-links" href="/bande/{{ bande.id }}/sevrage" style="display:inline-flex;font-weight:700">Saisir le sevrage de la bande →</a></p>{% endif %}
 <details class="rust-page-menu"><summary>Actions sur la bande ▾</summary><div class="rust-page-menu-panel">
   <a href="/maternite?bande_id={{ bande.id }}">Suivi maternité</a>
-  <a href="/bande/{{ bande.id }}/imprimer">Imprimer la fiche</a>
+  <a href="/bande/{{ bande.id }}/imprimer">Imprimer la fiche</a> · <a href="/imprimer?bande={{ bande.code }}">Imprimer la liste des truies (colonnes au choix)</a>
   <a href="/bande/{{ bande.id }}/feuille-mise-bas">Fiche de saisie mise-bas</a>
   <a href="/bande/{{ bande.id }}/fiche-mise-bas">Fiche de mise-bas (A4)</a>
   <a href="/export/mise-bas/{{ bande.id }}">Exporter la liste (CSV)</a>

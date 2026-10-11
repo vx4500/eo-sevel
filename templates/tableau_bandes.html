@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block title %}Tableau des bandes · EO_Sevel{% endblock %}{% block content %}
+{% macro val(v) %}{% if v is none %}—{% else %}{{ v }}{% endif %}{% endmacro %}
+<h1>Tableau des bandes</h1>
+<p class="note no-print">Une colonne par bande (les {{ nb }} dernières), la moyenne et l’objectif de l’élevage. <span class="tb-bon">Vert</span> : objectif atteint, <span class="tb-mauvais">rouge</span> : en dessous. Les lignes « vendus » viennent des apports abattoir rattachés à la bande : chiffre partiel tant que la bande n’est pas entièrement vendue. Les objectifs se règlent dans <a href="/productivite">Objectifs</a>.</p>
+<form method="get" action="/analyse-bandes/tableau" class="rust-actions no-print">
+  <label>Nombre de bandes <select name="n" onchange="this.form.submit()">{% for k in [4,6,8,10,12,16,24] %}<option{% if k == nb %} selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+  <button type="button" onclick="window.print()">Exporter PDF</button>
+  <a href="/analyse-bandes">← Analyse des bandes</a>
+</form>
+{% if not bandes %}<p class="rust-empty">Aucune bande avec des saillies enregistrées.</p>{% else %}
+<div class="rust-scroll"><table class="tableau-bandes" data-no-sort><thead><tr><th>Indicateur</th>
+{% for b in bandes %}<th><a href="/analyse-bandes?bande={{ b.code }}">{{ b.code }}</a><br><small>{{ b.date_mb|date_fr }}</small></th>{% endfor %}
+<th>Moyenne</th><th>Objectif</th></tr></thead><tbody>
+{% for l in lignes %}<tr{% if l.vente %} class="tb-vente"{% endif %}><th scope="row">{{ l.libelle }}</th>
+{% for c in l.cellules %}<td class="tb-{{ c.etat }}">{{ val(c.v) }}</td>{% endfor %}
+<td class="tb-{{ l.moyenne.etat }}"><b>{{ val(l.moyenne.v) }}</b></td>
+<td class="tb-objectif">{% if l.objectif is not none %}{{ "≥" if l.sens != "bas" else "≤" }} {{ val(l.objectif) }}{% else %}—{% endif %}</td></tr>
+{% endfor %}</tbody></table></div>
+{% endif %}
+<style>
+.tableau-bandes td,.tableau-bandes th{text-align:right;white-space:nowrap}
+.tableau-bandes tbody th{text-align:left;font-weight:600}
+.tableau-bandes td.tb-objectif{background:#f1f1ee;font-weight:600}
+.tb-vente th,.tb-vente td{background:#eef4fb}
+.tb-bon{color:#1d6b35}.tb-mauvais{color:#a3361a}
+td.tb-mauvais{background:#fbe0dc66}
+@media print{@page{size:A4 landscape;margin:10mm}.tableau-bandes{font-size:9.5pt}}
+</style>
+{% endblock %}

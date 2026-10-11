@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{% if eau %}Consommation d’eau{% else %}Consommation électrique{% endif %} — EO_Sevel{% endblock %}
+{% block content %}
+<style>
+.el-onglets{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.el-onglets a{padding:7px 14px;border-radius:999px;border:1px solid rgba(127,140,133,.45);text-decoration:none;color:inherit;font-weight:600}
+.el-onglets a.actif{background:#b7791f;border-color:#b7791f;color:#fff}
+.el-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 12px}
+.el-nav h2{margin:0;flex:1;min-width:180px}
+.el-nav a{text-decoration:none;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,140,133,.45);color:inherit}
+.el-nav .off{opacity:.3;pointer-events:none}
+.el-chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.el-chiffres div{border:1px solid rgba(127,140,133,.35);border-radius:10px;padding:10px 12px}
+.el-chiffres small{display:block;opacity:.75;font-size:.8rem}.el-chiffres b{font-size:1.45rem}
+.el-hausse{color:#c0392b}.el-baisse{color:#2f8f5b}
+.el-barres{display:flex;align-items:flex-end;gap:3px;height:190px;padding:0 2px;border-bottom:1px solid rgba(127,140,133,.5)}
+.el-barre{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.el-barre i{display:flex;flex-direction:column;justify-content:flex-end;width:100%;background:#b7791f;border-radius:4px 4px 0 0;min-height:1px;overflow:hidden}
+.el-barre i b{display:block;width:100%;background:#7a4a0c}
+.eau .el-barre i,.eau .el-onglets a.actif{background:#2b7bb9;border-color:#2b7bb9}
+.el-legende{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;margin:6px 0}.el-legende span::before{content:"";display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+.el-barre i.partiel{background:repeating-linear-gradient(45deg,#b7791f 0 4px,rgba(183,121,31,.35) 4px 8px)}
+.el-barre span{font-size:.68rem;opacity:.8;white-space:nowrap;margin-bottom:2px}
+.el-etiquettes{display:flex;gap:3px;padding:0 2px}
+.el-etiquettes span{flex:1;text-align:center;font-size:.72rem;opacity:.75;min-width:0;overflow:hidden}
+.el-courbe{width:100%;height:200px;display:block;border:1px solid rgba(127,140,133,.3);border-radius:8px}
+@media(max-width:600px){.el-barre span{display:none}}
+</style>
+<div class="{% if eau %}eau{% endif %}">
+<h1>{% if eau %}Consommation d’eau{% else %}Consommation électrique{% endif %}</h1>
+<p><a href="{% if eau %}/electricite{% else %}/eau{% endif %}">{% if eau %}Voir l’électricité →{% else %}Voir l’eau →{% endif %}</a> · <a href="/energie">Relevés des compteurs</a></p>
+{% if not compteurs %}
+<section class="card"><p>{% if eau %}Aucun compteur d’eau : créez-le dans Eau et électricité, avec ses relevés.{% else %}Aucun compteur électrique Zigbee pour l'instant. Ils apparaissent ici dès qu'ils sont raccordés au réseau Zigbee.{% endif %}</p></section>
+{% else %}
+{% if compteurs|length > 1 %}<div class="el-onglets">{% for c in compteurs %}<a href="{{ base }}?c={{ c.ieee }}&vue={{ vue }}&d={{ d }}" class="{% if c.ieee == ieee %}actif{% endif %}">{{ c.nom }}</a>{% endfor %}</div>{% endif %}
+<div class="el-onglets">
+  {% for v, l in [('jour','Jour'),('semaine','Semaine'),('mois','Mois'),('annee','Année')] %}{% if not eau or v != 'jour' %}<a href="{{ base }}?c={{ ieee }}&vue={{ v }}&d={{ d }}" class="{% if vue == v %}actif{% endif %}">{{ l }}</a>{% endif %}{% endfor %}
+</div>
+<section class="card">
+  <div class="el-nav">
+    <a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ precedent }}" aria-label="Période précédente">‹</a>
+    <h2>{{ nom }} · {{ titre }}</h2>
+    {% if suivant %}<a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ suivant }}" aria-label="Période suivante">›</a><a href="{{ base }}?c={{ ieee }}&vue={{ vue }}">Aujourd'hui</a>{% else %}<a class="off">›</a>{% endif %}
+  </div>
+  <div class="el-chiffres">
+    <div><small>Consommation</small><b>{% if total is not none %}{{ total|decimal1 }} {{ unite }}{% else %}—{% endif %}</b></div>
+    {% if cout is not none %}<div><small>Coût estimé</small><b>{{ cout|decimal2 }} €</b></div>{% endif %}
+    <div><small>Période précédente{% if suivant is none and vue != 'jour' %} (même durée){% endif %}</small><b>{% if total_avant is not none %}{{ total_avant|decimal1 }} {{ unite }}{% else %}—{% endif %}</b>{% if ecart is not none %} <span class="{% if ecart > 0 %}el-hausse{% else %}el-baisse{% endif %}">{% if ecart > 0 %}+{% endif %}{{ ecart|int }} %</span>{% endif %}</div>
+    {% if sous %}<div><small>dont {{ sous.noms }}</small><b>{{ sous.kwh|decimal1 }} kWh</b> <small>{{ sous.pct|int }} % · reste de l’élevage {{ sous.reste|decimal1 }} kWh</small></div>{% endif %}
+    {% if parent_nom %}<div><small>Compteur placé après</small><b>{{ parent_nom }}</b></div>{% endif %}
+    {% if dernier_releve %}<div><small>Dernier relevé</small><b>{{ dernier_releve.date|date_fr }}</b> <small>index {{ dernier_releve.index }}</small></div>{% endif %}
+    {% if pic %}<div><small>Puissance maximale</small><b>{{ pic.kw|decimal1 }} kW</b> <small>à {{ pic.heure }}</small></div>{% endif %}
+  </div>
+
+  {% if vue == 'jour' %}
+  <h3>Puissance <small class="muted">(moyenne par quart d'heure, échelle {{ echelle_kw|decimal1 }} kW)</small></h3>
+  <svg class="el-courbe" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance de la journée">
+    {% for h in [180, 360, 540] %}<line x1="{{ h }}" y1="0" x2="{{ h }}" y2="180" stroke="rgba(127,140,133,.3)" stroke-dasharray="3 4"/>{% endfor %}
+    {% if trace %}<polyline points="{{ trace }}" fill="none" stroke="#b7791f" stroke-width="2" vector-effect="non-scaling-stroke"/>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}
+  </svg>
+  <div class="el-etiquettes"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
+  <h3>Par heure (kWh)</h3>
+  {% endif %}
+
+  {% if sous %}<div class="el-legende"><span style="--c:#7a4a0c">{{ sous.noms }}</span><span style="--c:#b7791f">reste de l’élevage</span></div>{% endif %}
+  <div class="el-barres">{% for b in barres %}<div class="el-barre" title="{{ b.titre }} : {% if b.kwh is not none %}{{ b.kwh|decimal1 }} {{ unite }}{% if b.sous is not none %} dont {{ b.sous|decimal1 }} {{ sous.noms if sous else '' }}{% endif %}{% if b.partiel %} (mesures incomplètes){% endif %}{% else %}pas de mesure{% endif %}">{% if b.kwh is not none and vue != 'jour' %}<span>{% if eau and b.kwh < 10 %}{{ b.kwh|decimal1 }}{% else %}{{ b.kwh|int }}{% endif %}</span>{% endif %}<i class="{% if b.partiel %}partiel{% endif %}" style="height:{{ b.h }}%">{% if b.h_sous %}<b style="height:{{ b.h_sous }}%"></b>{% endif %}</i></div>{% endfor %}</div>
+  <div class="el-etiquettes">{% for b in barres %}<span>{% if vue != 'mois' or loop.index is odd %}{{ b.court }}{% endif %}</span>{% endfor %}</div>
+  {% if eau %}<p class="muted">D’après les relevés d’index : la consommation entre deux relevés est répartie régulièrement sur les jours qui les séparent. Plus les relevés sont rapprochés, plus le détail est juste. Pas de valeur après le dernier relevé.</p>
+  {% else %}<p class="muted">Calcul d'après la puissance mesurée toutes les 2 minutes environ. Avant le 25/09/2026 : historique repris de Home Assistant. Barres hachurées : mesures incomplètes ou consommation estimée (compteur resté muet puis rattrapé, coupure). Passez le doigt ou la souris sur une barre pour la valeur exacte.</p>{% endif %}
+</section>
+
+{% if session.peut_modifier %}
+<section class="card"><h2>Réglages</h2>
+<form class="rust-actions" method="post" action="/electricite/prix"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ d }}"><input type="hidden" name="genre" value="{% if eau %}eau{% else %}elec{% endif %}"><input type="hidden" name="ieee" value="{{ ieee }}">
+  <label>Prix {% if eau %}du m³{% else %}du kWh{% endif %} (€ TTC)<input name="prix" inputmode="decimal" value="{{ prix if prix is not none else '' }}" placeholder="{% if eau %}4,20{% else %}0,21{% endif %}"></label>
+  {% if not eau and autres %}<label>{{ nom }} est placé après<select name="parent"><option value="">— aucun compteur (arrivée directe)</option>{% for a in autres %}<option value="{{ a.ieee }}"{% if parent == a.ieee %} selected{% endif %}>{{ a.nom }}</option>{% endfor %}</select></label>{% endif %}
+  <button type="submit">Enregistrer</button>
+</form><p class="muted">Le prix sert seulement à afficher un coût estimé (vide = pas de coût).{% if not eau %} Un compteur placé après un autre (sous-compteur) apparaît comme une part de celui-ci.{% endif %}</p></section>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

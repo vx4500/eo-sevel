@@ -73,6 +73,7 @@ pub(super) async fn page(
     .fetch_all(&state.pool)
     .await?;
     let mut ctx = context(&session);
+    ctx.insert("quai".into(), Value::Array(quai_en_attente(&state.pool).await?));
     ctx.insert("departs".into(), Value::Array(departs));
     ctx.insert("salles".into(), Value::Array(salles));
     ctx.insert(
@@ -179,5 +180,125 @@ pub(super) async fn confirmer(
     sqlx::query("UPDATE depart_prevu SET fait=1,nombre_reel=? WHERE id=?").bind(total).bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     db::journal(&state.pool, &session.nom, "confirmer", "départ", &format!("{dh} · {total} porcs"), "/departs").await;
+    Ok(Redirect::to("/departs").into_response())
+}
+
+/// Saisie rapide « Quai » : cases où il reste des porcs, avec leur effectif
+/// et leur bande, pour choisir d'où partent les porcs mis sur le quai.
+pub(super) async fn api_cases_porcs(State(state): State<AppState>) -> AppResult<axum::Json<Value>> {
+    let cases: Vec<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT c.id,COALESCE(si.nom,si.code,''),s.nom,c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id \
+         LEFT JOIN site si ON si.id=s.site_id ORDER BY s.ordre,s.nom,c.id",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut sortie = Vec::new();
+    for (id, site, salle, nom) in cases {
+        let n = case_pig_count(&state.pool, id).await?;
+        if n <= 0 {
+            continue;
+        }
+        let bande: Option<String> = sqlx::query_scalar(
+            "SELECT b.code FROM transfert t JOIN bande b ON b.id=t.bande_id WHERE t.case_dest_id=? ORDER BY t.date DESC,t.id DESC LIMIT 1",
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await?;
+        sortie.push(json!({"id": id, "site": site, "salle": salle, "nom": nom, "porcs": n, "bande": bande}));
+    }
+    Ok(axum::Json(Value::Array(sortie)))
+}
+
+/// Porcs mis sur le quai pour l'abattoir : ils sortent de leur case
+/// (transfert sans destination, bande de la case conservée).
+pub(super) async fn sortie_quai(
+    pool: &SqlitePool,
+    case_id: i64,
+    nombre: i64,
+    date: &str,
+    note: Option<String>,
+) -> AppResult<()> {
+    let (salle_id,): (i64,) = sqlx::query_as("SELECT salle_id FROM casesalle WHERE id=?")
+        .bind(case_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::Invalid("Case introuvable".into()))?;
+    let present = case_pig_count(pool, case_id).await?;
+    if nombre > present {
+        return Err(AppError::Invalid(format!("Effectif insuffisant dans la case : {present} porc(s) présent(s)")));
+    }
+    let bande: Option<i64> = sqlx::query_scalar(
+        "SELECT bande_id FROM transfert WHERE case_dest_id=? AND bande_id IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1",
+    )
+    .bind(case_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+    let note = match note {
+        Some(n) => format!("Quai — départ abattoir · {n}"),
+        None => "Quai — départ abattoir".to_string(),
+    };
+    let mut tx = pool.begin().await?;
+    let transfert = sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,case_source_id,nombre,note) VALUES(?,'porc',?,?,?,?,?)")
+        .bind(date).bind(bande).bind(salle_id).bind(case_id).bind(nombre).bind(note)
+        .execute(&mut *tx)
+        .await?
+        .last_insert_rowid();
+    sqlx::query("INSERT INTO quai_porc(transfert_id,bande_id,case_id,date,nombre) VALUES(?,?,?,?,?)")
+        .bind(transfert).bind(bande).bind(case_id).bind(date).bind(nombre)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Porcs sur le quai pas encore repris par un bon d'apport : sortis des
+/// salles mais toujours à l'élevage.
+pub(super) async fn quai_en_attente(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    let lignes: Vec<(i64, String, i64, i64, Option<String>, String, String)> = sqlx::query_as(
+        "SELECT q.id,q.date,q.nombre,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) AS reste, \
+                b.code,COALESCE(s.nom,''),COALESCE(c.nom,'') \
+         FROM quai_porc q LEFT JOIN bande b ON b.id=q.bande_id LEFT JOIN casesalle c ON c.id=q.case_id LEFT JOIN salle s ON s.id=c.salle_id \
+         WHERE reste>0 ORDER BY q.date,q.id",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(lignes
+        .into_iter()
+        .map(|(id, date, nombre, reste, bande, salle, case)| {
+            let origine = [salle, case].into_iter().filter(|v| !v.is_empty()).collect::<Vec<_>>().join(" · ");
+            json!({"id": id, "date": date, "nombre": nombre, "reste": reste, "bande": bande,
+                   "origine": origine,
+                   "annulable": reste == nombre})
+        })
+        .collect())
+}
+
+/// Erreur de saisie : les porcs du quai retournent dans leur case.
+pub(super) async fn quai_annuler(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let affecte: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quai_affectation WHERE quai_id=?")
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+    if affecte > 0 {
+        return Err(AppError::Invalid("Ces porcs sont déjà repris par un bon d'apport".into()));
+    }
+    let mut tx = state.pool.begin().await?;
+    let transfert: Option<i64> = sqlx::query_scalar("SELECT transfert_id FROM quai_porc WHERE id=?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let transfert = transfert.ok_or(AppError::NotFound)?;
+    sqlx::query("DELETE FROM transfert WHERE id=?").bind(transfert).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM quai_porc WHERE id=?").bind(id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    db::journal(&state.pool, &session.nom, "annuler", "quai", &id.to_string(), "/departs").await;
     Ok(Redirect::to("/departs").into_response())
 }

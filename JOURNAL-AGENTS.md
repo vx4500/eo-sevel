@@ -301,3 +301,30 @@ largeur) et reprise dans Places et flux ; sur /equipements/soupe, « Repas des
 7 derniers jours » et « Journal » repliés par défaut. Binaire précédent :
 /var/backups/eo-sevel/eo-sevel_avant_2.48.1_20261003_151658 (= 2.47.5).
 target/debug/incremental (34 Go) supprimé, disque à 93 %.
+
+## 2026-10-06 15:30 — Prototype « Assistant » (langage naturel), branche `assistant` (depuis quai 2.52.5), worktree /var/tmp/eo-assistant. NON déployé.
+src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assistant (question) et /equipements/assistant (réglages admin : parametre assistant_cle, assistant_modele, défaut claude-haiku-4-5). API Claude avec outils lister_tables / decrire_tables / requete — connexion SQLite read_only, SELECT/WITH seuls, tables utilisateur/parametre/sessionventedirecte/reglagecommunicationventedirecte/sms_envoi refusées. Module « assistant » dans Choisir mes modules + menu Mes équipements. Test ignoré assistant_sur_copie (EO_TEST_BASE). Jamais testé contre l'API réelle (pas de clé).
+
+## 2026-10-06 16:00 — Branche assistant : ancienne saisie vocale SUPPRIMÉE à la demande d'Emmanuel (« comprend rien ») : bouton micro + panneau + script de base.html, src/vocal.rs, src/routes/vocal.rs, routes /api/vocal/*, purge audio. Table saisievocale et migration 0004 conservées (historique). Remplacement prévu : dialogue vocal via l'assistant. Test salles::la_fiche_reunit… échoue déjà (depart_prevu absente de la base de test), sans lien.
+
+## 2026-10-06 16:45 — Branche assistant : connecteur Claude (MCP) src/routes/mcp.rs, POST /mcp/{jeton} (public dans auth::guard, jeton parametre mcp_jeton ≥24 car., créé dans /equipements/assistant#connecteur). Outils : chercher_truie, cases_salle (vannes/places), calendrier_ia (date_mb−gestation, lundi après sevrage), deplacer_truie et creer_rappel (deux temps : confirme=true requis, écrit dans journal utilisateur « Claude (connecteur) »), rappels, + lecture SQL de l'assistant. Test ignoré connecteur_sur_copie OK. Pas encore déployé ni branché sur claude.ai. Constat données : vanne 47 Verraterie déjà 9 truies pour 8 places.
+
+## 2026-10-06 16:40 UTC — v2.53.0 DÉPLOYÉE (branche assistant, basée sur quai) : connecteur Claude MCP, page Assistant, ancienne dictée retirée. Sauvegarde eo-sevel_avant_2.53.0_20261006_163959 (=2.52.5). Branches quai et assistant NON fusionnées dans master (WIP soupe) — la prod est désormais la branche assistant.
+
+## 2026-10-06 16:56 UTC — v2.53.1 DÉPLOYÉE (branche assistant) : carte Assistant Claude dans /equipements, réglages lisibles (plus de <details> blanc en thème sombre). Sauvegarde eo-sevel_avant_2.53.1_20261006_165638
+
+## 2026-10-07 05:58 UTC — v2.54.0 DÉPLOYÉE (branche assistant) : soupe phase 37 = « Alarme débit distribution » ; alerte critique soupe_distribution (→ SMS) si phase 37 ≥ 180 s. Sauvegarde eo-sevel_avant_2.54.0_20261007_055756
+
+## 2026-10-07 06:14 UTC — v2.54.1 DÉPLOYÉE (branche assistant) : /rapport section Machine à soupe (manque par vanne lors des alarmes débit ≥ 3 min). Base : 48 soupe_evenement phase 37 renommés (sauvegarde elevage_avant_phase37_*). README/Etat/workflow réalignés. Sauvegarde eo-sevel_avant_2.54.1_20261007_061410
+
+## 2026-10-07 07:12 UTC — v2.54.2 DÉPLOYÉE (branche assistant) : /energie relevés repliés. Sauvegarde eo-sevel_avant_2.54.2_20261007_071239
+
+## 2026-10-07 10:32 UTC — v2.55.0 DÉPLOYÉE (branche assistant) : /electricite consommation jour/semaine/mois/année, table elec_jour (migration 0026). Sauvegarde eo-sevel_avant_2.55.0_20261007_103207
+
+## 2026-10-07 11:00 UTC — v2.55.1 DÉPLOYÉE (branche assistant) : elec_heure (0027) + import Home Assistant 192.168.1.108 (statistiques horaires 08/03→25/09, 201 j/compteur, rattrapages répartis). Sauvegardes eo-sevel_avant_2.55.1_20261007_110034, elevage_avant_import_ha_20261007_110034.db
+
+## 2026-10-07 11:08 UTC — v2.56.0 DÉPLOYÉE (branche assistant) : /eau (relevés répartis par jour), sous-compteurs électriques (parametre elec_parent_<ieee>) ; soupe 0x60b7… déclarée après tri 0x8c8b…. Sauvegarde eo-sevel_avant_2.56.0_20261007_110813
+
+## 2026-10-07 11:17 UTC — DISQUE PLEIN vers 11:08 UTC (target/debug 51 Go dont incremental 23 Go) : incremental supprimé, z2m a redémarré seul, base OK. Puis v2.56.0 DÉPLOYÉE (branche assistant) : /eau, sous-compteurs électriques (elec_parent_<ieee>) ; soupe déclarée après tri. Sauvegarde eo-sevel_avant_2.56.0_20261007_111708
+
+## 2026-10-07 12:46 UTC — v2.56.1 DÉPLOYÉE (branche assistant) : frise avec nom des stades, /planning frise + détail par bande. Sauvegarde eo-sevel_avant_2.56.1_20261007_124638

@@ -39,15 +39,19 @@ pub fn extract_pdf_text(bytes: &[u8]) -> Result<String, String> {
     if !bytes.starts_with(b"%PDF-") {
         return Err("Le fichier ne possède pas une signature PDF valide".into());
     }
-    let document = lopdf::Document::load_mem(bytes)
-        .or_else(|_| match repair_startxref_offset(bytes) {
-            Some(patched) => lopdf::Document::load_mem(&patched),
-            None => lopdf::Document::load_mem(bytes),
-        })
-        .map_err(|_| "Le PDF est illisible, chiffré ou endommagé".to_string())?;
+    let document = match lopdf::Document::load_mem(bytes).or_else(|_| match repair_startxref_offset(bytes) {
+        Some(patched) => lopdf::Document::load_mem(&patched),
+        None => lopdf::Document::load_mem(bytes),
+    }) {
+        Ok(document) => document,
+        Err(_) => return pdftotext_secours(bytes).ok_or_else(|| "Le PDF est illisible, chiffré ou endommagé".to_string()),
+    };
     let pages: Vec<u32> = document.get_pages().keys().copied().collect();
     if pages.is_empty() {
-        return Err("Le PDF ne contient aucune page".into());
+        // Certains PDF Cooperl (générateur LDPRX 4.54, bon d'apport
+        // 226101280151 du 13/10/26) ont un arbre de pages que lopdf ne
+        // parcourt pas, alors que poppler les lit sans difficulté.
+        return pdftotext_secours(bytes).ok_or_else(|| "Le PDF ne contient aucune page".to_string());
     }
     if pages.len() > MAX_PDF_PAGES {
         return Err(format!(
@@ -61,6 +65,32 @@ pub fn extract_pdf_text(bytes: &[u8]) -> Result<String, String> {
         return Err(SCAN_SANS_TEXTE.into());
     }
     Ok(text)
+}
+
+/// Lecture de secours par `pdftotext` (poppler-utils, déjà utilisé pour
+/// la reconnaissance de caractères) quand lopdf ne trouve pas les pages.
+/// `-layout` garde les colonnes sur une même ligne, comme l'extraction lopdf.
+fn pdftotext_secours(bytes: &[u8]) -> Option<String> {
+    if bytes.len() > 20 * 1024 * 1024 || !commande_disponible("pdftotext") {
+        return None;
+    }
+    let dossier = std::env::temp_dir().join(format!("eo-pdftotext-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dossier).ok()?;
+    let fichier = dossier.join("document.pdf");
+    let texte = std::fs::write(&fichier, bytes)
+        .ok()
+        .and_then(|_| {
+            std::process::Command::new("pdftotext")
+                .args(["-layout", "-l", &MAX_PDF_PAGES.to_string()])
+                .arg(&fichier)
+                .arg("-")
+                .output()
+                .ok()
+        })
+        .filter(|sortie| sortie.status.success())
+        .map(|sortie| String::from_utf8_lossy(&sortie.stdout).into_owned());
+    let _ = std::fs::remove_dir_all(&dossier);
+    texte.filter(|t| t.trim().chars().count() >= 40)
 }
 
 /// Message renvoyé quand aucun texte n'est extractible : l'appelant peut alors
@@ -780,6 +810,24 @@ fn parse_genetique(text: &str) -> Result<ImportDocument, String> {
     finish_document("génétique", vec![line], reference, date)
 }
 
+/// Apport de réformes : Cooperl l'indique par « Hors taxes réformes », ou à
+/// défaut il ne contient que des lignes TRUIE / VERRAT et aucun porc.
+fn is_apport_reforme(text: &str) -> bool {
+    let upper = text.to_uppercase();
+    if upper.contains("HORS TAXES RÉFORMES") || upper.contains("HORS TAXES REFORMES") {
+        return true;
+    }
+    let porc = upper.lines().any(|l| l.contains(" PORC ") || l.contains("PORC (") || l.contains(" LOURD ") || l.contains(" LEGER "));
+    !porc && (upper.contains("TRUIE VIANDE") || upper.contains("VERRAT"))
+}
+
+/// Vrai si les lots enregistrés d'un apport sont des réformes.
+pub fn lots_reforme(lots_json: &str) -> bool {
+    serde_json::from_str::<Vec<serde_json::Value>>(lots_json)
+        .map(|lots| !lots.is_empty() && lots.iter().all(|l| l["reforme"] == true))
+        .unwrap_or(false)
+}
+
 #[derive(Debug)]
 struct ApportLot {
     bon: Option<String>,
@@ -798,7 +846,7 @@ fn parse_apport(text: &str) -> Result<ImportDocument, String> {
         .map(|value| value.replace('.', ""));
     let date = capture(
         text,
-        r"(?i)ENLEVEMENT\s*DU\s*([0-9]{2}/[0-9]{2}/[0-9]{2,4})",
+        r"(?i)ENLEVEMENT\s*DU\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4})",
         1,
     )
     // Sur le modèle Cooperl réellement utilisé (« duplicata » comme
@@ -864,10 +912,14 @@ fn parse_apport(text: &str) -> Result<ImportDocument, String> {
         .filter_map(|line| line.amount)
         .map(f64::abs)
         .sum();
+    // Apport de truies (ou verrats) de réforme : facturé comme un apport,
+    // mais ce ne sont pas des porcs charcutiers d'une bande.
+    let reforme = is_apport_reforme(text);
     let lots_json = lots
         .iter()
         .map(|lot| {
             json!({
+                "reforme": reforme,
                 "bon": lot.bon,
                 "ref": lot.reference,
                 "nb_porcs": lot.pigs,
@@ -1685,6 +1737,16 @@ mod tests {
     }
 
     #[test]
+    fn apport_date_denlevement_a_un_chiffre() {
+        // Texte de `pdftotext -layout` (apport 226101280151) : le libellé
+        // ENLEVEMENT DU est présent et le jour n'a qu'un chiffre.
+        let text = "APPORT N° 226101280151\nSemaine N° 26.41\nAPPORT DE       PORCS CHARCUTIERS\nN° COMPTE       16961                  LE 13/10/26\nENLEVEMENT DU     5/10/26\n                                      NAISSEUR/ENGRAISSEUR\n Destination : COOPERL ARC ATL MONTFORT                                        Bon n° 39661\n     50   PORC (COEUR DE GAMME)                 2                           DA914    4510,200    1,824    8.226,48\n                       Total Bon.....                                                5992,000            11.581,90\n      66    : NOMBRE D'ANIMAUX                                           POIDS TOTAL :         5992,000";
+        let parsed = parse_document(text).expect("apport analysé");
+        let vente = parsed.lines.iter().find(|line| line.kind == "vente").expect("vente");
+        assert_eq!(vente.date.as_deref(), Some("2026-10-05"));
+    }
+
+    #[test]
     fn apport_duplicata_sans_libelle_apport_est_reconnu() {
         let text = "D U P L I C A T A\n226071267848\nSemaine N° 26.27\nPORCS CHARCUTIERS\n16961 LE 11/07/26\n3/07/26\nNAISSEUR/ENGRAISSEUR\nBon n° 10831\n67 PORC 2 DA915 6334,700\nTotal bon..... 6334,700 10.569,44";
         let parsed = parse_document(text).expect("duplicata Cooperl reconnu");
@@ -1708,6 +1770,16 @@ mod tests {
         assert_eq!(vente.quantity, Some(3.0));
         assert_eq!(import_test_detail(vente, "frappe"), Some("DA9"));
         assert_eq!(vente.amount, Some(212.38));
+        assert!(is_apport_reforme(text));
+    }
+
+    #[test]
+    fn apport_de_porcs_n_est_pas_une_reforme() {
+        let text = "Bon n° 8632\n2 PORC (COEUR DE GAMME) 57 % 2 DA9 180,400 1,430 257,97\nTotal bon..... 5067,400 8.341,49";
+        assert!(!is_apport_reforme(text));
+        assert!(lots_reforme(r#"[{"reforme":true,"nb_porcs":3}]"#));
+        assert!(!lots_reforme(r#"[{"nb_porcs":56}]"#));
+        assert!(!lots_reforme("pas du json"));
     }
 
     #[test]

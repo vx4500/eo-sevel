@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Serveur Proxmox — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<style>
+.px-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.px-tuile{border:1px solid #dfe5e0;border-radius:10px;padding:10px 12px;background:#f8faf8}
+.px-tuile small{display:block;color:#66756d;font-size:.78rem}.px-tuile b{font-size:1.35rem;color:#1f4a37}
+.px-jauge{height:7px;background:#e6eae6;border-radius:4px;margin-top:6px;overflow:hidden}.px-jauge span{display:block;height:100%;background:#2f6b4f}
+.px-jauge span.or{background:#c98a3a}.px-jauge span.rouge{background:#b3261e}
+.px-etat{display:inline-block;width:10px;height:10px;border-radius:50%;background:#b3261e;margin-right:6px}.px-etat.on{background:#3fae6a}
+.px-problemes{border-left:4px solid #b3261e;background:#fff2f0}
+</style>
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MES ÉQUIPEMENTS</p><h1>Serveur Proxmox</h1><p>Le serveur qui fait tourner EO_Sevel : processeur, mémoire, disques, machines et sauvegardes. Lecture seule.</p></div>
+  <span class="equipment-state {% if etat %}actif{% else %}attente{% endif %}">{% if etat %}Connecté · lu à {{ etat.lu_a }}{% elif erreur %}Erreur{% else %}À configurer{% endif %}</span>
+</section>
+
+{% if resultat == 'enregistre' %}<section class="card"><p><b>✓ Réglages enregistrés.</b></p></section>{% endif %}
+{% if erreur %}<section class="card px-problemes"><p><b>{{ erreur }}</b></p></section>{% endif %}
+{% if problemes %}<section class="card px-problemes"><h2>À surveiller</h2><ul>{% for p in problemes %}<li>{{ p }}</li>{% endfor %}</ul></section>{% endif %}
+
+{% macro jauge(v) %}<div class="px-jauge"><span class="{% if v is not none and v >= 90 %}rouge{% elif v is not none and v >= 75 %}or{% endif %}" style="width:{{ v or 0 }}%"></span></div>{% endmacro %}
+
+{% if etat %}{% for n in etat.noeuds %}
+<section class="card">
+  <h2><span class="px-etat {% if n.en_ligne %}on{% endif %}"></span>{{ n.nom }}{% if n.version %} <small class="muted">· {{ n.version }}</small>{% endif %}</h2>
+  {% if n.en_ligne %}
+  <div class="px-grille">
+    <div class="px-tuile"><small>Processeur{% if n.coeurs %} · {{ n.coeurs }} cœurs{% endif %}</small><b>{{ n.cpu }} %</b>{{ jauge(n.cpu) }}</div>
+    <div class="px-tuile"><small>Mémoire · {{ n.mem_txt }}</small><b>{{ n.mem_pct }} %</b>{{ jauge(n.mem_pct) }}</div>
+    <div class="px-tuile"><small>Disque système · {{ n.root_txt }}</small><b>{{ n.root_pct }} %</b>{{ jauge(n.root_pct) }}</div>
+    <div class="px-tuile"><small>En marche depuis</small><b>{{ n.uptime }}</b>{% if n.charge %}<small>Charge {{ n.charge }}</small>{% endif %}</div>
+  </div>
+  {% if n.modele %}<p class="muted">{{ n.modele }}</p>{% endif %}
+
+  <h3>Machines et conteneurs</h3>
+  <div class="rust-scroll"><table><thead><tr><th>N°</th><th>Nom</th><th>Type</th><th>État</th><th>Processeur</th><th>Mémoire</th><th>Depuis</th></tr></thead><tbody>
+  {% for g in n.invites %}<tr><td>{{ g.vmid }}</td><td><b>{{ g.nom }}</b>{% if g.vmid in suivis %} <small class="muted">· surveillé</small>{% endif %}</td><td>{{ g.genre }}</td><td><span class="px-etat {% if g.marche %}on{% endif %}"></span>{% if g.marche %}en marche{% else %}arrêté{% endif %}</td><td>{% if g.marche %}{{ g.cpu }} %{% endif %}</td><td>{% if g.marche %}{{ g.mem_txt }}{{ jauge(g.mem_pct) }}{% endif %}</td><td>{% if g.marche %}{{ g.uptime }}{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">Aucune machine visible avec ce jeton.</td></tr>{% endfor %}
+  </tbody></table></div>
+
+  <h3>Stockage</h3>
+  <div class="px-grille">{% for s in n.stockages %}<div class="px-tuile"><small>{{ s.nom }} · {{ s.type }} · {{ s.txt }}</small><b>{{ s.pct }} %</b>{{ jauge(s.pct) }}</div>{% endfor %}</div>
+
+  <h3>Sauvegardes</h3>
+  {% if n.sauvegarde.existe %}<p>Dernière sauvegarde réussie : <b>{{ n.sauvegarde.derniere_ok or 'aucune récente' }}</b>{% if n.sauvegarde.dernier_statut and n.sauvegarde.dernier_statut != 'OK' %} · dernière tentative le {{ n.sauvegarde.derniere_date }} : <b style="color:#b3261e">{{ n.sauvegarde.dernier_statut }}</b>{% endif %}</p>
+  {% else %}<p class="muted">Aucune sauvegarde planifiée trouvée sur ce serveur.</p>{% endif %}
+  {% else %}<p><b style="color:#b3261e">Serveur hors ligne.</b></p>{% endif %}
+</section>
+{% endfor %}{% endif %}
+
+<section class="card"><h2>Réglages</h2>
+<p>Dans l'interface Proxmox : <b>Datacenter → Permissions → Jetons d'API → Ajouter</b>, utilisateur <code>root@pam</code>, nom <code>eosevel</code>. Puis <b>Permissions → Ajouter → Permission du jeton</b> : chemin <code>/</code>, rôle <b>PVEAuditor</b> (lecture seule). Recopiez ici l'identifiant et le secret affiché une seule fois.</p>
+{% if session.est_admin %}
+<form class="rust-actions" method="post" action="/equipements/proxmox"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Adresse du serveur<input name="url" value="{{ url or '' }}" placeholder="192.168.1.xx ou https://…:8006"></label>
+  <label>Identifiant du jeton<input name="jeton" value="{{ jeton or '' }}" placeholder="root@pam!eosevel" autocomplete="off"></label>
+  <label>Secret<input type="password" name="secret" autocomplete="new-password" placeholder="{% if secret_enregistre %}enregistré — laisser vide pour le garder{% else %}secret du jeton{% endif %}"></label>
+  <label><input type="checkbox" name="alertes" {% if alertes %}checked{% endif %}> Alertes par SMS (serveur hors ligne, disque à 90 %, mémoire saturée, machine surveillée arrêtée, pas de sauvegarde depuis 48 h)</label>
+  {% if etat %}<input type="hidden" name="choix_suivis" value="1">
+  <fieldset style="width:100%"><legend>Prévenir si ces machines s'arrêtent</legend>
+  {% for n in etat.noeuds %}{% for g in n.invites %}<label><input type="checkbox" name="suivi_{{ g.vmid }}" {% if g.vmid in suivis %}checked{% endif %}> {{ g.vmid }} · {{ g.nom }}</label>{% endfor %}{% endfor %}
+  </fieldset>{% endif %}
+  <button>Enregistrer</button>
+</form>
+<p class="muted">Les alertes partent par le module Free SMS, qui doit être actif. Contrôle toutes les 5 minutes ; chaque problème n'est signalé qu'une fois, jusqu'à ce qu'il disparaisse.</p>
+{% else %}<p class="muted">Seul un administrateur peut modifier ces réglages.</p>{% endif %}
+</section>
+</div>{% endblock %}

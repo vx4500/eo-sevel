@@ -895,7 +895,6 @@ mod tests {
             ("adoptions.rs", include_str!("adoptions.rs")),
             ("import_historique.rs", include_str!("import_historique.rs")),
             ("maternite_suivi.rs", include_str!("maternite_suivi.rs")),
-            ("vocal.rs", include_str!("vocal.rs")),
             ("ameliorations.rs", include_str!("ameliorations.rs")),
         ] {
             for (n, ligne) in source.lines().enumerate() {

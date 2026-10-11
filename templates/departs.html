@@ -3,6 +3,17 @@
 <h1>🚚 Départs prévus</h1>
 <p class="muted">Annoncez un départ à l'avance (date, heure, nombre de porcs). Une fois l'heure passée, indiquez combien de porcs ont été pris dans chaque salle : les sorties sont enregistrées et l'effectif des salles est mis à jour.</p>
 
+{% if quai %}
+<section class="card" style="border-left:4px solid #2b6cb8">
+  <h2>Sur le quai — {{ quai | map(attribute="reste") | sum }} porcs en attente du bon d'apport</h2>
+  <p class="muted">Sortis des salles mais toujours à l'élevage. Ils seront retirés de l'élevage à l'enregistrement du bon d'apport de leur bande.</p>
+  <table><thead><tr><th>Date</th><th>Bande</th><th>Venant de</th><th>Porcs</th><th></th></tr></thead><tbody>
+  {% for q in quai %}<tr><td>{{ q.date }}</td><td>{{ q.bande | default("—") }}</td><td>{{ q.origine }}</td><td>{{ q.reste }}{% if q.reste != q.nombre %} / {{ q.nombre }}{% endif %}</td>
+    <td>{% if q.annulable %}<form method="post" action="/departs/quai/{{ q.id }}/annuler" onsubmit="return confirm('Remettre ces porcs dans leur case ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button type="submit" class="ghost">Remettre en case</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+
 {% for d in departs %}
 <section class="card"{% if d.a_confirmer %} style="border-left:4px solid #b8692b"{% endif %}>
   <h2>{{ d.quand }} — {{ d.nombre }} porcs{% if d.note %} <small class="muted">· {{ d.note }}</small>{% endif %}</h2>

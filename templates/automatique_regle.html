@@ -1,0 +1,113 @@
+{% extends "base.html" %}{% from "automatique_onglets.html" import onglets_auto %}{% block title %}{% if regle.id %}{{ regle.nom }}{% else %}Nouvelle règle{% endif %} — Automatique — EO_Sevel{% endblock %}{% block content %}
+<style>
+.ar-bloc{border-left:5px solid var(--vert)}
+.ar-bloc.alors{border-left-color:#c98a3a}
+.ar-bloc h2{margin-top:0}
+.ar-ligne{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:8px 0;border-top:1px solid var(--line)}
+.ar-ligne.action{grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1.6fr) auto}
+.ar-ligne label{margin:0}
+.ar-x{background:transparent;color:#b42318;border:1px solid var(--line);padding:8px 11px}
+.ar-unite{font-size:12px;color:var(--muted)}
+@media(max-width:760px){.ar-ligne,.ar-ligne.action{grid-template-columns:1fr 1fr}.ar-ligne>label:first-child{grid-column:1/-1}.ar-ligne.action>label:nth-child(2){grid-column:1/-1}}
+</style>
+{{ onglets_auto('regles') }}
+<h2>{% if regle.id %}{{ regle.nom }}{% else %}Nouvelle règle{% endif %}</h2>
+<p class="muted">Une règle, c'est une phrase : <b>quand</b> quelque chose arrive (une sonde, une entrée, un relais…), <b>alors</b> le logiciel fait une action (allumer, éteindre, envoyer un SMS). Exemple : <i>quand la température de Mater 1 dépasse 28 °C depuis 5 min, alors allumer la brumisation, et l'éteindre quand ça redescend.</i></p>
+
+<form method="post" action="/automatique/enregistrer" id="ar-form">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+{% if regle.id %}<input type="hidden" name="id" value="{{ regle.id }}">{% endif %}
+
+<section class="card">
+  <div class="rust-grid">
+    <div><label>Nom de la règle<input name="nom" value="{{ regle.nom }}" required placeholder="ex. Brumisation post-sevrage"></label></div>
+    <div>
+      <label><input type="checkbox" name="actif" style="width:auto"{% if regle.actif %} checked{% endif %}> Règle active</label>
+      <label><input type="checkbox" name="essai" style="width:auto"{% if regle.essai %} checked{% endif %}> Essai : journaliser sans rien commander</label>
+    </div>
+    <div><label>Note<input name="note" value="{{ regle.note }}"></label></div>
+  </div>
+</section>
+
+<section class="card ar-bloc">
+  <h2>① Quand… <small class="muted">(ce qu'on surveille)</small></h2>
+  <div class="rust-grid">
+    <div><label>S'il y a plusieurs lignes<select name="logique"><option value="et"{% if regle.logique == 'et' %} selected{% endif %}>toutes les conditions soient vraies</option><option value="ou"{% if regle.logique == 'ou' %} selected{% endif %}>une seule condition soit vraie</option></select></label></div>
+    <div><label>Attendre que ce soit vrai depuis (minutes)<input name="delai_min" inputmode="decimal" value="{{ regle.delai_min }}"></label></div>
+    <div><label>Seulement de<input type="time" name="heure_debut" value="{{ regle.heure_debut }}"></label><label>à<input type="time" name="heure_fin" value="{{ regle.heure_fin }}"></label><small class="muted">Vide = à toute heure. La plage peut passer minuit (22:00 → 06:00).</small></div>
+  </div>
+  <div id="ar-conditions"></div>
+  <p><button type="button" class="ghost" id="ar-plus-condition">+ Ajouter une condition</button></p>
+</section>
+
+<section class="card ar-bloc alors">
+  <h2>② Alors faire… <small class="muted">(l'action)</small></h2>
+  <p class="muted">« Dès que c'est vrai » : l'action part quand la condition ① est remplie. « Quand ça redevient normal » : l'action part quand la condition ① n'est plus remplie — pratique pour éteindre ce qu'on a allumé ou prévenir que tout est rentré dans l'ordre.</p>
+  {% if not sorties %}<p class="rust-empty">Aucune sortie n'est encore autorisée à la commande : cochez « Autoriser la commande » sur un relais dans Ipx800v5 → Relais. Les SMS restent possibles.</p>{% endif %}
+  <div id="ar-actions"></div>
+  <p><button type="button" class="ghost" id="ar-plus-action">+ Ajouter une action</button></p>
+</section>
+
+<p><button>Enregistrer la règle</button></p>
+</form>
+
+{% if regle.id %}
+<form method="post" action="/automatique/{{ regle.id }}/supprimer" onsubmit="return confirm('Supprimer la règle « {{ regle.nom }} » ?')">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <button class="ghost" style="color:#b42318">Supprimer la règle</button>
+</form>
+<section class="card">
+  <h2>Journal de cette règle</h2>
+  {% if journal %}
+  <div class="rust-scroll"><table><thead><tr><th>Quand</th><th>Événement</th><th>Détail</th></tr></thead>
+  <tbody>{% for j in journal %}<tr><td>{{ j.quand }}</td><td>{{ j.evenement }}</td><td>{{ j.detail or '' }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="rust-empty">Rien pour l'instant.</p>{% endif %}
+</section>
+{% endif %}
+
+<script>
+(function(){
+var LECTURES={{ lectures|tojson }},SORTIES={{ sorties|tojson }},OPS={{ operateurs|tojson }};
+var REGLE={{ regle|tojson }};
+var nc=0,na=0;
+function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function options(liste,choisi,vide){var h=vide?'<option value="">'+vide+'</option>':'',g=null;
+  liste.forEach(function(o){if(o.groupe!==g){if(g!==null)h+='</optgroup>';g=o.groupe;h+='<optgroup label="'+esc(g)+'">'}
+    h+='<option value="'+esc(o.code)+'"'+(o.code===choisi?' selected':'')+'>'+esc(o.nom)+(o.unite?' ('+esc(o.unite)+')':'')+'</option>'});
+  return h+(g!==null?'</optgroup>':'')}
+function trouver(liste,code){for(var i=0;i<liste.length;i++)if(liste[i].code===code)return liste[i];return null}
+function champValeur(nom,tor,valeur){
+  if(tor){var v=valeur==null?1:valeur;return '<select name="'+nom+'"><option value="1"'+(v>=0.5?' selected':'')+'>Allumé / en marche</option><option value="0"'+(v<0.5?' selected':'')+'>Éteint / arrêté</option></select>'}
+  return '<input name="'+nom+'" inputmode="decimal" required value="'+esc(valeur==null?'':String(valeur).replace('.',','))+'">'}
+function ajouterCondition(c){c=c||{};var i=nc++,d=document.createElement('div');d.className='ar-ligne';
+  var l=trouver(LECTURES,c.code);
+  d.innerHTML='<label>Ce qu\'on surveille<select name="c'+i+'_quoi" required>'+options(LECTURES,c.code,'— choisir —')+'</select></label>'+
+   '<label>doit être<select name="c'+i+'_op">'+OPS.map(function(o){return '<option value="'+esc(o.code)+'"'+(o.code===(c.operateur||(l&&l.tor?'=':'>'))?' selected':'')+'>'+esc(o.libelle)+'</option>'}).join('')+'</select></label>'+
+   '<label>la valeur <span class="ar-unite"></span><span class="ar-v">'+champValeur('c'+i+'_valeur',l&&l.tor,c.valeur)+'</span></label>'+
+   '<button type="button" class="ar-x" title="Retirer">✕</button>';
+  var sel=d.querySelector('select');
+  function maj(){var o=trouver(LECTURES,sel.value);d.querySelector('.ar-unite').textContent=o&&o.unite?'('+o.unite+')':'';
+    var actuel=d.querySelector('.ar-v [name]');var tor=!!(o&&o.tor);if((actuel.tagName==='SELECT')!==tor){d.querySelector('.ar-v').innerHTML=champValeur('c'+i+'_valeur',tor,null);if(tor)d.querySelector('[name=c'+i+'_op]').value='='}}
+  sel.addEventListener('change',maj);maj();
+  d.querySelector('.ar-x').onclick=function(){d.remove()};
+  document.getElementById('ar-conditions').appendChild(d)}
+function ajouterAction(a){a=a||{};var i=na++,d=document.createElement('div');d.className='ar-ligne action';
+  var quoi='<option value="">— choisir —</option><option value="sms"'+(a.code==='sms'?' selected':'')+'>📱 Envoyer un SMS</option>'+options(SORTIES,a.code,null);
+  d.innerHTML='<label>À quel moment<select name="a'+i+'_moment"><option value="debut">Dès que c\'est vrai</option><option value="fin"'+(a.moment==='fin'?' selected':'')+'>Quand ça redevient normal</option></select></label>'+
+   '<label>Faire quoi<select name="a'+i+'_quoi" required>'+quoi+'</select></label>'+
+   '<label class="ar-detail"></label><button type="button" class="ar-x" title="Retirer">✕</button>';
+  var sel=d.querySelector('[name=a'+i+'_quoi]'),det=d.querySelector('.ar-detail');
+  function maj(premier){var v=sel.value;
+    if(v==='sms'){det.innerHTML='Message<input name="a'+i+'_message" placeholder="ex. Brumisation lancée" value="'+esc(a.message||'')+'">'}
+    else if(v){var o=trouver(SORTIES,v);det.innerHTML='Valeur'+champValeur('a'+i+'_valeur',o&&o.tor,a.valeur==null?null:a.valeur)}
+    else det.innerHTML=''}
+  sel.addEventListener('change',function(){maj(false)});maj(true);
+  d.querySelector('.ar-x').onclick=function(){d.remove()};
+  document.getElementById('ar-actions').appendChild(d)}
+document.getElementById('ar-plus-condition').onclick=function(){ajouterCondition()};
+document.getElementById('ar-plus-action').onclick=function(){ajouterAction()};
+(REGLE.conditions.length?REGLE.conditions:[{}]).forEach(ajouterCondition);
+(REGLE.actions.length?REGLE.actions:[{}]).forEach(ajouterAction);
+})();
+</script>
+{% endblock %}

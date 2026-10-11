@@ -16,11 +16,12 @@ mod mdns;
 mod models;
 mod regul_core;
 mod routes;
+mod proxmox;
+mod assistant;
 mod sms_free;
 mod soupe;
 mod tunnel;
 mod templates;
-mod vocal;
 
 use axum::middleware;
 use config::Config;
@@ -125,6 +126,12 @@ async fn main() -> anyhow::Result<()> {
         crate::sms_free::boucle(sms_pool).await;
     });
 
+    // Serveur Proxmox : alertes SMS (disque, mémoire, machines, sauvegardes).
+    let proxmox_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::proxmox::boucle(proxmox_pool).await;
+    });
+
     // Machine à soupe : alerte quand le service d'écoute ne donne plus de nouvelles.
     let soupe_pool = pool.clone();
     tokio::spawn(async move {
@@ -137,21 +144,22 @@ async fn main() -> anyhow::Result<()> {
         crate::tunnel::boucle(tunnel_pool).await;
     });
 
-    // Rétention des enregistrements vocaux : l'audio ne sert qu'au diagnostic
-    // des dictées mal comprises, il s'efface seul au bout du délai prévu.
-    let purge_pool = pool.clone();
+    // Module Automatique : règles si… alors… évaluées toutes les 10 s.
+    let automatique_pool = pool.clone();
     tokio::spawn(async move {
-        loop {
-            if let Err(e) = routes::vocal::purger_audio(&purge_pool).await {
-                tracing::error!(error=%e,"Purge des enregistrements vocaux impossible");
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
-        }
+        routes::automatique::boucle(automatique_pool).await;
+    });
+
+    // Consommation électrique : journées finies gardées dans elec_jour.
+    let elec_pool = pool.clone();
+    tokio::spawn(async move {
+        routes::electricite::boucle(elec_pool).await;
     });
 
     let templates = templates::build()?;
     routes::charger_equip_masques(&pool).await;
     let state = AppState::new(config.clone(), pool, templates);
+    routes::recharger_nom_elevage(&state.pool).await;
 
     let app = routes::router(state.clone())
         .nest_service("/static", ServeDir::new("static"))

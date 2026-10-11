@@ -153,7 +153,7 @@
 <section class="card">
   <h2>🔌 Capteurs et sorties de l'automate</h2>
   <div class="sl-lignes">{% for p in points %}<div>{{ p.nom }} <span>· {{ p.role }}{% if p.pilotable %} · pilotable{% endif %}</span>{% if p.mesure_le %} <span class="sl-mesure-le{% if p.vieille %} vieille{% endif %}">{% if p.valeur is not none %}<b>{{ p.valeur }}{% if p.unite %} {{ p.unite }}{% endif %}</b> {% endif %}{{ p.mesure_le }}</span>{% endif %}</div>{% endfor %}</div>
-  <p style="margin:8px 0 0"><a href="/ambiance/ipx">Entrées et sorties →</a></p>
+  <p style="margin:8px 0 0"><a href="/ambiance/ipx/v5/relais">Entrées et sorties →</a></p>
 </section>
 {% endif %}
 

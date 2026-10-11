@@ -46,41 +46,120 @@
 <section class="card mat-weaning" id="sevrage"><h2>Sevrage et transfert vers le post-sevrage</h2><p>{{ truies_sevrage|length }} portée(s) présente(s)</p><p class="mat-help">Cochez les portées, contrôlez l’effectif et choisissez la case ou la vanne de destination. Un mouvement daté et rattaché à la bande sera créé pour chaque portée.</p>{% if session.peut_modifier and truies_sevrage %}<form method="post" action="/maternite/bande/{{ bande.id }}/sevrage"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><div class="rust-scroll"><table><thead><tr><th>Choix</th><th>Truie</th><th>Mise-bas</th><th>Case / vanne maternité</th><th>Porcelets présents</th><th>Destination post-sevrage</th></tr></thead><tbody>{% for t in truies_sevrage %}<tr><td><input type="checkbox" name="selection_{{ t.id }}" value="1" aria-label="Sevrer la truie {{ t.num_travail }}"></td><td><a href="/truie/{{ t.id }}"><b>{{ t.num_travail }}</b></a>{% if not t.nt and not t.nv and not t.porcelets_presents %}<br><button type="submit" form="vide-{{ t.mise_bas_id }}" class="ghost danger" style="margin-top:4px" onclick="return confirm('Truie {{ t.num_travail }} vide : annuler sa mise-bas à 0 né et la sortir de la bande ?')">Truie vide : annuler la mise-bas</button>{% endif %}</td><td>{{ t.date_mise_bas|date_fr }}</td><td>{{ t.case_source or 'Non définie' }} · vanne {{ t.vanne_source or '—' }}</td><td><input type="number" name="nb_{{ t.id }}" min="0" max="{{ t.porcelets_presents }}" value="{{ t.porcelets_presents }}" style="width:85px"></td><td><select name="case_{{ t.id }}"><option value="">Choisir une case / vanne…</option>{% for c in destinations_sevrage %}<option value="{{ c.id }}">{{ c.site }} · {{ c.salle }} · {{ c.nom }} · vanne {{ c.num_vanne or '—' }} — {{ c.effectif }} présent(s){% if c.places_disponibles is not none %}, {{ c.places_disponibles }} place(s){% endif %}</option>{% endfor %}</select></td></tr>{% endfor %}</tbody></table></div><div class="save"><label>Date de sevrage<input type="date" name="date" value="{{ today }}" required></label><button>Sevrer et créer les mouvements</button></div></form>{% for t in truies_sevrage %}{% if not t.nt and not t.nv and not t.porcelets_presents %}<form id="vide-{{ t.mise_bas_id }}" method="post" action="/bande/{{ bande.id }}/mise-bas/{{ t.mise_bas_id }}/vide" hidden><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="/maternite?bande_id={{ bande.id }}&vue=sevrage"></form>{% endif %}{% endfor %}{% elif truies_sevrage and not session.peut_modifier %}<p>Consultation seule : {{ truies_sevrage|length }} portée(s) à sevrer.</p>{% elif not destinations_sevrage %}<p class="mat-alert">Créez d’abord une salle dont le nom ou le type contient « sevrage », puis ses cases et leurs capacités dans Structure.</p>{% else %}<p>Toutes les portées de cette bande sont déjà sevrées.</p>{% endif %}</section>
 {% endif %}
 {% if vue == 'mises-bas' %}
-<div class="mat-kpis"><div class="mat-kpi"><b>{{ totaux.mises_bas }} / {{ totaux.truies }}</b><span>mises-bas enregistrées</span></div><div class="mat-kpi"><b>{{ totaux.restantes }}</b><span>encore à mettre bas</span></div><div class="mat-kpi"><b>{{ totaux.en_cours }}</b><span>mises-bas en cours</span></div><div class="mat-kpi"><b>{{ totaux.presents }}</b><span>porcelets présents au total · {{ totaux.sous_meres }} sous les mères + {{ totaux.nourrice }} en nourrice</span></div></div>
-<h2>Suivi des truies</h2><p class="mat-help">◷ À mettre bas → ◔ Mise-bas en cours → ✓ Mise-bas terminée → ↗ Portée sevrée. <b>Délivrance OK confirme la fin de mise-bas, même sans heure de fin.</b> ⚑ La surveillance peut continuer après la fin.</p><p class="mat-help">Ouvrez une truie pour saisir les naissances. Les boutons d’état ci-dessous ne changent jamais ses effectifs.</p>
-<label class="mat-search">Rechercher une truie ou une case<input type="search" id="mat-search" placeholder="Numéro de truie, case, vanne…" autocomplete="off"></label>
-<div class="mat-toolbar" aria-label="Filtrer les truies"><button type="button" class="on" aria-pressed="true" data-filter="all">Toutes ({{ totaux.truies }})</button><button type="button" aria-pressed="false" data-filter="a_mettre_bas">◷ À mettre bas ({{ totaux.restantes }})</button><button type="button" aria-pressed="false" data-filter="en_cours">◔ En cours ({{ totaux.en_cours }})</button><button type="button" aria-pressed="false" data-filter="terminee">✓ Terminées ({{ totaux.terminees }})</button><button type="button" aria-pressed="false" data-filter="surveillance">⚑ À surveiller ({{ totaux.surveillance }})</button><button type="button" aria-pressed="false" data-filter="sevree">↗ Sevrées ({{ totaux.sevrees }})</button></div>
-<div class="mat-list">
-{% for truie in truies %}<details class="mat-sow" id="truie-{{ truie.id }}" data-status="{{ truie.statut_code }}" data-surveillance="{{ 1 if truie.surveillance else 0 }}" data-search="{{ truie.num_travail }} {{ truie.case_nom or '' }} {{ truie.num_vanne or '' }}"><summary class="mat-sow-head"><div class="mat-sow-title"><strong>Truie {{ truie.num_travail }}</strong><span class="mat-status {{ truie.statut_code }}"><span aria-hidden="true">{{ truie.statut_icone }}</span> {{ truie.statut_libelle }}</span>{% if truie.surveillance %}<span class="mat-status-note">⚑ À surveiller</span>{% endif %}<span>{{ truie.case_nom or 'Case non définie' }} · vanne {{ truie.num_vanne or '—' }}</span></div>
-<div class="mat-sow-glance">{% if truie.mise_bas_id %}<span><b>{{ truie.nes_vifs }}</b> NV · <b>{{ truie.porcelets_presents }}</b> présents</span>{% if truie.delivrance_ok == 1 %}<span>✓ Délivrance OK</span>{% elif truie.delivrance_ok == 0 %}<span class="mat-alert">Délivrance NOK</span>{% elif truie.delivrance_ok is none %}<span>Délivrance à contrôler</span>{% endif %}{% endif %}{% if truie.soins_attendus %}<span class="mat-alert">{{ truie.soins_attendus }} soin(s) attendu(s)</span>{% endif %}<span class="mat-expand">Ouvrir ▾</span></div></summary>
-<p class="mat-sow-link"><a href="/truie/{{ truie.id }}">Fiche complète de la truie</a>{% if truie.rang %} · rang {{ truie.rang }}{% endif %}{% if truie.date_mise_bas %} · Mise-bas du {{ truie.date_mise_bas|date_fr }} · J{{ truie.jour_lactation }} · suivi jusqu’au {{ truie.fin_suivi|date_fr }}{% endif %}</p>
-<div class="mat-numbers"><div class="mat-number"><b>{{ truie.nes_vifs }}</b><span>nés vivants</span></div><div class="mat-number"><b>{{ truie.mort_nes }}</b><span>mort-nés</span></div><div class="mat-number"><b>{{ truie.momifies }}</b><span>momifiés</span></div><div class="mat-number"><b>{{ truie.adoptes or 0 }}</b><span>adoptés reçus</span></div><div class="mat-number"><b>{{ truie.retires or 0 }}</b><span>retirés / transférés</span></div><div class="mat-number"><b>{{ truie.pertes }}</b><span>pertes cumulées</span></div><div class="mat-number"><b data-indicateur="presents">{{ truie.porcelets_presents }}</b><span>présents sous la mère</span></div><div class="mat-number"><b>{% if truie.delivrance_ok == 1 %}OK{% elif truie.delivrance_ok == 0 %}<span class="mat-alert">NOK</span>{% else %}—{% endif %}</b><span>délivrance</span></div><div class="mat-number"><b>{{ truie.num_vanne or '—' }}</b><span>vanne · {{ truie.case_nom or 'case non définie' }}</span></div><div class="mat-number"><b>{{ truie.soins_attendus }}</b><span>soins attendus{% if truie.prochain_soin %} · dès {{ truie.prochain_soin|date_fr }}{% endif %}</span></div></div>
-<p class="mat-state-help">Effectif : nés vivants + adoptés − retirés − pertes de cette portée. Après sevrage : 0 sous la mère. Même calcul sur la fiche truie.</p>
-{% if truie.mise_bas_id and not truie.cloturee and session.peut_modifier %}<div class="mat-state-actions">
-{% if truie.delivrance_ok != 1 %}<form method="post" action="/maternite/mise-bas/{{ truie.mise_bas_id }}/etat"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="action" value="terminer">✓ Délivrance OK · mise-bas terminée</button></form>{% endif %}
-<form method="post" action="/maternite/mise-bas/{{ truie.mise_bas_id }}/etat"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">{% if truie.surveillance %}<button class="ghost" name="action" value="arreter_surveillance"{% if truie.delivrance_ok == 0 %} disabled title="Corrigez d’abord le contrôle de délivrance NOK"{% endif %}>✓ Lever la surveillance</button>{% else %}<button class="ghost" name="action" value="surveiller">⚑ Mettre sous surveillance</button>{% endif %}</form></div>{% endif %}
-{% if truie.note %}<p class="mat-note"><b>Observation :</b> {{ truie.note }}</p>{% endif %}
-<div class="mat-actions"><details open><summary>{% if truie.mise_bas_id %}Mettre à jour la mise-bas{% else %}Démarrer / enregistrer la mise-bas{% endif %}</summary>{% if session.peut_modifier %}<form method="post" action="/truie/{{ truie.id }}/misebas" class="mat-form-grid"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="bande_id" value="{{ bande.id }}"><input type="hidden" name="retour" value="/maternite?bande_id={{ bande.id }}#truie-{{ truie.id }}"><label>Date<input type="date" name="date" value="{{ truie.date_mise_bas or today }}" required></label><label>Début<input type="time" name="heure_debut" value="{{ truie.heure_debut or '' }}"></label><label>Heure de fin (facultative)<input type="time" name="heure_fin" value="{{ truie.heure_fin or '' }}"></label><label>Nés vivants<input type="number" name="nes_vifs" min="0" value="{{ truie.nes_vifs }}" required></label><label>Mort-nés<input type="number" name="mort_nes" min="0" value="{{ truie.mort_nes }}"></label><label>Momifiés<input type="number" name="momifies" min="0" value="{{ truie.momifies }}"></label><label>Chétifs / non conformes<input type="number" name="chetifs" min="0" value="{{ truie.chetifs }}"></label><label>Écrasés à la naissance<input type="number" name="ecrases" min="0" value="{{ truie.ecrases }}"></label><label>Tués par la truie<input type="number" name="tues_truie" min="0" value="{{ truie.tues_truie }}"></label><fieldset class="wide"><legend>État de la délivrance</legend><label><input type="radio" name="delivrance_ok" value=""{% if truie.delivrance_ok is none %} checked{% endif %}> ◔ À contrôler · mise-bas non confirmée terminée</label><label><input type="radio" name="delivrance_ok" value="1"{% if truie.delivrance_ok == 1 %} checked{% endif %}> ✓ Délivrance OK · mise-bas terminée</label><label><input type="radio" name="delivrance_ok" value="0"{% if truie.delivrance_ok == 0 %} checked{% endif %}> ⚑ Délivrance NOK · à surveiller</label></fieldset><label style="align-self:end"><input type="checkbox" name="suivi_actif" value="1"{% if truie.suivi_actif %} checked{% endif %}> ⚑ Surveillance complémentaire (même après la fin)</label><label class="wide">Observation<textarea name="note" rows="2">{{ truie.note or '' }}</textarea></label><div class="wide"><button>Enregistrer l’état de la truie</button></div></form>{% else %}<p>Consultation seule.</p>{% endif %}</details>
-<details><summary>Pertes jusqu’à J+28 ({{ truie.pertes }})</summary>{% if truie.mise_bas_id and not truie.cloturee and session.peut_modifier %}<form method="post" action="/maternite/bande/{{ bande.id }}/truie/{{ truie.id }}/perte" class="mat-form-grid"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Date<input type="date" name="date" value="{{ truie.date_perte_defaut }}" min="{{ truie.date_mise_bas }}" max="{{ truie.fin_suivi }}" required></label><label>Nombre<input type="number" name="nb" min="1" value="1" required></label><label>Cause<select name="cause" required><option value="">Choisir…</option>{% for cause in causes %}<option>{{ cause.libelle }}</option>{% endfor %}</select></label><div class="wide"><button>Ajouter la perte</button></div></form>{% elif not truie.mise_bas_id %}<p class="mat-help">Enregistrez d’abord la mise-bas.</p>{% elif truie.cloturee %}<p class="mat-help">Portée clôturée : consultez les pertes enregistrées ci-dessous.</p>{% endif %}<ul class="mat-loss-list">{% for perte in truie.pertes_detail %}<li><span>{{ perte.date|date_fr }} · J+{{ perte.age_j }} · <b>{{ perte.nb }}</b> — {{ perte.cause }}</span>{% if session.peut_modifier and not perte.evenement_id %}<form method="post" action="/maternite/bande/{{ bande.id }}/perte/{{ perte.id }}/supprimer" onsubmit="return confirm('Supprimer cette perte ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button title="Supprimer">✕</button></form>{% endif %}</li>{% else %}<li>Aucune perte enregistrée.</li>{% endfor %}</ul></details></div></details>{% else %}<section class="card mat-empty"><h2>Aucune truie dans cette bande</h2><p>Affectez des truies à la bande pour commencer le suivi.</p></section>{% endfor %}
+<style>
+.mb-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
+@media(max-width:640px){.mb-kpis{grid-template-columns:1fr 1fr}}
+.mb-kpi{background:#fff;border:1px solid #dfe7e2;border-radius:11px;padding:9px 13px}.mb-kpi b{display:block;font-size:22px;color:#173f32;font-variant-numeric:tabular-nums}.mb-kpi span{font-size:12.5px;color:#5d6f66}
+.mb-outils{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.mb-outils input[type=search]{min-width:220px;flex:1;max-width:340px;margin:0}
+.mb-filtres{display:flex;flex-wrap:wrap;gap:6px}.mb-filtres button{border:1px solid #dfe7e2;background:#fff;color:#24483b;border-radius:999px;padding:7px 12px;font-weight:700;font-size:13px;min-height:0}
+.mb-filtres button.on{background:#173f32;color:#fff;border-color:#173f32}
+.mb-zone{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;align-items:start}
+@media(max-width:980px){.mb-zone{grid-template-columns:1fr}}
+.mb-tableau{overflow-x:auto;background:#fff;border:1px solid #dfe7e2;border-radius:12px}
+.mb-tableau table{width:100%;border-collapse:collapse;font-size:14px;min-width:620px}
+.mb-tableau th{background:#e9efea;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#3c4a43;padding:9px 8px;text-align:center;white-space:nowrap}
+.mb-tableau td{padding:8px;border-top:1px solid #edf0ed;text-align:center;font-variant-numeric:tabular-nums}
+.mb-tableau td:nth-child(-n+3),.mb-tableau th:nth-child(-n+3){text-align:left}
+.mb-ligne{cursor:pointer}.mb-ligne:hover td{background:#f6f9f6}.mb-ligne.sel td{background:#e9f3ec}
+.mb-ligne .n{font-size:16px;font-weight:800;color:#173f32}
+.mb-st{display:inline-block;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;white-space:nowrap}
+.mb-st.a_mettre_bas{background:#eef1ee;color:#4b5a52}.mb-st.en_cours{background:#fff0d9;color:#8a5413}.mb-st.terminee{background:#e1f0e7;color:#1f6b45}.mb-st.sevree,.mb-st.archivee{background:#e7edf6;color:#314d72}.mb-st.surv{background:#fde3dd;color:#b3261e}
+.mb-ko{color:#b3261e;font-weight:700}
+.mb-ligne td:last-child button{min-height:0;padding:6px 11px;font-size:13px}
+.mb-panneau{background:#fff;border:2px solid #2f6b4f;border-radius:14px;padding:14px;position:sticky;top:76px;max-height:calc(100vh - 92px);overflow:auto}
+@media(max-width:980px){.mb-panneau{position:static;max-height:none}}
+.mb-panneau h3{margin:0;font-size:19px}.mb-panneau .sous{color:#5d6f66;font-size:13px;margin:2px 0 8px}
+.mb-panneau .vide{color:#5d6f66;text-align:center;padding:30px 10px}
+.mb-chiffres{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
+.mb-chiffres div{background:#f2f5f2;border-radius:9px;padding:6px;text-align:center}.mb-chiffres b{display:block;font-size:18px;color:#173f32}.mb-chiffres span{font-size:11px;color:#5d6f66}
+.mb-etat{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.mb-etat form{margin:0;flex:1}.mb-etat button{width:100%;min-height:42px}
+.mb-saisie{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mb-saisie label{margin:0;font-size:13px}.mb-saisie input,.mb-saisie select,.mb-saisie textarea{width:100%;box-sizing:border-box}
+.mb-saisie .gros input{font-size:20px;font-weight:700;min-height:46px}
+.mb-saisie .large,.mb-saisie fieldset,.mb-saisie details{grid-column:1/-1}
+.mb-saisie fieldset{border:1px solid #dfe7e2;border-radius:9px;padding:6px 10px;margin:0}.mb-saisie fieldset label{display:block;font-weight:600;margin:4px 0}
+.mb-saisie details summary,.mb-plus>summary{cursor:pointer;font-weight:700;color:#24483b;padding:6px 0}
+.mb-saisie details .mb-saisie{margin-top:6px}
+.mb-plus{border-top:1px solid #edf0ed;margin-top:12px;padding-top:6px}
+.mb-plus ul{padding-left:18px;margin:6px 0}.mb-plus li{display:flex;justify-content:space-between;align-items:center;gap:6px}.mb-plus li form{margin:0}
+</style>
+<div class="mb-kpis"><div class="mb-kpi"><b>{{ totaux.mises_bas }} / {{ totaux.truies }}</b><span>mises-bas faites</span></div><div class="mb-kpi"><b>{{ totaux.en_cours }}</b><span>en cours</span></div><div class="mb-kpi"><b>{{ totaux.restantes }}</b><span>encore à venir</span></div><div class="mb-kpi"><b>{{ totaux.presents }}</b><span>porcelets présents ({{ totaux.sous_meres }} sous mères · {{ totaux.nourrice }} nourrice)</span></div></div>
+<div class="mb-outils">
+<input type="search" id="mat-search" placeholder="Rechercher : truie, case, vanne…" autocomplete="off" aria-label="Rechercher une truie ou une case">
+<div class="mb-filtres mat-toolbar" aria-label="Filtrer les truies"><button type="button" class="on" aria-pressed="true" data-filter="all">Toutes {{ totaux.truies }}</button><button type="button" aria-pressed="false" data-filter="a_mettre_bas">◷ À mettre bas {{ totaux.restantes }}</button><button type="button" aria-pressed="false" data-filter="en_cours">◔ En cours {{ totaux.en_cours }}</button><button type="button" aria-pressed="false" data-filter="terminee">✓ Terminées {{ totaux.terminees }}</button><button type="button" aria-pressed="false" data-filter="surveillance">⚑ À surveiller {{ totaux.surveillance }}</button><button type="button" aria-pressed="false" data-filter="sevree">↗ Sevrées {{ totaux.sevrees }}</button></div>
 </div>
-<p id="mat-no-results" class="mat-empty" hidden>Aucune truie ne correspond à votre recherche.</p>
+{% if truies %}
+<div class="mb-zone">
+<div class="mb-tableau"><table data-sans-pli>
+<thead><tr><th>Case</th><th>Truie</th><th>État</th><th>Nés vivants</th><th>Mort-nés</th><th>Momifiés</th><th>Pertes</th><th>Présents</th><th>Délivrance</th><th></th></tr></thead>
+<tbody>
+{% for truie in truies %}<tr class="mb-ligne mat-sow" id="truie-{{ truie.id }}" data-id="{{ truie.id }}" data-status="{{ truie.statut_code }}" data-surveillance="{{ 1 if truie.surveillance else 0 }}" data-search="{{ truie.num_travail }} {{ truie.case_nom or '' }} {{ truie.num_vanne or '' }}" tabindex="0">
+<td>{{ truie.case_nom or '—' }}{% if truie.num_vanne %} <small class="muted">v{{ truie.num_vanne }}</small>{% endif %}</td>
+<td><b>{{ truie.num_travail }}</b>{% if truie.rang %} <small class="muted">r{{ truie.rang }}</small>{% endif %}</td>
+<td>{% if truie.surveillance %}<span class="mb-st surv">⚑ À surveiller</span>{% else %}<span class="mb-st {{ truie.statut_code }}">{{ truie.statut_icone }} {{ truie.statut_libelle }}</span>{% endif %}{% if truie.soins_attendus %} <span class="mb-ko">{{ truie.soins_attendus }} soin(s) attendu(s)</span>{% endif %}</td>
+{% if truie.mise_bas_id %}<td><span class="n">{{ truie.nes_vifs }}</span></td><td>{{ truie.mort_nes }}</td><td>{{ truie.momifies }}</td><td>{{ truie.pertes }}</td><td><b class="n" data-indicateur="presents">{{ truie.porcelets_presents }}</b></td><td>{% if truie.delivrance_ok == 1 %}✓{% elif truie.delivrance_ok == 0 %}<span class="mb-ko">NOK</span>{% else %}<span class="muted">à contrôler</span>{% endif %}</td>
+{% else %}<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>{% endif %}
+<td><button type="button" class="{% if truie.statut_code == 'en_cours' or not truie.mise_bas_id %}{% else %}ghost{% endif %}" data-ouvrir="{{ truie.id }}">{% if not truie.mise_bas_id %}Démarrer{% elif truie.statut_code == 'en_cours' %}Saisir{% else %}Ouvrir{% endif %}</button></td>
+</tr>{% endfor %}
+</tbody></table>
+<p id="mat-no-results" class="mat-empty" hidden style="padding:12px">Aucune truie ne correspond à votre recherche.</p>
+</div>
+<aside class="mb-panneau" id="mb-panneau" aria-live="polite">
+<p class="vide" id="mb-vide">Cliquez sur une truie du tableau pour saisir ou consulter sa mise-bas.</p>
+{% for truie in truies %}<div class="mb-fiche" id="fiche-{{ truie.id }}" hidden>
+<h3>Truie {{ truie.num_travail }}</h3>
+<p class="sous">{{ truie.case_nom or 'Case non définie' }}{% if truie.num_vanne %} · vanne {{ truie.num_vanne }}{% endif %}{% if truie.rang %} · rang {{ truie.rang }}{% endif %}{% if truie.date_mise_bas %} · mise-bas du {{ truie.date_mise_bas|date_fr }} · J{{ truie.jour_lactation }}{% endif %} · <a href="/truie/{{ truie.id }}">fiche truie</a></p>
+{% if truie.surveillance %}<span class="mb-st surv">⚑ À surveiller</span>{% else %}<span class="mb-st {{ truie.statut_code }}">{{ truie.statut_icone }} {{ truie.statut_libelle }}</span>{% endif %}{% if truie.delivrance_ok == 0 %} <span class="mb-ko">Délivrance NOK</span>{% endif %}
+{% if truie.mise_bas_id %}<div class="mb-chiffres"><div><b>{{ truie.nes_vifs }}</b><span>nés vivants</span></div><div><b data-indicateur="presents">{{ truie.porcelets_presents }}</b><span>présents</span></div><div><b>{{ (truie.adoptes or 0) }}/{{ (truie.retires or 0) }}</b><span>adoptés / retirés</span></div><div><b>{{ truie.pertes }}</b><span>pertes</span></div></div>{% endif %}
+{% if truie.mise_bas_id and not truie.cloturee and session.peut_modifier %}<div class="mb-etat">
+{% if truie.delivrance_ok != 1 %}<form method="post" action="/maternite/mise-bas/{{ truie.mise_bas_id }}/etat"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="action" value="terminer">✓ Délivrance OK</button></form>{% endif %}
+<form method="post" action="/maternite/mise-bas/{{ truie.mise_bas_id }}/etat"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">{% if truie.surveillance %}<button class="ghost" name="action" value="arreter_surveillance"{% if truie.delivrance_ok == 0 %} disabled title="Corrigez d’abord la délivrance NOK"{% endif %}>Lever la surveillance</button>{% else %}<button class="ghost" name="action" value="surveiller">⚑ À surveiller</button>{% endif %}</form></div>{% endif %}
+{% if truie.note %}<p class="mat-note"><b>Observation :</b> {{ truie.note }}</p>{% endif %}
+{% if session.peut_modifier %}<form method="post" action="/truie/{{ truie.id }}/misebas" class="mb-saisie"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="bande_id" value="{{ bande.id }}"><input type="hidden" name="retour" value="/maternite?bande_id={{ bande.id }}#truie-{{ truie.id }}">
+<label class="gros">Nés vivants<input type="number" name="nes_vifs" min="0" value="{{ truie.nes_vifs }}" inputmode="numeric" required></label>
+<label class="gros">Mort-nés<input type="number" name="mort_nes" min="0" value="{{ truie.mort_nes }}" inputmode="numeric"></label>
+<label class="gros">Momifiés<input type="number" name="momifies" min="0" value="{{ truie.momifies }}" inputmode="numeric"></label>
+<label>Date<input type="date" name="date" value="{{ truie.date_mise_bas or today }}" required></label>
+<fieldset><legend>Délivrance</legend><label><input type="radio" name="delivrance_ok" value=""{% if truie.delivrance_ok is none %} checked{% endif %}> À contrôler</label><label><input type="radio" name="delivrance_ok" value="1"{% if truie.delivrance_ok == 1 %} checked{% endif %}> ✓ Délivrance OK · terminée</label><label><input type="radio" name="delivrance_ok" value="0"{% if truie.delivrance_ok == 0 %} checked{% endif %}> ⚑ Délivrance NOK · à surveiller</label></fieldset>
+<details><summary>Plus : heures, chétifs, écrasés, observation</summary><div class="mb-saisie">
+<label>Début<input type="time" name="heure_debut" value="{{ truie.heure_debut or '' }}"></label><label>Fin<input type="time" name="heure_fin" value="{{ truie.heure_fin or '' }}"></label>
+<label>Chétifs<input type="number" name="chetifs" min="0" value="{{ truie.chetifs }}"></label><label>Écrasés<input type="number" name="ecrases" min="0" value="{{ truie.ecrases }}"></label>
+<label>Tués par la truie<input type="number" name="tues_truie" min="0" value="{{ truie.tues_truie }}"></label>
+<label class="large"><input type="checkbox" name="suivi_actif" value="1"{% if truie.suivi_actif %} checked{% endif %}> Surveillance même après la fin</label>
+<label class="large">Observation<textarea name="note" rows="2">{{ truie.note or '' }}</textarea></label></div></details>
+<div class="large"><button style="width:100%;min-height:46px">Enregistrer</button></div></form>{% else %}<p class="muted">Consultation seule.</p>{% endif %}
+<details class="mb-plus"><summary>Pertes jusqu’à J+28 ({{ truie.pertes }})</summary>{% if truie.mise_bas_id and not truie.cloturee and session.peut_modifier %}<form method="post" action="/maternite/bande/{{ bande.id }}/truie/{{ truie.id }}/perte" class="mb-saisie"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Date<input type="date" name="date" value="{{ truie.date_perte_defaut }}" min="{{ truie.date_mise_bas }}" max="{{ truie.fin_suivi }}" required></label><label>Nombre<input type="number" name="nb" min="1" value="1" required></label><label class="large">Cause<select name="cause" required><option value="">Choisir…</option>{% for cause in causes %}<option>{{ cause.libelle }}</option>{% endfor %}</select></label><div class="large"><button>Ajouter la perte</button></div></form>{% elif not truie.mise_bas_id %}<p class="mat-help">Enregistrez d’abord la mise-bas.</p>{% endif %}<ul>{% for perte in truie.pertes_detail %}<li><span>{{ perte.date|date_fr }} · J+{{ perte.age_j }} · <b>{{ perte.nb }}</b> {{ perte.cause }}</span>{% if session.peut_modifier and not perte.evenement_id %}<form method="post" action="/maternite/bande/{{ bande.id }}/perte/{{ perte.id }}/supprimer" onsubmit="return confirm('Supprimer cette perte ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost" title="Supprimer">✕</button></form>{% endif %}</li>{% else %}<li class="muted">Aucune perte enregistrée.</li>{% endfor %}</ul></details>
+</div>{% endfor %}
+</aside>
+</div>
+{% else %}<section class="card mat-empty"><h2>Aucune truie dans cette bande</h2><p>Affectez des truies à la bande pour commencer le suivi.</p></section>{% endif %}
 {% endif %}
 {% else %}<section class="card mat-empty"><h2>Aucune bande avec date de mise-bas</h2><p>Ajoutez une date de mise-bas prévue sur une bande pour ouvrir le tableau de maternité.</p><a class="button" href="/bandes">Configurer les bandes</a></section>{% endif %}
 <script>
 (function(){
   var search=document.getElementById('mat-search');
   if(!search) return;
-  var filter='all', cards=Array.from(document.querySelectorAll('.mat-sow'));
+  var filter='all', lignes=Array.from(document.querySelectorAll('.mb-ligne'));
   var buttons=document.querySelectorAll('.mat-toolbar button');
+  var panneau=document.getElementById('mb-panneau'), vide=document.getElementById('mb-vide');
   function apply(){
-    var term=search.value.trim().toLocaleLowerCase('fr');
-    var visible=0;
-    cards.forEach(function(card){
-      card.hidden=(filter==='surveillance'?card.dataset.surveillance!=='1':filter!=='all'&&card.dataset.status!==filter)||!card.dataset.search.toLocaleLowerCase('fr').includes(term);
-      if(!card.hidden) visible++;
+    var term=search.value.trim().toLocaleLowerCase('fr'), visible=0;
+    lignes.forEach(function(l){
+      l.hidden=(filter==='surveillance'?l.dataset.surveillance!=='1':filter!=='all'&&l.dataset.status!==filter)||!l.dataset.search.toLocaleLowerCase('fr').includes(term);
+      if(!l.hidden) visible++;
     });
-    document.getElementById('mat-no-results').hidden=visible>0||cards.length===0;
+    var aucun=document.getElementById('mat-no-results'); if(aucun) aucun.hidden=visible>0||lignes.length===0;
   }
+  function ouvrir(id, defiler){
+    document.querySelectorAll('.mb-fiche').forEach(function(f){f.hidden=f.id!=='fiche-'+id;});
+    lignes.forEach(function(l){l.classList.toggle('sel',l.dataset.id===String(id));});
+    if(vide) vide.hidden=true;
+    if(defiler && window.matchMedia('(max-width:980px)').matches) panneau.scrollIntoView({block:'start',behavior:'smooth'});
+  }
+  lignes.forEach(function(l){
+    l.addEventListener('click',function(e){ if(e.target.closest('a')) return; ouvrir(l.dataset.id,true); });
+    l.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){e.preventDefault();ouvrir(l.dataset.id,true);} });
+  });
   buttons.forEach(function(button){button.addEventListener('click',function(){
     filter=button.dataset.filter;
     buttons.forEach(function(item){var active=item===button;item.classList.toggle('on',active);item.setAttribute('aria-pressed',String(active))});
@@ -88,10 +167,10 @@
   })});
   search.addEventListener('input',apply);
   function reveal(){
-    var card=cards.find(function(item){return '#'+item.id===location.hash});
-    if(card){search.value='';buttons[0].click();card.open=true;card.scrollIntoView({block:'start'})}
+    var m=/^#truie-(\d+)$/.exec(location.hash);
+    if(m && document.getElementById('fiche-'+m[1])){ search.value=''; buttons[0].click(); ouvrir(m[1],true); }
   }
-  window.addEventListener('hashchange',reveal);reveal();
+  window.addEventListener('hashchange',reveal); reveal();
 })();
 </script>
 {% endblock %}

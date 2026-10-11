@@ -300,6 +300,7 @@ pub(super) async fn liste(
     let mut contexte = context(&session);
     contexte.insert("salles".into(), Value::Array(salles));
     contexte.insert("departs".into(), Value::Array(super::departs::a_venir(&state.pool).await?));
+    contexte.insert("quai".into(), Value::Array(super::departs::quai_en_attente(&state.pool).await?));
     render(&state, "salles.html", Value::Object(contexte))
 }
 
@@ -805,6 +806,7 @@ mod tests {
             include_str!("../../migrations/0011_ventilation_salle.sql"),
             include_str!("../../migrations/0012_observation_comportement.sql"),
             include_str!("../../migrations/0016_eclairage.sql"),
+            include_str!("../../migrations/0025_depart_prevu.sql"),
         ] {
             sqlx::raw_sql(sql).execute(&state.pool).await?;
         }

@@ -84,6 +84,7 @@ pub fn libelle_phase(phase: i64) -> String {
         0 => "Automate à l'arrêt".into(),
         1 => "Dosage produit".into(),
         7 => "Alerte dosage".into(),
+        37 => "Alarme débit distribution".into(),
         9 => "Contrôle / attente".into(),
         13 => "Mélange".into(),
         15 => "Test circuit".into(),
@@ -130,6 +131,9 @@ static CUMUL_DEBUT: Mutex<i64> = Mutex::new(0);
 
 /// Traite un lot de lignes « horodatage<TAB>sens<TAB>trame » envoyé par le
 /// service d'écoute (sens `<` = réponse de la machine, `>` = question du PC).
+/// Durée d'alarme débit distribution avant l'alerte (et le SMS).
+const ALARME_DISTRIBUTION_S: i64 = 180;
+
 pub async fn recevoir(pool: &SqlitePool, lot: &str) -> Result<usize> {
     let mut traitees = 0;
     for ligne in lot.lines() {
@@ -224,6 +228,29 @@ async fn traiter_etat(pool: &SqlitePool, ts: i64, etat: Etat) -> Result<()> {
         } else {
             fermer_alerte(pool, "soupe_alerte").await?;
         }
+    }
+    // Alarme débit distribution (phase 37) : souvent acquittée en quelques
+    // secondes au PC. Au-delà de quelques minutes, personne n'est là : la
+    // machine reste en sécurité et les porcs ne sont plus servis.
+    if etat.phase == 37 {
+        let debut: Option<i64> = sqlx::query_scalar(
+            "SELECT ts FROM soupe_evenement WHERE phase IS NOT NULL ORDER BY ts DESC, id DESC LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await?;
+        if debut.is_some_and(|d| ts - d >= ALARME_DISTRIBUTION_S) {
+            ouvrir_alerte(
+                pool,
+                "soupe_distribution",
+                &format!(
+                    "Machine à soupe en sécurité : alarme débit distribution, vanne {} ({:.1} kg servis sur {:.1}). Les porcs ne sont plus servis.",
+                    etat.vanne, etat.controle, etat.consigne
+                ),
+            )
+            .await?;
+        }
+    } else {
+        fermer_alerte(pool, "soupe_distribution").await?;
     }
     fermer_alerte(pool, "soupe_silence").await?;
     sqlx::query(
@@ -367,6 +394,15 @@ mod tests {
         let phase: i64 = sqlx::query_scalar("SELECT phase FROM soupe_etat").fetch_one(&pool).await.unwrap();
         assert_eq!(phase, 0);
 
+        // Alarme débit distribution : rien sous 3 min, alerte ensuite, fermée à la reprise.
+        let courte = format!("3000\t<\t{}\n3100\t<\t{}\n3101\t<\t{}", trame(6, 64, 0, 35), trame(6, 64, 0, 37), trame(6, 64, 0, 37));
+        recevoir(&pool, &courte).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ambiance_alerte WHERE type='soupe_distribution'").fetch_one(&pool).await.unwrap();
+        assert_eq!(n, 0);
+        let longue = format!("3400\t<\t{}\n3401\t<\t{}", trame(6, 64, 0, 37), trame(6, 64, 0, 35));
+        recevoir(&pool, &longue).await.unwrap();
+        let (n, ouvertes): (i64, i64) = sqlx::query_as("SELECT COUNT(*), COALESCE(SUM(fin IS NULL),0) FROM ambiance_alerte WHERE type='soupe_distribution'").fetch_one(&pool).await.unwrap();
+        assert_eq!((n, ouvertes), (1, 0));
         // Alerte dosage : ouverte une seule fois, fermée à la phase suivante.
         let alerte = format!("2000\t<\t{}\n2001\t<\t{}\n2002\t<\t{}", trame(0, 0, 0, 7), trame(0, 0, 0, 7), trame(0, 0, 0, 1));
         recevoir(&pool, &alerte).await.unwrap();

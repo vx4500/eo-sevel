@@ -89,7 +89,14 @@ fn le_menu_deroulant_ne_propose_aucun_lien_en_double() {
     let fin = BASE[debut..].find("</nav>").map(|p| debut + p).unwrap();
     let mut vus = HashSet::new();
     let mut liens = Vec::new();
-    let mut reste = &BASE[debut..fin];
+    // Le groupe « Salles et ambiance » (.menu-tel) ne s'affiche que sur
+    // téléphone, où les menus qu'il reprend sont justement masqués.
+    let mut menu = BASE[debut..fin].to_string();
+    if let Some(d) = menu.find("rust-sub-groupe menu-tel") {
+        let f = menu[d..].find("</div>").map(|p| d + p).unwrap();
+        menu.replace_range(d..f, "");
+    }
+    let mut reste = menu.as_str();
     while let Some(position) = reste.find("href=\"/") {
         reste = &reste[position + "href=\"".len()..];
         let Some(f) = reste.find('"') else { break };

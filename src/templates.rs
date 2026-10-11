@@ -62,6 +62,15 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_global("app_version", env!("CARGO_PKG_VERSION"));
     env.add_template("base.html", include_str!("../templates/base.html"))?;
     env.add_template("login.html", include_str!("../templates/login.html"))?;
+    env.add_template("proxmox.html", include_str!("../templates/proxmox.html"))?;
+    env.add_template("assistant.html", include_str!("../templates/assistant.html"))?;
+    env.add_template("electricite.html", include_str!("../templates/electricite.html"))?;
+    env.add_template("automatique_onglets.html", include_str!("../templates/automatique_onglets.html"))?;
+    env.add_template("automatique.html", include_str!("../templates/automatique.html"))?;
+    env.add_template("automatique_regle.html", include_str!("../templates/automatique_regle.html"))?;
+    env.add_template("automatique_simple.html", include_str!("../templates/automatique_simple.html"))?;
+    env.add_template("automatique_modeles.html", include_str!("../templates/automatique_modeles.html"))?;
+    env.add_template("decouvrir.html", include_str!("../templates/decouvrir.html"))?;
     env.add_template(
         "dashboard.html",
         include_str!("../templates/dashboard.html"),
@@ -79,6 +88,9 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("accueil_saisie.html", include_str!("../templates/accueil_saisie.html"))?;
     env.add_template("etat_donnees_cases.html", include_str!("../templates/etat_donnees_cases.html"))?;
     env.add_template("truies_improductives.html", include_str!("../templates/truies_improductives.html"))?;
+    env.add_template("tableau_bandes.html", include_str!("../templates/tableau_bandes.html"))?;
+    env.add_template("imprimer.html", include_str!("../templates/imprimer.html"))?;
+    env.add_template("imprimer_liste.html", include_str!("../templates/imprimer_liste.html"))?;
     env.add_template("soupe_pilotage.html", include_str!("../templates/soupe_pilotage.html"))?;
     env.add_template("soupe_vanne.html", include_str!("../templates/soupe_vanne.html"))?;
     env.add_template("bandes.html", include_str!("../templates/bandes.html"))?;
@@ -124,6 +136,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     )?;
     env.add_template("salles.html", include_str!("../templates/salles.html"))?;
     env.add_template("departs.html", include_str!("../templates/departs.html"))?;
+    env.add_template("sanitaire_plan.html", include_str!("../templates/sanitaire_plan.html"))?;
     env.add_template("accueil_presentation.html", include_str!("../templates/accueil_presentation.html"))?;
     env.add_template("equipements_modules.html", include_str!("../templates/equipements_modules.html"))?;
     env.add_template(
@@ -517,7 +530,8 @@ mod tests {
                     vue == "mises-bas" && editable
                 );
                 if vue == "mises-bas" {
-                    assert!(html.contains("<details class=\"mat-sow\" id=\"truie-7\""));
+                    assert!(html.contains("<tr class=\"mb-ligne mat-sow\" id=\"truie-7\""));
+                    assert!(html.contains("id=\"fiche-7\""));
                     assert!(html.contains("Délivrance NOK"));
                     assert!(html.contains("1 soin(s) attendu(s)"));
                     assert!(html.contains("hashchange"));

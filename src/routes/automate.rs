@@ -69,19 +69,13 @@ pub(super) async fn page(
     let etapes = [
         (!hote.is_empty(), "Indiquer l'adresse de l'automate", "/ambiance/ipx/acces", "Accès"),
         (cle_definie, "Enregistrer la clé d'API", "/ambiance/ipx/acces", "Accès"),
-        (nb_points > 0, "Nommer les entrées et sorties utiles", "/ambiance/ipx/carte", "Carte"),
+        (nb_points > 0, "Nommer les entrées et sorties utiles", "/ambiance/ipx/v5/relais", "Carte"),
         (mesurees > 0, "Raccorder les sondes aux salles", "/ambiance", "Ambiance"),
         (
             relais_eclairage > 0,
             "Déclarer les relais d'éclairage (rôle Éclairage, pilotable)",
-            "/ambiance/ipx/carte",
+            "/ambiance/ipx/v5/relais",
             "Carte",
-        ),
-        (
-            en_service > 0,
-            "Mettre un programme d'éclairage en service",
-            "/ambiance/eclairage",
-            "Éclairage",
         ),
     ];
     let prochaine = etapes.iter().position(|(fait, ..)| !fait);

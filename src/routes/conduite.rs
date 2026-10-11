@@ -296,10 +296,11 @@ impl BandeCycle {
     }
 }
 
-const VENDUS_BANDE: &str = "SELECT CAST(COALESCE(SUM(CASE WHEN v.bande_id=?1 THEN COALESCE(v.nb_porcs,0) \
+pub(super) const VENDUS_BANDE: &str = "SELECT CAST(COALESCE(SUM(CASE WHEN v.bande_id=?1 THEN COALESCE(v.nb_porcs,0) \
      WHEN v.bande_id IS NULL AND json_type(CASE WHEN json_valid(v.lots_json) THEN v.lots_json ELSE 'null' END)='array' \
      THEN (SELECT COALESCE(SUM(CAST(json_extract(j.value,'$.nb_porcs') AS INTEGER)),0) FROM json_each(v.lots_json) j \
-     WHERE CAST(json_extract(j.value,'$.bande_id') AS INTEGER)=?1) ELSE 0 END),0) AS INTEGER) FROM venteapport v";
+     WHERE CAST(json_extract(j.value,'$.bande_id') AS INTEGER)=?1) ELSE 0 END),0) AS INTEGER) FROM venteapport v \
+     WHERE COALESCE(v.lots_json,'') NOT LIKE '%\"reforme\":true%'";
 
 /// Morts après la maternité, sans recompter les porcelets déjà déclarés en
 /// perte de maternité (la saisie rapide écrit les deux tables).
