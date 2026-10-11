@@ -1,10 +1,5 @@
 # EO_Sevel — portage Rust 2.63.1
 
-Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
-n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà
-portées. La base reste au format SQLite `elevage.db` afin de conserver la
-compatibilité avec les sauvegardes 1.55 à 1.65.
-
 ## Ce qui est déjà natif Rust
 
 - serveur HTTP Axum et accès SQLite asynchrone SQLx ;
@@ -102,17 +97,6 @@ s'il tournait déjà. Déclenchement manuel :
 
 Sur une base neuve, le compte temporaire est `admin` / `admin`. Le logiciel
 oblige à choisir immédiatement un mot de passe d'au moins huit caractères.
-
-## Réutiliser une base 1.65
-
-1. arrêter l'ancienne application ;
-2. conserver une copie de sauvegarde ;
-3. placer `elevage.db` dans le dossier défini par `ELEVAGE_DATA` ;
-4. démarrer la version Rust.
-
-Les migrations sont additives : aucune table ni colonne historique n'est
-supprimée. Il ne faut toutefois pas faire fonctionner les versions Python et
-Rust en même temps sur la même base.
 
 ## Démonstration fictive
 
