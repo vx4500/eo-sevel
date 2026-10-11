@@ -12,7 +12,7 @@
 <section class="card"><p>Le module <b>Machine à soupe</b> est désactivé. Activez-le dans <a href="/parametres#type-elevage">Paramètres → Modules facultatifs</a>.</p></section>
 {% else %}
 
-{% if actif %}<p><a class="button" href="/equipements/soupe/pilotage">Pilotage à distance : vannes, distributions, alarme</a></p>{% endif %}
+{% if actif %}<p><a class="button" href="/equipements/soupe/pilotage">Pilotage à distance : vannes, distributions, alarme</a> <a class="button" href="/equipements/soupe/consommations">Tableau des consommations</a></p>{% endif %}
 {% if etat %}
 <section class="card" id="soupe-direct"><h2>En direct <small class="muted">— {{ etat.heure }}{% if etat.age_s > 30 %} (il y a {{ (etat.age_s / 60)|round|int }} min){% endif %}</small></h2>
 {% set cuve_max = 1500 %}{% set niveau = [[(etat.poids or 0) / cuve_max, 0]|max, 1]|min %}{% set dosage = etat.phase in [1, 7, 31, 49] %}{% set circuit = etat.phase in [15, 23, 24, 25, 26, 27, 28, 29, 35, 45] %}{% set alerte = etat.phase == 7 %}

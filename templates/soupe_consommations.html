@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Consommations soupe — EO_Sevel{% endblock %}
+{% block content %}<div class="equipment-console">
+<section class="equipment-head">
+  <div><p class="equipment-eyebrow">MACHINE À SOUPE</p><h1>Tableau des consommations</h1><p>Soupe servie aux vannes et quantités dosées dans la cuve (eau et aliments), relevées par l’écoute de l’Exa-Feeder.</p></div>
+  <a class="button" href="/equipements/soupe">← Machine à soupe</a>
+</section>
+<p>Période :{% for j in [7, 30, 90, 365] %} <a class="button{% if j != jours %} ghost{% endif %}" href="?jours={{ j }}">{{ j }} jours</a>{% endfor %}</p>
+
+<section class="card">
+  <h2>Par jour</h2>
+  {% if not debut_dosage %}<p class="muted">Le relevé de l’eau et des aliments dosés démarre avec cette version : les colonnes par produit se rempliront dès le prochain repas.</p>
+  {% elif colonnes %}<p class="muted">Eau et aliments relevés depuis le {{ debut_dosage|date_fr }} (poids gagné par la cuve à chaque dosage).</p>{% endif %}
+  <div class="rust-scroll"><table>
+    <thead><tr><th>Jour</th><th>Repas</th><th>Vannes</th><th>Soupe servie</th><th>Prévu</th><th>Écart</th>{% for c in colonnes %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for l in lignes %}<tr><td>{{ l.jour|date_fr }}</td><td>{{ l.repas }}</td><td>{{ l.vannes }}</td><td><b>{{ l.servi|round|int }} kg</b></td><td>{{ l.prevu|round|int }} kg</td>
+      <td>{% if l.ecart is not none %}<span style="color:{% if l.ecart < -10 or l.ecart > 10 %}#b3261e{% else %}inherit{% endif %}">{{ l.ecart|round|int }} %</span>{% else %}—{% endif %}</td>
+      {% for p in l.produits %}<td>{% if p %}{{ p|round|int }} kg{% else %}—{% endif %}</td>{% endfor %}</tr>
+    {% else %}<tr><td colspan="6" class="muted">Aucune distribution sur la période.</td></tr>{% endfor %}
+    </tbody>
+    {% if lignes %}<tfoot><tr><th>Total</th><th></th><th></th><th>{{ totaux.servi|round|int }} kg</th><th>{{ totaux.prevu|round|int }} kg</th><th></th>{% for t in totaux.produits %}<th>{{ t|round|int }} kg</th>{% endfor %}</tr></tfoot>{% endif %}
+  </table></div>
+</section>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px">
+<section class="card">
+  <h2>Par vanne</h2>
+  <div class="rust-scroll"><table><thead><tr><th>Vanne</th><th>Passages</th><th>Servi</th><th>Prévu</th><th>Moyenne / jour</th></tr></thead><tbody>
+  {% for v in par_vanne %}<tr><td><a href="/equipements/soupe/vanne/{{ v.vanne }}">{{ v.vanne }}</a></td><td>{{ v.passages }}</td><td><b>{{ v.servi|round|int }} kg</b></td><td>{{ v.prevu|round|int }} kg</td><td>{{ v.moyenne }} kg</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">Aucune donnée.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<section class="card">
+  <h2>Par formule</h2>
+  <div class="rust-scroll"><table><thead><tr><th>Formule</th><th>Passages</th><th>Servi</th><th>Prévu</th></tr></thead><tbody>
+  {% for f in par_formule %}<tr><td>{{ f.formule }}</td><td>{{ f.passages }}</td><td><b>{{ f.servi|round|int }} kg</b></td><td>{{ f.prevu|round|int }} kg</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Aucune donnée.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+</div>
+<p class="muted">« Servi » = quantité réellement passée à la vanne ; « Prévu » = consigne de la vanne. Un écart de plus de 10 % est signalé en rouge.</p>
+</div>{% endblock %}

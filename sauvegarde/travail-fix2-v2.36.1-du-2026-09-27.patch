@@ -1,0 +1,111 @@
+diff --git a/.github/workflows/rust.yml b/.github/workflows/rust.yml
+index e85234f..d90b69a 100644
+--- a/.github/workflows/rust.yml
++++ b/.github/workflows/rust.yml
+@@ -40,7 +40,7 @@ jobs:
+           done
+       - uses: actions/upload-artifact@v4
+         with:
+-          name: eo-sevel-2.36.1-linux-x86_64-musl
++          name: eo-sevel-2.36.2-linux-x86_64-musl
+           path: |
+             target/x86_64-unknown-linux-musl/release/eo-sevel
+             target/x86_64-unknown-linux-musl/release/eo-regul
+diff --git a/Cargo.lock b/Cargo.lock
+index b76ec2f..db7fa2d 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -648,7 +648,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "eo-sevel"
+-version = "2.36.1"
++version = "2.36.2"
+ dependencies = [
+  "anyhow",
+  "axum",
+diff --git a/Cargo.toml b/Cargo.toml
+index 8c6b051..31fbb45 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "eo-sevel"
+-version = "2.36.1"
++version = "2.36.2"
+ edition = "2021"
+ description = "EO_Sevel - suivi d'élevage porcin et régulation d'ambiance, compatible avec les bases SQLite v1.65"
+ license = "proprietary"
+diff --git a/Etat-projet-eo-suivi-rust.md b/Etat-projet-eo-suivi-rust.md
+index 53dbad7..39ed7d0 100644
+--- a/Etat-projet-eo-suivi-rust.md
++++ b/Etat-projet-eo-suivi-rust.md
+@@ -1,6 +1,10 @@
+ # EO-Suivi Élevage Rust — État du projet
+ 
+-Version actuelle : **2.36.1** —
++Version actuelle : **2.36.2** —
++
++### Version 2.36.2 — Capacités du flux
++
++Version Rust 2.36.2 : conduite::capacites lit d'abord reglage.capacite_* (édité dans Paramètres), parametre.places_* (figé, plus éditable) seulement en repli.
+ 
+ ### Version 2.36.1 — Correctif page Aliment
+ 
+diff --git a/README.md b/README.md
+index 0c8aa95..48ce460 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# EO_Sevel — portage Rust 2.36.1
++# EO_Sevel — portage Rust 2.36.2
+ 
+ Cette archive reprend la base EO_Sevel 1.65 sous forme d'un serveur Rust. Elle
+ n'utilise plus FastAPI, SQLModel, Uvicorn ni Python pour les fonctions déjà
+diff --git a/src/routes/conduite.rs b/src/routes/conduite.rs
+index 3e3be1c..7e98bcc 100644
+--- a/src/routes/conduite.rs
++++ b/src/routes/conduite.rs
+@@ -392,23 +392,23 @@ struct Capacites {
+     engraissement: Option<i64>,
+ }
+ 
+-/// Places déclarées dans Paramètres. `parametre.places_*` (saisies place par
+-/// place) priment sur les anciens réglages `reglage.capacite_*`.
++/// Places réglées dans Paramètres (`reglage.capacite_*`). Les anciens
++/// `parametre.places_*`, plus modifiables, ne servent qu en repli.
+ async fn capacites(pool: &SqlitePool) -> AppResult<Capacites> {
+-    async fn lire(pool: &SqlitePool, places: &str, ancien: &str) -> AppResult<Option<i64>> {
++    async fn lire(pool: &SqlitePool, places: &str, reglage: &str) -> AppResult<Option<i64>> {
+         let valeur: Option<i64> = sqlx::query_scalar(
+-            "SELECT CAST(valeur AS INTEGER) FROM parametre WHERE cle=? AND CAST(valeur AS INTEGER)>0",
++            "SELECT CAST(valeur AS INTEGER) FROM reglage WHERE cle=? AND CAST(valeur AS INTEGER)>0",
+         )
+-        .bind(places)
++        .bind(reglage)
+         .fetch_optional(pool)
+         .await?;
+         if valeur.is_some() {
+             return Ok(valeur);
+         }
+         Ok(sqlx::query_scalar(
+-            "SELECT CAST(valeur AS INTEGER) FROM reglage WHERE cle=? AND CAST(valeur AS INTEGER)>0",
++            "SELECT CAST(valeur AS INTEGER) FROM parametre WHERE cle=? AND CAST(valeur AS INTEGER)>0",
+         )
+-        .bind(ancien)
++        .bind(places)
+         .fetch_optional(pool)
+         .await?)
+     }
+diff --git a/templates/correctifs.html b/templates/correctifs.html
+index 3fa2dc1..ca563f7 100644
+--- a/templates/correctifs.html
++++ b/templates/correctifs.html
+@@ -1,6 +1,7 @@
+ {% extends "base.html" %}
+ {% block content %}
+ <h1>Correctifs et versions</h1>
++<section class="card"><h2>2.36.2 — Capacités à jour dans le flux</h2><ul><li>Flux des animaux : les places utilisées sont celles réglées dans Paramètres → Capacités des bâtiments (d’anciennes valeurs figées prenaient le dessus).</li></ul></section>
+ <section class="card"><h2>2.36.1 — Plans d’alimentation visibles</h2><ul><li>Page Aliment : les plans d’alimentation et réglages aliment s’affichent enfin (ils étaient placés par erreur dans le titre de la page).</li></ul></section>
+ <section class="card"><h2>2.36.0 — Production prévue par bande</h2><ul><li>Flux des animaux : nouveau tableau « Production prévue par bande » (truies, nés vifs, sevrés, porcs aujourd’hui, porcs à vendre prévus, semaine de départ) avec, pour chaque étape à venir, l’occupation maximale comparée aux places.</li><li>L’occupation prévue par semaine compte aussi les truies gestantes.</li></ul></section>
+ <section class="card"><h2>2.35.0 — Tout l’aliment sur la page Aliment</h2><ul><li>Capacités des bâtiments : ajout des places gestantes (aussi sur le tableau de bord).</li><li>Zigbee : les détecteurs de vibration (compresseur…) comptent les démarrages ; alerte réglable au-delà d’un nombre de démarrages sur une période.</li><li>Zigbee : un appareil peut être rattaché au « Bâtiment général » au lieu d’une salle, comme la sonde du frigo.</li><li>Les plans d’alimentation (truies gestantes, truies allaitantes, porcelets et porcs…) et les réglages d’âge des aliments (1er âge, 2e âge, finition) quittent Paramètres pour la page Aliment, sous les silos. Paramètres garde un lien.</li></ul></section>

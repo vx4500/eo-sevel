@@ -149,3 +149,81 @@ pub(super) async fn script(
         .replace("__JETON__", recu.unwrap_or_default());
     ([(header::CONTENT_TYPE, "text/x-python; charset=utf-8")], texte).into_response()
 }
+
+/// Tableau des consommations : soupe servie (par jour, vanne, formule) et
+/// quantités dosées dans la cuve par produit (eau et aliments).
+pub(super) async fn consommations(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Query(q): Query<HashMap<String, String>>,
+) -> AppResult<Html<String>> {
+    let pool = &state.pool;
+    let jours: i64 = q.get("jours").and_then(|v| v.parse().ok()).filter(|j| [7, 30, 90, 365].contains(j)).unwrap_or(30);
+    let depuis = format!("-{} day", jours - 1);
+    let produits = crate::soupe::produits(pool).await;
+    let nom_produit = |n: i64| -> String {
+        if n == 0 {
+            return "Eau".into();
+        }
+        produits.get(n as usize).filter(|p| p.chars().any(char::is_alphabetic) && !p.starts_with("Produit_")).cloned().unwrap_or_else(|| format!("Produit {n}"))
+    };
+    // Produits réellement dosés sur la période : une colonne chacun, l'eau d'abord.
+    let codes: Vec<i64> = sqlx::query_scalar("SELECT DISTINCT produit FROM soupe_dosage WHERE jour>=date('now','localtime',?) ORDER BY produit")
+        .bind(&depuis).fetch_all(pool).await?;
+    let dosages: Vec<(String, i64, f64)> = sqlx::query_as("SELECT jour, produit, SUM(kg) FROM soupe_dosage WHERE jour>=date('now','localtime',?) GROUP BY jour, produit")
+        .bind(&depuis).fetch_all(pool).await?;
+    let servis: Vec<(String, f64, f64, i64, i64)> = sqlx::query_as(
+        "SELECT jour, COALESCE(SUM(distribue),0), COALESCE(SUM(consigne),0), COUNT(DISTINCT vanne), COUNT(DISTINCT sequence||'-'||formule) \
+         FROM soupe_distribution WHERE jour>=date('now','localtime',?) GROUP BY jour",
+    ).bind(&depuis).fetch_all(pool).await?;
+    let mut lignes = Vec::new();
+    let mut totaux = vec![0.0; codes.len()];
+    let (mut t_servi, mut t_prevu) = (0.0, 0.0);
+    for i in 0..jours {
+        let jour = (Local::now().date_naive() - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let s = servis.iter().find(|s| s.0 == jour);
+        let par_produit: Vec<Option<f64>> = codes.iter().enumerate().map(|(k, c)| {
+            let v = dosages.iter().filter(|d| d.0 == jour && d.1 == *c).map(|d| d.2).sum::<f64>();
+            totaux[k] += v;
+            (v > 0.0).then_some(v)
+        }).collect();
+        if s.is_none() && par_produit.iter().all(Option::is_none) {
+            continue;
+        }
+        let (servi, prevu, vannes, repas) = s.map(|s| (s.1, s.2, s.3, s.4)).unwrap_or((0.0, 0.0, 0, 0));
+        t_servi += servi;
+        t_prevu += prevu;
+        lignes.push(json!({"jour": jour, "servi": servi, "prevu": prevu, "ecart": (prevu > 0.0).then(|| (servi - prevu) / prevu * 100.0),
+            "vannes": vannes, "repas": repas, "produits": par_produit}));
+    }
+    let par_vanne = generic_rows_bind_text(pool,
+        "SELECT vanne, COUNT(*) AS passages, round(SUM(distribue),1) AS servi, round(SUM(consigne),1) AS prevu, round(SUM(distribue)/COUNT(DISTINCT jour),1) AS moyenne \
+         FROM soupe_distribution WHERE jour>=date('now','localtime',?) GROUP BY vanne ORDER BY vanne", &depuis).await?;
+    let par_formule = generic_rows_bind_text(pool,
+        "SELECT formule, COUNT(*) AS passages, round(SUM(distribue),1) AS servi, round(SUM(consigne),1) AS prevu \
+         FROM soupe_distribution WHERE jour>=date('now','localtime',?) GROUP BY formule ORDER BY formule", &depuis).await?;
+    let debut_dosage: Option<String> = sqlx::query_scalar("SELECT MIN(jour) FROM soupe_dosage").fetch_one(pool).await?;
+    let mut ctx = context(&session);
+    ctx.insert("jours".into(), json!(jours));
+    ctx.insert("colonnes".into(), json!(codes.iter().map(|c| nom_produit(*c)).collect::<Vec<_>>()));
+    ctx.insert("lignes".into(), Value::Array(lignes));
+    ctx.insert("totaux".into(), json!({"servi": t_servi, "prevu": t_prevu, "produits": totaux}));
+    ctx.insert("par_vanne".into(), Value::Array(par_vanne));
+    ctx.insert("par_formule".into(), Value::Array(par_formule));
+    ctx.insert("debut_dosage".into(), json!(debut_dosage));
+    render(&state, "soupe_consommations.html", Value::Object(ctx))
+}
+
+async fn generic_rows_bind_text(pool: &SqlitePool, sql: &str, valeur: &str) -> AppResult<Vec<Value>> {
+    let lignes = sqlx::query(sql).bind(valeur).fetch_all(pool).await?;
+    Ok(lignes.iter().map(|l| {
+        let mut m = Map::new();
+        for c in l.columns() {
+            let v: Value = l.try_get::<i64, _>(c.ordinal()).map(Value::from)
+                .or_else(|_| l.try_get::<f64, _>(c.ordinal()).map(Value::from))
+                .unwrap_or(Value::Null);
+            m.insert(c.name().to_string(), v);
+        }
+        Value::Object(m)
+    }).collect())
+}

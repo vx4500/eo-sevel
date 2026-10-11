@@ -140,6 +140,7 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/sms/test", post(sms::test))
         .route("/equipements/cameras", get(cameras::page).post(cameras::enregistrer))
         .route("/equipements/soupe", get(soupe::page))
+        .route("/equipements/soupe/consommations", get(soupe::consommations))
         .route("/equipements/soupe/pilotage", get(soupe_pilotage::page))
         .route("/equipements/soupe/pilotage/adresse", post(soupe_pilotage::regler))
         .route("/equipements/soupe/vanne/{n}", get(soupe_pilotage::vanne))

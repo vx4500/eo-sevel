@@ -301,3 +301,58 @@ largeur) et reprise dans Places et flux ; sur /equipements/soupe, « Repas des
 7 derniers jours » et « Journal » repliés par défaut. Binaire précédent :
 /var/backups/eo-sevel/eo-sevel_avant_2.48.1_20261003_151658 (= 2.47.5).
 target/debug/incremental (34 Go) supprimé, disque à 93 %.
+
+## 2026-10-04 20:40 — v2.51.0 DÉPLOYÉE (branche `quai`, worktree /var/tmp/eo-quai, commit cfdb306)
+Saisie rapide « Quai abattoir » : porcs sortis des salles (transfert sans destination) mais encore à l'élevage
+jusqu'au bon d'apport. Tables quai_porc/quai_affectation (dans migrations/0002_ventelot.sql) ; synchronise_sortie_abattoir
+prend d'abord sur le quai. Affichage /departs + Mes salles, « Remettre en case ».
+⚠ PAS fusionnée dans master : le WIP soupe non commité (base.html, mod.rs…) bloque le fast-forward.
+L'agent soupe doit faire `git merge quai` avant tout déploiement, sinon il efface la 2.51.0.
+Sauvegarde : /var/backups/eo-sevel/eo-sevel_avant_2.51.0_20261004_204031 (+ base .db).
+
+## 2026-10-05 05:53 — v2.51.1 DÉPLOYÉE (branche `quai`, commit ba1b6b3)
+Page publique /decouvrir (auth.rs public), lien depuis login, pied de page « Version » sans « Rust ».
+Toujours PAS fusionnée dans master (WIP soupe non commité). Merger `quai` avant tout déploiement.
+Sauvegarde : /var/backups/eo-sevel/eo-sevel_avant_2.51.1_20261005_055326.
+
+## 2026-10-05 06:15 — v2.51.2 DÉPLOYÉE (branche quai) : /decouvrir enrichie, /contact public. Toujours non fusionnée dans master. Sauvegarde eo-sevel_avant_2.51.2_20261005_061520
+
+## 2026-10-05 06:24 — v2.51.3 DÉPLOYÉE (branche quai) : corrections de /decouvrir et /contact. Toujours non fusionnée dans master. Sauvegarde eo-sevel_avant_2.51.3_20261005_062427
+
+## 2026-10-05 13:11 — v2.52.0 DÉPLOYÉE (branche quai) : module Serveur Proxmox (/equipements/proxmox). Non fusionnée dans master. Sauvegarde eo-sevel_avant_2.52.0_20261005_131133
+
+## 2026-10-05 14:10 — v2.52.1 DÉPLOYÉE (branche quai) : salles/ambiance/éclairage accessibles sur téléphone. Non fusionnée dans master.
+
+## 2026-10-05 14:40 — v2.52.2 DÉPLOYÉE (branche quai) + correction données Case 1 La Berru (inventaire id1 dernier_transfert_id=146 ; apport 12 → 109 porcs case 47). Sauvegarde base elevage_avant_case1_berru_20261005_143927.db
+
+## 2026-10-05 15:51 — v2.52.3 DÉPLOYÉE (branche quai) : suppression de salle vide (contrôles détachés). Test navigation adapté au groupe .menu-tel. Non fusionnée dans master.
+
+## 2026-10-06 05:49 — v2.52.4 DÉPLOYÉE (branche quai) : « QR code ».
+
+## 2026-10-06 12:16 — v2.52.5 DÉPLOYÉE (branche quai) : Proxmox https forcé + message 403. Proxmox = https://192.168.1.140:8006 (nœud « proxmox »), jeton root@pam!eosevel sans PVEAuditor pour l'instant.
+
+## 2026-10-08 13:54 — v2.58.7 DÉPLOYÉE (branche assistant, session « Mise en quai porcs abattoir ») : import PDF secours pdftotext + date d'enlèvement à un chiffre. Sauvegarde eo-sevel_avant_2.58.7_20261008_135429
+
+## 2026-10-08 14:02 — v2.58.8 DÉPLOYÉE (branche assistant) : « À faire » de l'accueil cochable. Sauvegarde eo-sevel_avant_2.58.8_20261008_140232
+
+## 2026-10-08 14:35 — v2.59.0 DÉPLOYÉE (branche assistant) : /maternite vue mises-bas en tableau + panneau (modèle A). Sauvegarde eo-sevel_avant_2.59.0_20261008_143459
+
+## 2026-10-08 17:31 — v2.60.2 DÉPLOYÉE (branche assistant) : maternite.html data-indicateur presents sur la ligne. Sauvegarde eo-sevel_avant_2.60.2_20261008_173118
+
+## 2026-10-09 15:06 — v2.64.0 DÉPLOYÉE (branche assistant, commit d8195ea, session « CSuite G2 ») : saisie rapide hors-ligne (file localStorage, bandeau, renvoi auto ; pas de service worker car http) + /analyse-bandes/tableau (colonnes bandes, moyenne, objectif, PDF par impression). Testé en Chromium headless sur copie de base. Sauvegarde eo-sevel_avant_2.64.0_20261009_150650 (+ base).
+
+## 2026-10-09 15:58 — v2.64.1 DÉPLOYÉE (branche assistant) : tableau des bandes + porcs vendus ; apports de réformes (TRUIE VIANDE) marqués reforme=true, exclus des porcs de bande. Données : venteapport 10 et 11 (truies, févr./mai) détachés de B1.52 + transferts supprimés → B1.52=254, B2.07=230, B3.14=66 (conforme aux bons Cooperl). DA915→B1.52 non prouvé par les bons (B1.52 officiel DA952), laissé tel quel. Sauvegarde eo-sevel_avant_2.64.1_20261009_155804 + elevage_avant_2.64.1_reformes_*.db
+
+## 2026-10-10 — v2.64.2 DÉPLOYÉE (branche assistant) : submit global respecte formaction (bug : « Imprimer la sélection » postait vers /truies/affecter-bande et a retiré 18 truies de B1.25 + 0500711 de B2.33 le 10/10 06:29 ; bande_code restauré depuis elevage_avant_2.64.1_reformes_20261009_155804.db, sauvegarde elevage_avant_restauration_B1.25_*). Icône imprimante dans la barre (window.print). Impression d’une bande passée via événements.
+
+## 2026-10-10 — v2.64.3 DÉPLOYÉE (branche assistant) : page /imprimer (bande/truies/toutes, colonnes à cocher, impression auto) ; icône imprimante du haut → /imprimer ; impression.html lance l’impression seule.
+
+## 2026-10-10 — v2.64.4 DÉPLOYÉE (branche assistant) : /imprimer + portées sans_bande et improductives.
+
+## 2026-10-10 — v2.64.5 DÉPLOYÉE (branche assistant) : /imprimer tri au clic, colonne + tri n° vanne.
+
+## 2026-10-10 — v2.64.7 DÉPLOYÉE (branche assistant) : /imprimer/liste tient sur A4 (vérifié par PDF headless), note tronquée à 80 car. ; fiche truie réformée barrée + bandeau rouge. Attention tests : systemctl stop des unités eo-test-* ne tuait pas l’instance → tuer par pgrep -x eo-sevel hors /opt.
+
+## 2026-10-10 — v2.64.8 DÉPLOYÉE (branche assistant) : /archives liste aussi les truies réformées.
+
+## 2026-10-10 12:33 — v2.64.9 DÉPLOYÉE (branche assistant) : sync sortie abattoir ignore les porcs déjà sortis par un Départ confirmé (même bande, J-3..J+1). Données : transferts 209,210 supprimés (doublon 66 porcs B3.14 du 05/10). Sauvegarde elevage_avant_doublon_depart_B3.14_20261010_123323.db. Écarts restants (non expliqués) : B1.05 252 en case vs 279 attendus, B3.14 177 vs 223.

@@ -127,6 +127,52 @@ static PRECEDENT: Mutex<Option<Etat>> = Mutex::new(None);
 /// l'incrémente à chaque changement de vanne, la différence donne la quantité
 /// exacte servie, plus fiable que le dernier « contrôle » lu.
 static CUMUL_DEBUT: Mutex<i64> = Mutex::new(0);
+/// Étape de dosage en cours : (phase, produit, poids de la cuve au début).
+static DOSAGE_DEBUT: Mutex<Option<(i64, i64, i64)>> = Mutex::new(None);
+
+/// Étape qui remplit la cuve : 1 = dosage produit, 31 = eau poussante,
+/// 49 = eau de rinçage. L'eau compte comme produit 0.
+fn etape_dosage(etat: &Etat) -> Option<(i64, i64)> {
+    match etat.phase {
+        1 => Some((1, etat.produit)),
+        31 | 49 => Some((etat.phase, 0)),
+        _ => None,
+    }
+}
+
+/// Enregistre la quantité dosée quand une étape de dosage se termine
+/// (changement de phase ou de produit) : poids de la cuve gagné.
+async fn suivre_dosage(pool: &SqlitePool, ts: i64, avant: &Etat, etat: &Etat) -> Result<()> {
+    let nouvelle = etape_dosage(etat);
+    let fin = {
+        let mut d = DOSAGE_DEBUT.lock().unwrap();
+        let courante = d.map(|(ph, pr, _)| (ph, pr));
+        if courante == nouvelle {
+            None
+        } else {
+            let fin = d.take();
+            *d = nouvelle.map(|(ph, pr)| (ph, pr, etat.poids));
+            fin
+        }
+    };
+    if let Some((phase, produit, debut)) = fin {
+        // Le poids de la dernière trame de l'étape ; l'eau poussante part
+        // dans le circuit en même temps, on garde alors le plus grand écart.
+        let kg = (avant.poids.max(etat.poids) - debut) as f64;
+        if kg > 0.0 && kg < 20_000.0 {
+            sqlx::query("INSERT INTO soupe_dosage(ts,jour,formule,phase,produit,kg) VALUES(?,?,?,?,?,?)")
+                .bind(ts)
+                .bind(Local::now().format("%Y-%m-%d").to_string())
+                .bind(avant.formule)
+                .bind(phase)
+                .bind(produit)
+                .bind(kg)
+                .execute(pool)
+                .await?;
+        }
+    }
+    Ok(())
+}
 
 /// Traite un lot de lignes « horodatage<TAB>sens<TAB>trame » envoyé par le
 /// service d'écoute (sens `<` = réponse de la machine, `>` = question du PC).
@@ -177,6 +223,7 @@ pub async fn recevoir(pool: &SqlitePool, lot: &str) -> Result<usize> {
 async fn traiter_etat(pool: &SqlitePool, ts: i64, etat: Etat) -> Result<()> {
     let precedent = PRECEDENT.lock().unwrap().replace(etat.clone());
     if let Some(avant) = &precedent {
+        suivre_dosage(pool, ts, avant, &etat).await?;
         // Fin d'une vanne : la vanne ou le passage change, ou le contrôle
         // repart à zéro sur la même vanne (2e passage), ou la distribution
         // s'arrête. On garde la dernière quantité relevée pour cette vanne.

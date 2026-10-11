@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS soupe_distribution (
 );
 CREATE INDEX IF NOT EXISTS idx_soupe_distribution_jour ON soupe_distribution(jour);
 
+-- Quantité dosée dans la cuve, par produit (0 = eau) : écart de poids de
+-- la cuve pendant chaque étape de dosage (produit, eau poussante, rinçage).
+CREATE TABLE IF NOT EXISTS soupe_dosage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    jour TEXT NOT NULL,
+    formule INTEGER,
+    phase INTEGER NOT NULL,
+    produit INTEGER NOT NULL,
+    kg REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_soupe_dosage_jour ON soupe_dosage(jour);
+
 -- Changements de phase et actions faites depuis le PC.
 CREATE TABLE IF NOT EXISTS soupe_evenement (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

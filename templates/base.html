@@ -331,7 +331,7 @@
       {% if equip_actif('kren') %}<a href="/equipements/kren"><b>EO_Kren</b><small>Distribution automatisée d’aliment</small></a>{% endif %}
       {% if equip_actif('sms') %}<a href="/equipements/sms"><b>Free SMS</b><small>Alertes par SMS, retour de courant</small></a>{% endif %}
       {% if equip_actif('cameras') %}<a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>{% endif %}
-      {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>{% endif %}
+      {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a><a href="/equipements/soupe/consommations"><b>Consommations soupe</b><small>Soupe, eau et aliment par jour, vanne, formule</small></a>{% endif %}
       {% if session.est_admin and equip_actif('acces') %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
     </div>
   </div></div>{% endif %}
