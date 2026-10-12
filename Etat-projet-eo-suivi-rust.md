@@ -1,8 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.63.1** — en-tête au nom de l’élevage (plus de nom codé en dur).
+Version actuelle : **2.64.10** — licence AGPL, mise à jour depuis GitHub par le bouton de /maj.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
+
+Version Rust 2.64.10 : licence AGPL-3.0-or-later (LICENSE, Cargo.toml, /contact) ; scripts/mettre-a-jour-zip.sh mode EO_UPDATE_MODE=github (clone /opt/eo-sevel-build, branche master), clippy non bloquant, échec affiché dans /maj ; tests/navigation.rs : routes à paramètre et icônes de barre hors menu. Les versions 2.64.0 à 2.64.9 ont été déployées sans repasser ce test de synchronisation.
 
 Version Rust 2.60.2 : maternite.html — data-indicateur="presents" remis sur la ligne (test historique_separe_cycles_et_affiche_presents_au_resume cassé par la 2.59.0).
 

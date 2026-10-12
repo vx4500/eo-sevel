@@ -64,6 +64,16 @@ fn liens_navigation() -> Vec<String> {
     liens
 }
 
+/// Une route à paramètre (`/ambiance/ipx/v5/{code}`) accepte tout segment.
+fn route_correspond(route: &str, lien: &str) -> bool {
+    let r: Vec<_> = route.split('/').collect();
+    let l: Vec<_> = lien.split('?').next().unwrap_or(lien).split('/').collect();
+    r.len() == l.len()
+        && r.iter()
+            .zip(&l)
+            .all(|(a, b)| (a.starts_with('{') && !b.is_empty()) || a == b)
+}
+
 #[test]
 fn chaque_lien_de_la_navigation_mene_a_une_route_existante() {
     let routes = routes_get();
@@ -71,7 +81,7 @@ fn chaque_lien_de_la_navigation_mene_a_une_route_existante() {
         .into_iter()
         .filter(|lien| {
             let sans_ancre = lien.split('#').next().unwrap_or(lien);
-            !routes.contains(sans_ancre)
+            !routes.contains(sans_ancre) && !routes.iter().any(|r| route_correspond(r, sans_ancre))
         })
         .collect();
     assert!(
@@ -95,6 +105,11 @@ fn le_menu_deroulant_ne_propose_aucun_lien_en_double() {
     if let Some(d) = menu.find("rust-sub-groupe menu-tel") {
         let f = menu[d..].find("</div>").map(|p| d + p).unwrap();
         menu.replace_range(d..f, "");
+    }
+    // Les icônes de la barre (recherche, rapport, imprimer, alertes) sont des
+    // raccourcis hors du menu déroulant.
+    if let Some(d) = menu.find("<span class=\"grow\">") {
+        menu.truncate(d);
     }
     let mut reste = menu.as_str();
     while let Some(position) = reste.find("href=\"/") {
