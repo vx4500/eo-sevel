@@ -399,3 +399,16 @@ leurs colonnes correspondent ; la base réelle contient en plus une ancienne
 table énergie vide, laissée intacte. Les contrôles SQLite `quick_check` et
 clés étrangères sont conformes. Chaque mise à jour doit repasser les trois
 commandes Cargo ci-dessus sur le serveur avant remplacement du binaire.
+
+## Licence
+
+Copyright © Emmanuel ORY.
+
+EO_Sevel est un logiciel libre, distribué sous licence **GNU Affero General
+Public License v3.0 ou ultérieure** (voir `LICENSE`). Chacun peut l'utiliser,
+l'étudier, le modifier et le redistribuer gratuitement. Toute version modifiée
+mise à disposition d'autres personnes, y compris en service accessible par le
+réseau, doit publier son code source sous la même licence.
+
+L'installation, le suivi et la maintenance des serveurs d'élevage sont
+proposés comme service : voir https://eo-elevage.fr/eo-sevel/.
