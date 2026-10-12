@@ -1,9 +1,9 @@
 [package]
 name = "eo-sevel"
-version = "2.64.9"
+version = "2.64.10"
 edition = "2021"
 description = "EO_Sevel - suivi d'élevage porcin et régulation d'ambiance, compatible avec les bases SQLite v1.65"
-license = "proprietary"
+license = "AGPL-3.0-or-later"
 
 # Deux binaires, et c'est délibéré. Le serveur web et le démon de régulation ne
 # partagent aucun code : ils se parlent uniquement par la base. Un déploiement,

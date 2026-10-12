@@ -86,14 +86,17 @@ refuse de s'exécuter si une base existe déjà.
 
 ### Mise à jour
 
-La mise à jour contrôlée se fait en déposant une archive zip des sources
-(même arborescence que ce dépôt) dans
-`/var/lib/eo-sevel/maj/eo-sevel-nouvelle-version.zip` : `eo-sevel-update.path`
-la détecte et lance `/opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh`. Elle
-teste et sauvegarde avant l'arrêt, puis restaure l'ancien binaire si le
-contrôle de santé échoue. Elle redéploie `eo-regul` et le redémarre seulement
-s'il tournait déjà. Déclenchement manuel :
-`sudo /opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh /chemin/vers/archive.zip`.
+La mise à jour se fait depuis GitHub : page **/maj**, bouton « Lancer la mise
+à jour depuis GitHub » (administrateur). Le bouton dépose
+`/var/lib/eo-sevel/mise-a-jour-demandee`, que `eo-sevel-update-github.path`
+détecte. Le service récupère la branche `master` de
+`git@github.com:vx4500/eo-sevel.git` dans `/opt/eo-sevel-build` (clé
+`/root/.ssh/id_ed25519_github`), puis `scripts/mettre-a-jour-zip.sh` teste,
+sauvegarde la base, installe, et restaure l'ancien binaire si le contrôle de
+santé échoue. Le dossier de développement n'est jamais écrasé.
+
+Seul ce qui est poussé sur `master` est installé. Déclenchement manuel :
+`sudo EO_UPDATE_MODE=github /opt/eo-sevel-src/scripts/mettre-a-jour-zip.sh`.
 
 Sur une base neuve, le compte temporaire est `admin` / `admin`. Le logiciel
 oblige à choisir immédiatement un mot de passe d'au moins huit caractères.
@@ -396,3 +399,16 @@ leurs colonnes correspondent ; la base réelle contient en plus une ancienne
 table énergie vide, laissée intacte. Les contrôles SQLite `quick_check` et
 clés étrangères sont conformes. Chaque mise à jour doit repasser les trois
 commandes Cargo ci-dessus sur le serveur avant remplacement du binaire.
+
+## Licence
+
+Copyright © Emmanuel ORY.
+
+EO_Sevel est un logiciel libre, distribué sous licence **GNU Affero General
+Public License v3.0 ou ultérieure** (voir `LICENSE`). Chacun peut l'utiliser,
+l'étudier, le modifier et le redistribuer gratuitement. Toute version modifiée
+mise à disposition d'autres personnes, y compris en service accessible par le
+réseau, doit publier son code source sous la même licence.
+
+L'installation, le suivi et la maintenance des serveurs d'élevage sont
+proposés comme service : voir https://eo-elevage.fr/eo-sevel/.

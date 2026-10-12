@@ -1,0 +1,9 @@
+[Unit]
+Description=Surveille le bouton « Mise à jour depuis GitHub » de EO_Sevel
+
+[Path]
+PathExists=/var/lib/eo-sevel/mise-a-jour-demandee
+Unit=eo-sevel-update-github.service
+
+[Install]
+WantedBy=multi-user.target

@@ -21,6 +21,13 @@ STATUS_FILE="${EO_UPDATE_STATUS:-$(dirname "$DB_FILE")/mise-a-jour-statut}"
 MAJ_DIR="${EO_UPDATE_DIR:-/var/lib/eo-sevel/maj}"
 ZIP_FILE="${1:-${EO_UPDATE_ZIP:-$MAJ_DIR/eo-sevel-nouvelle-version.zip}}"
 ARCHIVE_DIR="${EO_UPDATE_ARCHIVE:-$MAJ_DIR/traitees}"
+# EO_UPDATE_MODE=github : compiler la branche publiée sur GitHub au lieu d'un zip.
+MODE="${EO_UPDATE_MODE:-zip}"
+GITHUB_REPO="${EO_GITHUB_REPO:-git@github.com:vx4500/eo-sevel.git}"
+GITHUB_BRANCH="${EO_GITHUB_BRANCH:-master}"
+GITHUB_KEY="${EO_GITHUB_KEY:-/root/.ssh/id_ed25519_github}"
+BUILD_DIR="${EO_BUILD_DIR:-/opt/eo-sevel-build}"
+REQUEST_FILE="${EO_UPDATE_REQUEST:-$(dirname "$DB_FILE")/mise-a-jour-demandee}"
 
 status_update() {
     local state="$1" percent="$2" release="$3" message="$4"
@@ -41,7 +48,7 @@ if [[ $(id -u) -ne 0 ]]; then
     die "cette commande doit être lancée avec root."
 fi
 
-for command in cargo curl flock install rsync sqlite3 systemctl unzip; do
+for command in cargo curl flock git install rsync sqlite3 systemctl unzip; do
     command -v "$command" >/dev/null 2>&1 || die "commande manquante : $command"
 done
 
@@ -49,35 +56,53 @@ exec 9>/run/lock/maj-eo-sevel.lock
 flock -n 9 || die "une mise à jour EO_Sevel est déjà en cours."
 status_update "demarrage" "5" "" "Démarrage de la mise à jour."
 
-[[ -f "$ZIP_FILE" ]] || die "archive zip introuvable : $ZIP_FILE"
 [[ -f "$DB_FILE" ]] || die "base SQLite introuvable : $DB_FILE"
-
 mkdir -p "$BACKUP_DIR" "$APP_DIR" "$ARCHIVE_DIR"
 
-echo "Extraction de l'archive $ZIP_FILE..."
-status_update "telechargement" "12" "" "Extraction de l'archive."
-extract_dir=$(mktemp -d)
-cleanup_extract() { rm -rf "$extract_dir"; }
-trap cleanup_extract EXIT
-
-unzip -q "$ZIP_FILE" -d "$extract_dir" || die "l'archive est invalide ou corrompue."
-
-# L'archive peut contenir soit le contenu du dépôt directement, soit un
-# unique dossier racine (ex: eo-sevel/) qui l'enveloppe.
-payload_dir="$extract_dir"
-if [[ ! -f "$payload_dir/Cargo.toml" ]]; then
-    mapfile -t top_entries < <(find "$extract_dir" -mindepth 1 -maxdepth 1)
-    if [[ ${#top_entries[@]} -eq 1 && -d "${top_entries[0]}" && -f "${top_entries[0]}/Cargo.toml" ]]; then
-        payload_dir="${top_entries[0]}"
+if [[ "$MODE" == "github" ]]; then
+    # Les sources de compilation viennent de GitHub, dans un clone réservé
+    # à la mise à jour : le dossier de travail des développeurs n'est jamais
+    # écrasé.
+    rm -f "$REQUEST_FILE"
+    echo "Téléchargement de $GITHUB_BRANCH depuis $GITHUB_REPO..."
+    status_update "telechargement" "12" "" "Téléchargement de la version publiée sur GitHub."
+    export GIT_SSH_COMMAND="ssh -i $GITHUB_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+    if [[ ! -d "$BUILD_DIR/.git" ]]; then
+        git clone -q --branch "$GITHUB_BRANCH" "$GITHUB_REPO" "$BUILD_DIR" \
+            || die "impossible de joindre GitHub."
     fi
+    git -C "$BUILD_DIR" fetch -q origin "$GITHUB_BRANCH" || die "impossible de joindre GitHub."
+    git -C "$BUILD_DIR" reset -q --hard "origin/$GITHUB_BRANCH"
+    git -C "$BUILD_DIR" clean -qfd -e target
+    SRC_DIR="$BUILD_DIR"
+else
+    [[ -f "$ZIP_FILE" ]] || die "archive zip introuvable : $ZIP_FILE"
+
+    echo "Extraction de l'archive $ZIP_FILE..."
+    status_update "telechargement" "12" "" "Extraction de l'archive."
+    extract_dir=$(mktemp -d)
+    cleanup_extract() { rm -rf "$extract_dir"; }
+    trap cleanup_extract EXIT
+
+    unzip -q "$ZIP_FILE" -d "$extract_dir" || die "l'archive est invalide ou corrompue."
+
+    # L'archive peut contenir soit le contenu du dépôt directement, soit un
+    # unique dossier racine (ex: eo-sevel/) qui l'enveloppe.
+    payload_dir="$extract_dir"
+    if [[ ! -f "$payload_dir/Cargo.toml" ]]; then
+        mapfile -t top_entries < <(find "$extract_dir" -mindepth 1 -maxdepth 1)
+        if [[ ${#top_entries[@]} -eq 1 && -d "${top_entries[0]}" && -f "${top_entries[0]}/Cargo.toml" ]]; then
+            payload_dir="${top_entries[0]}"
+        fi
+    fi
+    [[ -r "$payload_dir/Cargo.toml" ]] || die "Cargo.toml introuvable dans l'archive $ZIP_FILE"
+
+    echo "Mise à jour des sources dans $SRC_DIR..."
+    rsync -a --delete --exclude target --exclude '.git' "$payload_dir/" "$SRC_DIR/"
+
+    trap - EXIT
+    cleanup_extract
 fi
-[[ -r "$payload_dir/Cargo.toml" ]] || die "Cargo.toml introuvable dans l'archive $ZIP_FILE"
-
-echo "Mise à jour des sources dans $SRC_DIR..."
-rsync -a --delete --exclude target --exclude '.git' "$payload_dir/" "$SRC_DIR/"
-
-trap - EXIT
-cleanup_extract
 
 cd "$SRC_DIR"
 
@@ -88,12 +113,12 @@ expected_style=$(<static/style.css)
 if systemctl is-active --quiet "$SERVICE"; then
     current_page=$(curl -fsS "$LOGIN_URL" 2>/dev/null || true)
     current_style=$(curl -fsS "$STYLE_URL?v=$version" 2>/dev/null || true)
-    if grep -Fq "Version Rust $version" <<<"$current_page" \
+    if grep -Fq "Version $version" <<<"$current_page" \
         && [[ "$current_style" == "$expected_style" ]]; then
         status_update "terminee" "100" "$version" "La version $version est déjà installée."
         echo "EO_Sevel $version et son interface sont déjà installés."
         mkdir -p "$ARCHIVE_DIR"
-        mv -f "$ZIP_FILE" "$ARCHIVE_DIR/eo-sevel-${version}_$(date +%Y%m%d_%H%M%S)_deja-installee.zip" 2>/dev/null || true
+        [[ "$MODE" == "zip" ]] && mv -f "$ZIP_FILE" "$ARCHIVE_DIR/eo-sevel-${version}_$(date +%Y%m%d_%H%M%S)_deja-installee.zip" 2>/dev/null || true
         exit 0
     fi
 fi
@@ -191,10 +216,13 @@ cp -a static/. "$APP_DIR/static/"
 install -m 0644 eo-sevel.service /etc/systemd/system/eo-sevel.service
 install -m 0644 eo-sevel-update.service /etc/systemd/system/eo-sevel-update.service
 install -m 0644 eo-sevel-update.path /etc/systemd/system/eo-sevel-update.path
+install -m 0644 eo-sevel-update-github.service /etc/systemd/system/eo-sevel-update-github.service
+install -m 0644 eo-sevel-update-github.path /etc/systemd/system/eo-sevel-update-github.path
 chown -R eo-sevel:eo-sevel "$APP_DIR"
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 systemctl enable --now eo-sevel-update.path >/dev/null
+systemctl enable --now eo-sevel-update-github.path >/dev/null
 systemctl start "$SERVICE"
 if [[ "${regul_etait_actif:-0}" -eq 1 ]]; then
     systemctl start eo-regul || true
@@ -206,7 +234,7 @@ status_update "verification" "94" "$version" "Vérification du redémarrage et d
 for _ in {1..15}; do
     if ! current_page=$(curl -fsS "$LOGIN_URL" 2>/dev/null); then
         health_detail="la page de connexion ne répond pas"
-    elif ! grep -Fq "Version Rust $version" <<<"$current_page"; then
+    elif ! grep -Fq "Version $version" <<<"$current_page"; then
         health_detail="la page de connexion ne présente pas la version $version"
     elif ! current_style=$(curl -fsS "$STYLE_URL?v=$version" 2>/dev/null); then
         health_detail="la feuille de style ne répond pas"
@@ -228,7 +256,7 @@ rollback_required=0
 trap - EXIT
 status_update "terminee" "100" "$version" "Mise à jour terminée avec succès."
 mkdir -p "$ARCHIVE_DIR"
-mv -f "$ZIP_FILE" "$ARCHIVE_DIR/eo-sevel-${version}_${stamp}.zip" 2>/dev/null || true
+[[ "$MODE" == "zip" ]] && mv -f "$ZIP_FILE" "$ARCHIVE_DIR/eo-sevel-${version}_${stamp}.zip" 2>/dev/null || true
 
 echo "Mise à jour terminée : EO_Sevel $version"
 echo "Sauvegarde SQLite : $db_backup"
