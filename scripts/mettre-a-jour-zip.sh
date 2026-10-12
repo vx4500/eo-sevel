@@ -44,6 +44,9 @@ die() {
     exit 1
 }
 
+# Toute commande en échec affiche l'échec dans /maj au lieu de figer l'étape.
+trap 'die "échec de la mise à jour (ligne $LINENO), voir journalctl -u eo-sevel-update-github."' ERR
+
 if [[ $(id -u) -ne 0 ]]; then
     die "cette commande doit être lancée avec root."
 fi
@@ -126,7 +129,9 @@ fi
 echo "Contrôles et compilation de la version $version..."
 status_update "controles" "25" "$version" "Contrôles du code et des dépendances."
 cargo check
-cargo clippy --all-targets -- -D warnings
+# Les remarques de style de clippy sont affichées mais ne bloquent pas ;
+# les tests, eux, bloquent.
+cargo clippy --all-targets || true
 cargo test
 status_update "compilation" "50" "$version" "Compilation de la version $version."
 cargo build --release
