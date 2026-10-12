@@ -328,3 +328,5 @@ src/assistant.rs + src/routes/assistant.rs + templates/assistant.html : /assista
 ## 2026-10-07 11:17 UTC — DISQUE PLEIN vers 11:08 UTC (target/debug 51 Go dont incremental 23 Go) : incremental supprimé, z2m a redémarré seul, base OK. Puis v2.56.0 DÉPLOYÉE (branche assistant) : /eau, sous-compteurs électriques (elec_parent_<ieee>) ; soupe déclarée après tri. Sauvegarde eo-sevel_avant_2.56.0_20261007_111708
 
 ## 2026-10-07 12:46 UTC — v2.56.1 DÉPLOYÉE (branche assistant) : frise avec nom des stades, /planning frise + détail par bande. Sauvegarde eo-sevel_avant_2.56.1_20261007_124638
+
+## 2026-10-12 UTC — v2.64.10 : licence AGPL-3.0-or-later (LICENSE, Cargo.toml, page /contact). Ménage 11/10 : une seule branche master (= prod), branche sauvegarde à ne jamais fusionner ; mise à jour prod par le bouton /maj depuis GitHub master (eo-sevel-update-github.path, build dans /opt/eo-sevel-build).
