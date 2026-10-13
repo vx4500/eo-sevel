@@ -5,6 +5,17 @@ pub fn enabled() -> bool {
     std::env::var("EO_DEMO_PORTAL").as_deref() == Ok("1")
 }
 
+/// Démo publique en ligne (`EO_DEMO_PUBLIC=1`, avec `EO_DEMO_PORTAL=1`) : un
+/// seul compte partagé, identifiant `admin`, mot de passe `demo`, affichés
+/// au public. Il est verrouillé : mot de passe non modifiable, gestion des
+/// accès fermée, jamais bloqué par les essais ratés (un visiteur ne peut pas
+/// en priver les autres), et remis à `demo` à chaque démarrage.
+pub fn public() -> bool {
+    enabled() && std::env::var("EO_DEMO_PUBLIC").as_deref() == Ok("1")
+}
+
+pub const PUBLIC_MDP: &str = "demo";
+
 pub async fn verify_database(pool: &SqlitePool) -> anyhow::Result<()> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
@@ -27,8 +38,8 @@ pub async fn init(pool: &SqlitePool) -> anyhow::Result<()> {
             .fetch_optional(pool)
             .await?;
     if marker.is_none() {
-        let password = std::env::var("EO_DEMO_ADMIN_PASSWORD").unwrap_or_default();
-        anyhow::ensure!(password.len()>=16,"Définissez EO_DEMO_ADMIN_PASSWORD avec au moins 16 caractères pour initialiser la démonstration.");
+        let password = if public() { PUBLIC_MDP.to_string() } else { std::env::var("EO_DEMO_ADMIN_PASSWORD").unwrap_or_default() };
+        anyhow::ensure!(public() || password.len()>=16,"Définissez EO_DEMO_ADMIN_PASSWORD avec au moins 16 caractères pour initialiser la démonstration.");
         let hash = crate::auth::hash_password_async(password).await?;
         let mut tx = pool.begin().await?;
         crate::demo::activer(&mut tx).await?;
@@ -38,6 +49,13 @@ pub async fn init(pool: &SqlitePool) -> anyhow::Result<()> {
         sqlx::query("UPDATE utilisateur SET hash_mdp=?,actif=1,doit_changer_mdp=0 WHERE identifiant='admin'").bind(hash).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('demo_portal','1'),('module_genetique','1') ON CONFLICT(cle) DO UPDATE SET valeur=excluded.valeur").execute(&mut *tx).await?;
         tx.commit().await?;
+    }
+    if public() {
+        let hash = crate::auth::hash_password_async(PUBLIC_MDP.to_string()).await?;
+        sqlx::query("UPDATE utilisateur SET hash_mdp=?,actif=1,doit_changer_mdp=0,tentatives_echec=0,bloque_jusqu=NULL WHERE identifiant='admin'")
+            .bind(hash)
+            .execute(pool)
+            .await?;
     }
     completer_economie(pool).await?;
     prune(pool).await?;
@@ -178,6 +196,9 @@ pub async fn valid(pool: &SqlitePool, id: i64, now: i64) -> bool {
     sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM utilisateur u LEFT JOIN demo_acces d ON d.utilisateur_id=u.id WHERE u.id=? AND u.actif=1 AND ((u.identifiant='admin' AND u.role='admin') OR d.expire>?)").bind(id).bind(now).fetch_one(pool).await.unwrap_or(0)==1
 }
 pub fn blocked(path: &str) -> bool {
+    if public() && (path.starts_with("/mon-compte/mdp") || path.starts_with("/demo/acces")) {
+        return true;
+    }
     [
         "/maj",
         "/sauvegarde",

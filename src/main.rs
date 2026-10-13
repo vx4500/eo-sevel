@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
-    if demo_portal::enabled() && !config.db_path.exists() {
+    if demo_portal::enabled() && !demo_portal::public() && !config.db_path.exists() {
         anyhow::ensure!(
             std::env::var("EO_DEMO_ADMIN_PASSWORD")
                 .unwrap_or_default()

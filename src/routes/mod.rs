@@ -2197,7 +2197,9 @@ async fn login_post(
                     .to_string()
                     .as_str()
         }) {
-            return Ok(Redirect::to("/login?err=bloque").into_response());
+            if !(crate::demo_portal::public() && user.identifiant == "admin") {
+                return Ok(Redirect::to("/login?err=bloque").into_response());
+            }
         }
         if auth::verify_password_async(password.clone(), user.hash_mdp.clone()).await? {
             sqlx::query("UPDATE utilisateur SET tentatives_echec=0,bloque_jusqu=NULL WHERE id=?")
@@ -2262,6 +2264,9 @@ async fn login_post(
                 "/"
             };
             return Ok((jar.add(cookie), Redirect::to(target)).into_response());
+        }
+        if crate::demo_portal::public() && user.identifiant == "admin" {
+            return Ok(Redirect::to("/login?err=1").into_response());
         }
         sqlx::query(
             "UPDATE utilisateur SET tentatives_echec=tentatives_echec+1, bloque_jusqu=CASE WHEN tentatives_echec+1>=5 THEN datetime('now','+15 minutes') ELSE bloque_jusqu END WHERE id=?",
