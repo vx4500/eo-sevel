@@ -61,10 +61,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Binaires Windows
         run: cargo build --release --bins
+      - name: Dossier prêt à lancer (exe + static)
+        shell: bash
+        run: |
+          mkdir -p EO_Sevel
+          cp target/release/eo-sevel.exe target/release/eo-regul.exe EO_Sevel/
+          cp -r static EO_Sevel/static
       - uses: actions/upload-artifact@v4
         with:
           name: eo-sevel-2.65.3-windows-x86_64
           path: |
-            target/release/eo-sevel.exe
-            target/release/eo-regul.exe
+            EO_Sevel
           if-no-files-found: error

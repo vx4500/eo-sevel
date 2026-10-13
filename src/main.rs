@@ -162,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
     routes::recharger_nom_elevage(&state.pool).await;
 
     let app = routes::router(state.clone())
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", ServeDir::new(dossier_static()))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn_with_state(state, auth::guard));
@@ -199,4 +199,19 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
+}
+
+/// Dossier des fichiers statiques (styles, logo) : `static` du dossier
+/// courant, sinon celui posé à côté de l'exécutable — sous Windows, un
+/// double-clic ne lance pas toujours le programme depuis son propre dossier.
+fn dossier_static() -> std::path::PathBuf {
+    let local = std::path::PathBuf::from("static");
+    if local.is_dir() {
+        return local;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dossier| dossier.join("static")))
+        .filter(|dossier| dossier.is_dir())
+        .unwrap_or(local)
 }
