@@ -47,6 +47,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         include_str!("../templates/feuille_mise_bas.html"),
     )?;
     env.add_global("demo_portal", crate::demo_portal::enabled());
+    env.add_global("demo_public", crate::demo_portal::public());
     env.add_template(
         "demo_acces.html",
         include_str!("../templates/demo_acces.html"),

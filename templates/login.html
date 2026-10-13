@@ -49,11 +49,11 @@ body.login-page{background:#f4f1ec !important}
   <section class="lg-connexion">
     <div class="lg-marque"><img src="/static/ei-ory-emmanuel.png?v={{ app_version }}" alt=""><div><b>EO_Sevel</b><small>Espace éleveur</small></div></div>
     <h2>Connexion</h2><p class="muted">Identifiez-vous pour accéder à votre élevage.</p>
-    {% if demo_portal %}<p>Démonstration indépendante. Utilisez l’identifiant et le mot de passe de 48 h transmis par Emmanuel ORY. Contact : <a href="mailto:vx4500@gmail.com">vx4500@gmail.com</a>.</p>{% endif %}
+    {% if demo_public %}<p><b>Démonstration en libre accès</b> — élevage fictif, remis à neuf chaque nuit.<br>Identifiant : <b>admin</b> · Mot de passe : <b>demo</b></p>{% elif demo_portal %}<p>Démonstration indépendante. Utilisez l’identifiant et le mot de passe de 48 h transmis par Emmanuel ORY. Contact : <a href="mailto:vx4500@gmail.com">vx4500@gmail.com</a>.</p>{% endif %}
     {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
     <form method="post" action="/login">
-      <label>Identifiant<input name="identifiant" autocomplete="username" required autofocus></label>
-      <label>Mot de passe<input name="mdp" type="password" autocomplete="current-password" required></label>
+      <label>Identifiant<input name="identifiant" autocomplete="username" required autofocus{% if demo_public %} value="admin"{% endif %}></label>
+      <label>Mot de passe<input name="mdp" type="password" autocomplete="current-password" required{% if demo_public %} value="demo"{% endif %}></label>
       <button type="submit">Se connecter</button>
     </form>
     <p class="lg-version">Version {{ app_version }}</p>

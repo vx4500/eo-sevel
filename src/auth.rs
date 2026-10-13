@@ -316,7 +316,10 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
                 }
                 return Redirect::to("/login?err=expire").into_response();
             }
-            if crate::demo_portal::blocked(&path) {
+            // Démo publique : tout reste consultable (Paramètres, Utilisateurs…),
+            // seules les modifications de ces pages système sont refusées.
+            let lecture = matches!(*request.method(), axum::http::Method::GET | axum::http::Method::HEAD);
+            if crate::demo_portal::blocked(&path) && !(crate::demo_portal::public() && lecture) {
                 return (
                     axum::http::StatusCode::FORBIDDEN,
                     "Cette opération système est désactivée dans la démonstration.",
