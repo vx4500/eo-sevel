@@ -116,9 +116,9 @@ pub(super) fn periodes_precedentes(debut: &str, fin: &str, n: i64) -> Vec<(Strin
         .collect()
 }
 
-/// Plus long intervalle sans vente dans la période, bornes comprises ;
+/// Plus long intervalle sans saisie (livraison d'aliment…) dans la période, bornes comprises ;
 /// `Some(raison)` s'il dépasse 75 jours.
-pub(super) fn trou_de_ventes(debut: &str, fin: &str, dates: &[String]) -> Option<String> {
+pub(super) fn trou_de_saisies(debut: &str, fin: &str, dates: &[String], quoi: &str) -> Option<String> {
     let lire = |d: &str| chrono::NaiveDate::parse_from_str(d.get(..10).unwrap_or(d), "%Y-%m-%d").ok();
     let mut points = vec![lire(debut)?];
     points.extend(dates.iter().filter_map(|d| lire(d)));
@@ -126,7 +126,7 @@ pub(super) fn trou_de_ventes(debut: &str, fin: &str, dates: &[String]) -> Option
     let (a, b) = points.windows(2).map(|w| (w[0], w[1])).max_by_key(|(a, b)| (*b - *a).num_days())?;
     ((b - a).num_days() > 75).then(|| {
         format!(
-            "Aucune vente abattoir saisie du {} au {} : ventes incomplètes, indicateur non calculé.",
+            "Aucune {quoi} saisie du {} au {} : données incomplètes, indicateur non calculé.",
             a.format("%d/%m/%Y"),
             b.format("%d/%m/%Y")
         )
@@ -155,13 +155,13 @@ pub(super) fn poids_a_lage(age_j: f64) -> f64 {
 /// Par bande : présents à une date = sevrés − vendus − morts (morts déclarés
 /// après le premier sevrage, plafonnés aux porcs restants : une déclaration
 /// de « clôture » plus grosse que la bande ne crée pas de kilos).
-pub(super) async fn morts_et_stock_kg(pool: &SqlitePool, debut: &str, fin: &str) -> AppResult<f64> {
+pub(super) async fn morts_et_stock_kg(pool: &SqlitePool, debut: &str, fin: &str) -> AppResult<(f64, f64, i64)> {
     let lire = |d: &str| chrono::NaiveDate::parse_from_str(d.get(..10).unwrap_or(d), "%Y-%m-%d").ok();
-    let (Some(d0), Some(d1)) = (lire(debut), lire(fin)) else { return Ok(0.0) };
+    let (Some(d0), Some(d1)) = (lire(debut), lire(fin)) else { return Ok((0.0, 0.0, 0)) };
     let veille = d0 - chrono::Duration::days(1);
     let bandes: Vec<(i64, String, Option<String>)> =
         sqlx::query_as("SELECT id,code,date_mb FROM bande WHERE date_mb IS NOT NULL").fetch_all(pool).await?;
-    let mut total = 0.0;
+    let (mut total_morts, mut total_stock, mut total_porcs) = (0.0, 0.0, 0i64);
     for (id, code, date_mb) in bandes {
         let Some(naissance) = date_mb.as_deref().and_then(lire) else { continue };
         // (date, delta) : +sevrés, −vendus, −morts
@@ -213,9 +213,11 @@ pub(super) async fn morts_et_stock_kg(pool: &SqlitePool, debut: &str, fin: &str)
             }
             if jour == veille { stock_veille = presents } else { stock_fin = presents }
         }
-        total += morts_kg + stock_fin as f64 * poids_a_lage(age(d1)) - stock_veille as f64 * poids_a_lage(age(veille));
+        total_morts += morts_kg;
+        total_stock += stock_fin as f64 * poids_a_lage(age(d1)) - stock_veille as f64 * poids_a_lage(age(veille));
+        total_porcs += stock_fin - stock_veille;
     }
-    Ok(total)
+    Ok((total_morts, total_stock, total_porcs))
 }
 
 // --- Requêtes --------------------------------------------------------------
@@ -305,13 +307,16 @@ pub(super) struct DonneesPeriode {
     /// Raison si les ventes saisies ne couvrent pas la période (plus de
     /// 75 jours sans apport abattoir) : les indicateurs qui en dépendent ne
     /// sont alors pas calculés plutôt que d'afficher un chiffre faux.
-    pub ventes_trou: Option<String>,
+    pub aliment_trou: Option<String>,
     /// Kilos vifs produits par les porcs **non vendus** sur la période :
     /// morts (poids estimé à leur âge) + variation du stock en bâtiment.
     /// Ajouté aux kilos vendus, il donne la production réelle — sans lui,
     /// un élevage en montée en charge (porcs nourris mais pas encore vendus)
     /// affichait un IC global de 5,96.
     pub kg_morts_et_stock: f64,
+    /// Variation du stock vif en bâtiment sur la période (kg et têtes).
+    pub kg_variation_stock: f64,
+    pub porcs_variation_stock: i64,
 }
 
 impl DonneesPeriode {
@@ -381,13 +386,24 @@ pub(super) async fn charger(
     .bind(fin)
     .fetch_all(pool)
     .await?;
-    let ventes_trou = trou_de_ventes(debut, fin, &dates_ventes);
+    let _ = dates_ventes;
+    let dates_aliment: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT COALESCE(NULLIF(trim(date_reference),''),date) d FROM livraisonaliment WHERE COALESCE(NULLIF(trim(date_reference),''),date) BETWEEN ?1 AND ?2 ORDER BY d",
+    )
+    .bind(debut)
+    .bind(fin)
+    .fetch_all(pool)
+    .await?;
+    let aliment_trou = trou_de_saisies(debut, fin, &dates_aliment, "livraison d'aliment");
 
-    let kg_morts_et_stock = morts_et_stock_kg(pool, debut, fin).await?;
+    let (kg_morts, kg_variation_stock, porcs_variation_stock) = morts_et_stock_kg(pool, debut, fin).await?;
+    let kg_morts_et_stock = kg_morts + kg_variation_stock;
 
     Ok(DonneesPeriode {
         kg_morts_et_stock,
-        ventes_trou,
+        kg_variation_stock,
+        porcs_variation_stock,
+        aliment_trou,
         truies_debut,
         truies_fin,
         porcs_vendus,
@@ -522,16 +538,16 @@ pub(super) async fn charger_couts(
 /// comme le livret l'affiche en sous-ligne), dépenses de santé.
 pub(super) fn bloc_couts(couts: &CoutsPeriode, truies: f64, jours: i64, trou: Option<&str>) -> Value {
     let an = |montant: f64| par_truie_et_par_an(montant, truies, jours);
-    let produit = if trou.is_some() { None } else { an(couts.produit_animaux) };
-    let aliment = an(couts.aliment);
+    let produit = an(couts.produit_animaux);
+    let aliment = if trou.is_some() { None } else { an(couts.aliment) };
     let msa = produit.zip(aliment).map(|(p, a)| p - a);
     let renouvellement = an(couts.genetique + couts.semence);
     json!({
         "titre": "Résultats & Coûts (€ / truie présente / an)",
         "lignes": [
-            ligne("Produit animaux", produit, 0, None, trou),
+            ligne("Produit animaux", produit, 0, None, Some("Ventes + variation des porcs en bâtiment, valorisée au prix moyen de vente au kg.")),
             ligne("Marge sur coût alimentaire", msa, 0, None, trou),
-            ligne("Alimentation", aliment, 0, None, None),
+            ligne("Alimentation", aliment, 0, None, trou),
             ligne("Renouvellement (génétique + semence)", renouvellement, 0, None, None),
             ligne("- dont semence (IA)", an(couts.semence), 0, None, None),
             ligne("Dépenses de santé (vétérinaire)", an(couts.veto), 0, None, None),
@@ -591,6 +607,10 @@ fn reference_de(orientation: &Value, cle: &str) -> Option<f64> {
 const RAISON_STANDARDISE: &str =
     "Indicateur IFIP standardisé sur des bornes de poids fixes, par des courbes non publiées : non reproductible ici.";
 
+/// Mention des porcs/kg produits : vendus + variation du stock en bâtiment.
+const RAISON_PRODUITS: &str =
+    "Vendus + variation des porcs en bâtiment (poids estimé selon l'âge de la bande).";
+
 /// Mention des IC : la production compte tous les porcs.
 const RAISON_IC_TOUS_PORCS: &str =
     "Kilos produits = vendus + morts + variation des porcs en bâtiment (poids estimé selon l'âge de la bande).";
@@ -609,8 +629,8 @@ pub(super) fn tableau(
     a_truies: bool,
 ) -> Vec<Value> {
     let truies = donnees.truies_presentes();
-    let trou = donnees.ventes_trou.as_deref();
-    let si_ventes = |v: Option<f64>| if trou.is_some() { None } else { v };
+    let trou = donnees.aliment_trou.as_deref();
+    let si_aliment = |v: Option<f64>| if trou.is_some() { None } else { v };
     let kg_vifs_vendus = poids_vif(donnees.poids_carcasse_kg, rendement_pct);
     let poids_vente_moyen = (donnees.porcs_vendus > 0)
         .then(|| kg_vifs_vendus.map(|kg| kg / donnees.porcs_vendus as f64))
@@ -631,17 +651,17 @@ pub(super) fn tableau(
                 ligne("Truies présentes (moyenne de la période)", Some(truies), 1, orientation.get("truies_presentes").and_then(Value::as_f64), None),
                 ligne(
                     "Porcs produits / truie présente / an",
-                    si_ventes(par_truie_et_par_an(donnees.porcs_vendus as f64, truies, jours)),
+                    par_truie_et_par_an((donnees.porcs_vendus + donnees.porcs_variation_stock) as f64, truies, jours),
                     1,
                     reference_de(orientation, "porcs_truie_an"),
-                    trou,
+                    Some(RAISON_PRODUITS),
                 ),
                 ligne(
                     "Kilos vifs produits / truie présente / an",
-                    si_ventes(kg_vifs_vendus.and_then(|kg| par_truie_et_par_an(kg, truies, jours))),
+                    kg_vifs_vendus.and_then(|kg| par_truie_et_par_an(kg + donnees.kg_variation_stock, truies, jours)),
                     0,
                     reference_de(orientation, "kg_vifs_truie_an"),
-                    trou,
+                    Some(RAISON_PRODUITS),
                 ),
                 // Bug trouvé en comparant l'ordre de grandeur à la référence :
                 // avec l'aliment total (truies + post-sevrage + engraissement)
@@ -651,17 +671,17 @@ pub(super) fn tableau(
                 // lui, reste au dénominateur de l'indice global juste dessous.
                 ligne(
                     "Consommation aliment truies / truie présente / an (kg)",
-                    par_truie_et_par_an(donnees.aliment_truies_kg, truies, jours),
+                    si_aliment(par_truie_et_par_an(donnees.aliment_truies_kg, truies, jours)),
                     0,
                     reference_de(orientation, "aliment_truie_an"),
                     None,
                 ),
                 ligne(
                     "Indice de consommation global",
-                    kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg + donnees.kg_morts_et_stock)),
+                    si_aliment(kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg + donnees.kg_morts_et_stock))),
                     2,
                     reference_de(orientation, "ic_global"),
-                    Some(RAISON_IC_TOUS_PORCS),
+                    trou.or(Some(RAISON_IC_TOUS_PORCS)),
                 ),
             ],
         }));
@@ -681,7 +701,7 @@ pub(super) fn tableau(
             ),
             ligne(
                 "Consommation d'aliment / porcelet sorti (kg)",
-                aliment_par_animal(donnees.aliment_ps_kg, entres_engraissement),
+                si_aliment(aliment_par_animal(donnees.aliment_ps_kg, entres_engraissement)),
                 0,
                 reference_de(orientation, "ps_aliment_par_porcelet"),
                 None,
@@ -706,7 +726,7 @@ pub(super) fn tableau(
             ),
             ligne(
                 "Consommation d'aliment / porc / jour (kg)",
-                si_ventes(conduite.duree_engraissement().and_then(|duree| {
+                si_aliment(conduite.duree_engraissement().and_then(|duree| {
                     aliment_par_porc_jour(donnees.aliment_engr_kg, donnees.porcs_vendus as f64 * duree)
                 })),
                 2,
@@ -732,12 +752,12 @@ pub(super) fn tableau(
             ),
             ligne(
                 "Indice de consommation réel sevrage-vente",
-                kg_vifs_vendus.zip(kg_sevres).and_then(|(vendus, sevres)| {
+                si_aliment(kg_vifs_vendus.zip(kg_sevres).and_then(|(vendus, sevres)| {
                     indice_consommation(donnees.aliment_ps_kg + donnees.aliment_engr_kg, vendus + donnees.kg_morts_et_stock - sevres)
-                }),
+                })),
                 2,
                 reference_de(orientation, "sv_ic_8_115"),
-                Some(RAISON_IC_TOUS_PORCS),
+                trou.or(Some(RAISON_IC_TOUS_PORCS)),
             ),
             ligne(
                 "GMQ réel sevrage-vente (g/j)",
@@ -864,8 +884,10 @@ mod tests {
             pertes_ps: 130,
             pertes_engr: 160,
             saisies: 20,
-            ventes_trou: None,
+            aliment_trou: None,
             kg_morts_et_stock: 0.0,
+            kg_variation_stock: 0.0,
+            porcs_variation_stock: 0,
         };
         let conduite = Conduite {
             sevrage_j: 28,

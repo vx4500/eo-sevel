@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.65.1** — pertes GTE avec les morts repris de l'ancien logiciel.
+Version actuelle : **2.65.2** — GTE : stock en bâtiment compté dans la production et le produit.
+
+Version Rust 2.65.2 : GTE — porcs et kg produits = vendus + variation du stock vif (morts_et_stock_kg renvoie morts, Δstock kg, Δstock têtes) ; produit animaux + Δstock valorisé au prix moyen de vente au kg vif ; indicateurs d'aliment « — » si plus de 75 j sans livraison (trou_de_saisies) — la règle « 75 j sans vente » est retirée (trou réel juillet 2025 → juin 2026). Données : 847 ventes 2025 reprises de mouvementstock code 46 dans venteapport (num_apport reprise-2025-*, poids vif × 0,765 ; sauvegarde elevage_avant_reprise_ventes_2025_20261013_095331.db).
 
 Version Rust 2.65.1 : GTE — pertes PS/engraissement et stock vif incluent mouvementstock code_ifip 39/49 (morts antérieurs à fin juillet 2026, uniquement là). Données corrigées en prod le 13/10/2026 (sauvegarde elevage_avant_correction_stock_20261013_062020.db) : B1.52 lignes reprises 94 sevrés supprimée, entrée engr 664→284, stock 23/07 415→80, régul 339→12 ; B2.07 inventaire en double (168) et régul 169 (porcs vendus ensuite) supprimés.
 

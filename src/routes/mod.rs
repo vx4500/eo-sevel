@@ -9433,14 +9433,22 @@ async fn gte(
                 pertes_ps: donnees.pertes_ps,
                 pertes_engr: donnees.pertes_engr,
                 saisies: donnees.saisies,
-                ventes_trou: donnees.ventes_trou.clone(),
+                aliment_trou: donnees.aliment_trou.clone(),
                 kg_morts_et_stock: donnees.kg_morts_et_stock,
+                kg_variation_stock: donnees.kg_variation_stock,
+                porcs_variation_stock: donnees.porcs_variation_stock,
             }
         } else {
             gte_periode::charger(&state.pool, debut_p, fin_p).await?
         };
         let jours_p = gte_periode::jours_periode(debut_p, fin_p).unwrap_or(synthese_jours);
-        let couts_p = gte_periode::charger_couts(&state.pool, debut_p, fin_p).await?;
+        let mut couts_p = gte_periode::charger_couts(&state.pool, debut_p, fin_p).await?;
+        // Produit : ventes + variation du stock en bâtiment, valorisée au prix
+        // moyen de vente au kg vif de la période (méthode IFIP). Sans elle, un
+        // élevage qui remplit ses bâtiments affiche une marge négative.
+        if let Some(kg_vifs) = gte_periode::poids_vif(donnees_p.poids_carcasse_kg, rendement).filter(|kg| *kg > 0.0) {
+            couts_p.produit_animaux += couts_p.produit_animaux / kg_vifs * donnees_p.kg_variation_stock;
+        }
         let mut blocs_p = gte_periode::tableau(
             &donnees_p,
             jours_p,
@@ -9452,7 +9460,7 @@ async fn gte(
         if session.a_truies() {
             blocs_p.insert(
                 0,
-                gte_periode::bloc_couts(&couts_p, donnees_p.truies_presentes(), jours_p, donnees_p.ventes_trou.as_deref()),
+                gte_periode::bloc_couts(&couts_p, donnees_p.truies_presentes(), jours_p, donnees_p.aliment_trou.as_deref()),
             );
         }
         jeux_de_blocs.push(blocs_p);
