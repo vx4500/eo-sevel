@@ -22,6 +22,10 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         include_str!("../templates/surface_case.html"),
     )?;
     env.add_template(
+        "comparatif.html",
+        include_str!("../templates/comparatif.html"),
+    )?;
+    env.add_template(
         "surface_references.html",
         include_str!("../templates/surface_references.html"),
     )?;

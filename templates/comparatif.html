@@ -1,0 +1,52 @@
+{# Tableaux comparatifs GTE / GTTT : la colonne de la période la plus récente
+   est mise en avant, une colonne « Évolution » compare à la période d'avant et
+   la valeur est colorée selon qu'elle est meilleure ou moins bonne que la
+   période précédente / la référence. Le sens « meilleur » vient de data-sens
+   (+ : plus haut = mieux, - : plus bas = mieux), sinon il est déduit du
+   libellé ; inconnu, la flèche reste grise. #}
+<style>
+table.cmp{border-collapse:separate;border-spacing:0;width:100%}
+table.cmp th,table.cmp td{padding:7px 10px;border-bottom:1px solid #e6ebe7}
+table.cmp thead th{position:sticky;top:0;background:#f3f6f4;font-size:.8rem;text-align:left;white-space:nowrap}
+table.cmp thead th.p,table.cmp thead th.e{text-align:right}
+table.cmp tbody tr:nth-child(even) td{background:#fafbfa}
+table.cmp tbody tr:hover td{background:#f0f5f1}
+table.cmp td.v,table.cmp td.ref,table.cmp td.evo{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.cmp td.v b{font-weight:600}
+table.cmp th.actuelle,table.cmp td.actuelle{background:#eaf3ed!important}
+table.cmp td.actuelle b{font-size:1.08em;font-weight:800}
+table.cmp td.ancienne{color:#6b756f}
+table.cmp td.ref{color:#5d4a2c;background:#fbf7f0!important}
+table.cmp td.evo{font-size:.85rem;color:#8a948e}
+table.cmp .mieux{color:#1f7a45!important}table.cmp .moins{color:#b2412e!important}
+table.cmp td.actuelle.mieux b,table.cmp td.actuelle.moins b{color:inherit}
+table.cmp td.lib{min-width:220px}
+.cmp-legende{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:#6b756f;margin:4px 0 10px}
+.cmp-legende .mieux{color:#1f7a45}.cmp-legende .moins{color:#b2412e}
+@media print{table.cmp th,table.cmp td{border:1px solid #bbb!important;padding:3px 5px}
+ table.cmp td,table.cmp th{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) table.cmp thead th{background:#26302b}
+ :root:not([data-theme="light"]) table.cmp tbody tr:nth-child(even) td{background:transparent}
+ :root:not([data-theme="light"]) table.cmp th.actuelle,:root:not([data-theme="light"]) table.cmp td.actuelle{background:#22392c!important}
+ :root:not([data-theme="light"]) table.cmp td.ref{background:#3a3225!important;color:#e6d6b8}}
+</style>
+<p class="cmp-legende"><span>Colonne surlignée = période la plus récente</span><span class="mieux">▲▼ en vert : mieux</span><span class="moins">▲▼ en rouge : moins bien</span><span>gris : à interpréter</span><span>« — » : rien à comparer (période précédente vide)</span></p>
+<script>(function(){
+  var BAS=/indice de consommation|\bIC\b|perte|mortalit|mort-n|co[uû]t|ISSF|IDSR|âge|retour|réform|momifi/i;
+  var HAUT=/porcs|kg vifs|GMQ|sevr|nés vifs|nés totaux|portées|marge|produit|T\.?M\.?P|gamme|productiv/i;
+  function num(td){if(!td)return null;var s=(td.dataset.v||'').replace(',','.').replace(/\s/g,'');if(s===''||s==='None'||s==='none')return null;var n=parseFloat(s);return isNaN(n)?null:n}
+  function fmt(n){var a=Math.abs(n);return (n>0?'+':n<0?'−':'±')+(a>=100?a.toFixed(0):a>=10?a.toFixed(1):a.toFixed(2)).replace('.',',')}
+  document.querySelectorAll('table.cmp').forEach(function(t){
+    t.querySelectorAll('thead th.p').forEach(function(th,i){th.classList.add(i===0?'actuelle':'ancienne')});
+    t.querySelectorAll('tbody tr').forEach(function(tr){
+      var vs=tr.querySelectorAll('td.v');if(!vs.length)return;
+      vs.forEach(function(td,i){td.classList.add(i===0?'actuelle':'ancienne')});
+      var lib=tr.dataset.libelle||'';var sens=tr.dataset.sens||(/marge/i.test(lib)?'+':BAS.test(lib)?'-':HAUT.test(lib)?'+':'');
+      var a=num(vs[0]),b=num(vs[1]),r=num(tr.querySelector('td.ref')),evo=tr.querySelector('td.evo');
+      function juge(d){if(!sens||!d)return '';return (d>0)===(sens==='+')?'mieux':'moins'}
+      if(evo){if(a!==null&&b!==null&&b!==0){var d=a-b;evo.textContent=(d>0?'▲ ':d<0?'▼ ':'= ')+(d?fmt(d):'');
+        if(b!==0&&d)evo.title=fmt(d/Math.abs(b)*100)+' % par rapport à la période précédente';var j=juge(d);if(j)evo.classList.add(j)}else evo.textContent='—'}
+      if(a!==null){var j2=r!==null?juge(a-r):(b?juge(a-b):'');if(j2){vs[0].classList.add(j2);vs[0].title=r!==null?'Référence : '+String(r).replace('.',','):''}}
+    });
+  });
+})();</script>

@@ -31,20 +31,25 @@
 <form class="card rust-actions no-print" method="get" action="/gttt"><input type="hidden" name="mois" value="{{ mois }}"><label>Bande<select name="bande"><option value="">Tout le cheptel</option>{% for code in codes_bandes %}<option value="{{ code }}" {% if code == bande_selectionnee %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label><button>Appliquer</button>{% if bande_selectionnee %}<a href="/gttt?mois={{ mois }}">Retirer le filtre</a>{% endif %}</form>
 
 {% set lignes = [
- ['Portées', 'portees', ''], ['Truies productives', 'truies_productives', ''],
- ['Nés totaux / portée', 'nes_totaux_moy', ''], ['Nés vifs / portée', 'nes_vifs_moy', ''],
- ['Taux de mort-nés', 'taux_mortnes', ' %'], ['Sevrés / portée', 'sevres_moy', ''],
- ['Mortalité sous la mère', 'mortalite_allaitement', ' %'], ['Durée de gestation', 'gestation_moy', ' j'],
- ['Total nés vifs', 'total_nes_vifs', ''], ['Total sevrés', 'total_sevres', ''],
- ['Portées / truie / an', 'portees_truie_an', ''], ['Sevrés / truie productive / an', 'sevres_truie_an', '']] %}
+ ['Portées', 'portees', '', ''], ['Truies productives', 'truies_productives', '', ''],
+ ['Nés totaux / portée', 'nes_totaux_moy', '', '+'], ['Nés vifs / portée', 'nes_vifs_moy', '', '+'],
+ ['Taux de mort-nés', 'taux_mortnes', ' %', '-'], ['Sevrés / portée', 'sevres_moy', '', '+'],
+ ['Mortalité sous la mère', 'mortalite_allaitement', ' %', '-'], ['Durée de gestation', 'gestation_moy', ' j', ''],
+ ['Total nés vifs', 'total_nes_vifs', '', ''], ['Total sevrés', 'total_sevres', '', ''],
+ ['Portées / truie / an', 'portees_truie_an', '', '+'], ['Sevrés / truie productive / an', 'sevres_truie_an', '', '+'],
+ ['ISSF (sevrage → saillie fécondante)', 'issf_moy', ' j', '-'], ['Cycles mesurés pour l\'ISSF', 'issf_cycles', '', ''],
+ ['IDSR (dernier sevrage → réforme)', 'idsr_moy', ' j', '-'], ['Truies réformées', 'reformes', '', ''],
+ ['Taux de réforme annuel', 'taux_reforme', ' %', '']] %}
 <h2 class="gttt-titre">Résultats de reproduction</h2>
-<div class="rust-scroll"><table><thead><tr><th>Indicateur</th>{% for c in colonnes %}<th>{{ c.debut|date_fr }}<br>{{ c.fin|date_fr }}</th>{% endfor %}</tr></thead><tbody>
-{% for l in lignes %}<tr><td>{{ l[0] }}</td>{% for s in syntheses %}{% set v = s[l[1]] %}<td>{% if v is not none %}<b>{{ v }}</b>{{ l[2] }}{% else %}—{% endif %}</td>{% endfor %}</tr>{% endfor %}
+<div class="rust-scroll"><table class="cmp"><thead><tr><th>Indicateur</th>{% for c in colonnes %}<th class="p">{% if loop.first %}Période actuelle{% else %}Période −{{ loop.index0 }}{% endif %}<br><small>{{ c.debut|date_fr }} → {{ c.fin|date_fr }}</small></th>{% endfor %}<th class="e">Évolution</th></tr></thead><tbody>
+{% for l in lignes %}<tr data-libelle="{{ l[0] }}" data-sens="{{ l[3] }}"><td class="lib">{{ l[0] }}</td>{% for s in syntheses %}{% set v = s[l[1]] %}<td class="v" data-v="{{ v if v is not none else '' }}">{% if v is not none %}<b>{{ v }}</b>{{ l[2] }}{% else %}—{% endif %}</td>{% endfor %}<td class="evo"></td></tr>{% endfor %}
 </tbody></table></div>
+{% include "comparatif.html" %}
+<p class="help">ISSF : moyenne sur les mises-bas de la période (cochettes exclues). IDSR et taux de réforme portent sur tout le cheptel{% if bande_selectionnee %} : vides quand une bande est filtrée{% endif %}.</p>
 
 <h2 class="gttt-titre">Résultats par bande (période la plus récente)</h2>
-<div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Total sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th></tr></thead><tbody>{% for row in bandes %}<tr><td><a href="/gttt?mois={{ mois }}&bande={{ row.bande }}"><b>{{ row.bande }}</b></a></td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.total_sevres }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée datée sur cette période</td></tr>{% endfor %}</tbody></table></div>
+<div class="rust-scroll"><table class="cmp"><thead><tr><th>Bande</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Total sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th></tr></thead><tbody>{% for row in bandes %}<tr><td><a href="/gttt?mois={{ mois }}&bande={{ row.bande }}"><b>{{ row.bande }}</b></a></td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.total_sevres }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée datée sur cette période</td></tr>{% endfor %}</tbody></table></div>
 
 <h2 class="gttt-titre">Résultats par rang de portée (période la plus récente)</h2>
-<div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th><th>Gestation</th></tr></thead><tbody>{% for row in rangs %}<tr><td>{{ row.rang }}</td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td><td>{{ row.gestation_moy or '—' }} j</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée</td></tr>{% endfor %}</tbody></table></div>
+<div class="rust-scroll"><table class="cmp"><thead><tr><th>Rang</th><th>Portées</th><th>NT</th><th>NV</th><th>Sevrés</th><th>Mort-nés</th><th>Mortalité sous mère</th><th>Gestation</th></tr></thead><tbody>{% for row in rangs %}<tr><td>{{ row.rang }}</td><td>{{ row.portees }}</td><td>{{ row.nes_totaux_moy or '—' }}</td><td>{{ row.nes_vifs_moy or '—' }}</td><td>{{ row.sevres_moy or '—' }}</td><td>{{ row.taux_mortnes or '—' }} %</td><td>{{ row.mortalite_allaitement or '—' }} %</td><td>{{ row.gestation_moy or '—' }} j</td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune portée</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

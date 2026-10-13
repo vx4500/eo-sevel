@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.64.10** — licence AGPL, mise à jour depuis GitHub par le bouton de /maj.
+Version actuelle : **2.65.0** — GTE et GTTT fiabilisés et comparatifs.
+
+Version Rust 2.65.0 : GTTT lu depuis les mises-bas/sevrages (evenement) au lieu de porteerang (B3.19, B1.25 manquaient), gestation calculée, ISSF / IDSR / taux de réforme ; GTE : stade d'aliment déduit du nom du produit quand « auto », IC global = aliment ÷ (kg vendus + kg morts + variation du stock en bâtiment, poids estimé par l'âge — gte_periode::morts_et_stock_kg, morts plafonnés à sevrés − vendus), indicateurs de ventes « — » si > 75 j sans apport ; templates/comparatif.html (colonne Évolution, période actuelle surlignée, vert/rouge). Test ignoré gte_gttt_sur_copie_de_la_base_reelle.
 
 ### Version 2.48.2 — Accueil sans bandeau d'alertes en double
 

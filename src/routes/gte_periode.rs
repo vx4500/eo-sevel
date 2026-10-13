@@ -116,6 +116,104 @@ pub(super) fn periodes_precedentes(debut: &str, fin: &str, n: i64) -> Vec<(Strin
         .collect()
 }
 
+/// Plus long intervalle sans vente dans la période, bornes comprises ;
+/// `Some(raison)` s'il dépasse 75 jours.
+pub(super) fn trou_de_ventes(debut: &str, fin: &str, dates: &[String]) -> Option<String> {
+    let lire = |d: &str| chrono::NaiveDate::parse_from_str(d.get(..10).unwrap_or(d), "%Y-%m-%d").ok();
+    let mut points = vec![lire(debut)?];
+    points.extend(dates.iter().filter_map(|d| lire(d)));
+    points.push(lire(fin)?);
+    let (a, b) = points.windows(2).map(|w| (w[0], w[1])).max_by_key(|(a, b)| (*b - *a).num_days())?;
+    ((b - a).num_days() > 75).then(|| {
+        format!(
+            "Aucune vente abattoir saisie du {} au {} : ventes incomplètes, indicateur non calculé.",
+            a.format("%d/%m/%Y"),
+            b.format("%d/%m/%Y")
+        )
+    })
+}
+
+/// Poids vif standard (kg) d'un porc selon son âge en jours, par
+/// interpolation d'une courbe de croissance type (8 kg au sevrage à 28 j,
+/// 30 kg à 70 j, 115 kg vers 185 j).
+pub(super) fn poids_a_lage(age_j: f64) -> f64 {
+    const COURBE: [(f64, f64); 8] =
+        [(0.0, 1.5), (28.0, 8.0), (70.0, 30.0), (100.0, 50.0), (130.0, 72.0), (160.0, 95.0), (185.0, 115.0), (250.0, 130.0)];
+    if age_j <= 0.0 {
+        return COURBE[0].1;
+    }
+    for w in COURBE.windows(2) {
+        let ((a0, p0), (a1, p1)) = (w[0], w[1]);
+        if age_j <= a1 {
+            return p0 + (p1 - p0) * (age_j - a0) / (a1 - a0);
+        }
+    }
+    COURBE[COURBE.len() - 1].1
+}
+
+/// Morts de la période et variation du stock vif, toutes bandes, en kg vifs.
+/// Par bande : présents à une date = sevrés − vendus − morts (morts déclarés
+/// après le premier sevrage, plafonnés aux porcs restants : une déclaration
+/// de « clôture » plus grosse que la bande ne crée pas de kilos).
+pub(super) async fn morts_et_stock_kg(pool: &SqlitePool, debut: &str, fin: &str) -> AppResult<f64> {
+    let lire = |d: &str| chrono::NaiveDate::parse_from_str(d.get(..10).unwrap_or(d), "%Y-%m-%d").ok();
+    let (Some(d0), Some(d1)) = (lire(debut), lire(fin)) else { return Ok(0.0) };
+    let veille = d0 - chrono::Duration::days(1);
+    let bandes: Vec<(i64, String, Option<String>)> =
+        sqlx::query_as("SELECT id,code,date_mb FROM bande WHERE date_mb IS NOT NULL").fetch_all(pool).await?;
+    let mut total = 0.0;
+    for (id, code, date_mb) in bandes {
+        let Some(naissance) = date_mb.as_deref().and_then(lire) else { continue };
+        // (date, delta) : +sevrés, −vendus, −morts
+        let mut mouvements: Vec<(chrono::NaiveDate, i64, bool)> = Vec::new();
+        let sev: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT date,CAST(COALESCE(nb_sevres,0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage' AND date IS NOT NULL",
+        ).bind(id).fetch_all(pool).await?;
+        let premier_sevrage = sev.iter().filter_map(|(d, _)| lire(d)).min();
+        let Some(premier_sevrage) = premier_sevrage else { continue };
+        mouvements.extend(sev.iter().filter_map(|(d, n)| lire(d).map(|d| (d, *n, false))));
+        let ventes: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT date,CAST(COALESCE(nb_porcs,0) AS INTEGER) FROM venteapport WHERE bande_id=? AND date IS NOT NULL",
+        ).bind(id).fetch_all(pool).await?;
+        mouvements.extend(ventes.iter().filter_map(|(d, n)| lire(d).map(|d| (d, -*n, false))));
+        let morts: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=? AND date IS NOT NULL",
+        ).bind(&code).fetch_all(pool).await?;
+        mouvements.extend(
+            morts.iter().filter_map(|(d, n)| lire(d).filter(|d| *d >= premier_sevrage).map(|d| (d, -*n, true))),
+        );
+        // Une déclaration de mort ne peut pas dépasser les porcs qui ne seront
+        // jamais vendus : en août 2026, 169 « morts » de clôture déclarés en
+        // B2.07 avaient ensuite été vendus, et auraient compté deux fois.
+        let jamais_vendus = (sev.iter().map(|(_, n)| *n).sum::<i64>() - ventes.iter().map(|(_, n)| *n).sum::<i64>()).max(0);
+        let mut reste_morts = jamais_vendus;
+        // Les entrées d'un même jour passent avant les sorties.
+        mouvements.sort_by_key(|(d, n, _)| (*d, -*n));
+        let mut presents = 0i64;
+        let mut stock_veille = 0i64;
+        let mut stock_fin = 0i64;
+        let age = |d: chrono::NaiveDate| (d - naissance).num_days() as f64;
+        let mut i = 0;
+        let mut morts_kg = 0.0;
+        for jour in [veille, d1] {
+            while i < mouvements.len() && mouvements[i].0 <= jour {
+                let (d, n, mort) = mouvements[i];
+                let n = if mort { n.max(-reste_morts) } else { n };
+                let n = if n < 0 { n.max(-presents) } else { n };
+                if mort { reste_morts += n }
+                if mort && d > veille {
+                    morts_kg += (-n) as f64 * poids_a_lage(age(d));
+                }
+                presents += n;
+                i += 1;
+            }
+            if jour == veille { stock_veille = presents } else { stock_fin = presents }
+        }
+        total += morts_kg + stock_fin as f64 * poids_a_lage(age(d1)) - stock_veille as f64 * poids_a_lage(age(veille));
+    }
+    Ok(total)
+}
+
 // --- Requêtes --------------------------------------------------------------
 
 /// Truies présentes au début et à la fin de la période. La GTE raisonne en
@@ -138,15 +236,21 @@ const VENTES_SQL: &str = "SELECT \
     (SELECT SUM(tx_qualification*nb_porcs)/NULLIF(SUM(nb_porcs),0) FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND tx_qualification IS NOT NULL) \
     FROM venteapport WHERE date BETWEEN ?1 AND ?2";
 
+/// Stade d'une livraison : celui saisi, ou, laissé sur « auto », déduit du
+/// nom de l'aliment (GESTA, LACTA, CROISSANCE, FINITION, ACTI/PREM'…). En
+/// octobre 2026 presque toutes les livraisons étaient en « auto » : la
+/// consommation des truies sortait à 106 kg/truie/an au lieu d'environ 1,2 t.
+const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto')<>'auto' THEN stade_aliment WHEN upper(produit) LIKE '%GESTA%' OR upper(produit) LIKE '%COCHETTE%' THEN 'gestation' WHEN upper(produit) LIKE '%LACTA%' THEN 'lactation' WHEN upper(produit) LIKE '%FINITION%' THEN 'finition' WHEN upper(produit) LIKE '%CROISSANCE%' THEN 'croissance' WHEN upper(produit) LIKE '%ACTI%' OR upper(produit) LIKE 'PREM''%' OR upper(produit) LIKE '%START%' OR upper(produit) LIKE '%BABY%' OR upper(produit) LIKE '%LAIT%' THEN 'ps' ELSE stade_aliment END)";
+
 /// Aliment livré sur la période, en kilos, réparti selon le stade de chaque
 /// livraison. Les livraisons « tous stades », « auto » non tranché ou de
 /// stade inconnu sont comptées à part : les noyer dans un des trois postes
 /// fausserait l'indice de consommation de la phase concernée.
-const ALIMENT_SQL: &str = "SELECT \
-    CAST(COALESCE(SUM(CASE WHEN stade_aliment IN('gestation','lactation') THEN tonnage END),0)*1000 AS REAL),\
-    CAST(COALESCE(SUM(CASE WHEN stade_aliment='ps' THEN tonnage END),0)*1000 AS REAL),\
-    CAST(COALESCE(SUM(CASE WHEN stade_aliment IN('croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
-    CAST(COALESCE(SUM(CASE WHEN stade_aliment NOT IN('gestation','lactation','ps','croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
+const ALIMENT_SQL_MODELE: &str = "SELECT \
+    CAST(COALESCE(SUM(CASE WHEN {S} IN('gestation','lactation') THEN tonnage END),0)*1000 AS REAL),\
+    CAST(COALESCE(SUM(CASE WHEN {S}='ps' THEN tonnage END),0)*1000 AS REAL),\
+    CAST(COALESCE(SUM(CASE WHEN {S} IN('croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
+    CAST(COALESCE(SUM(CASE WHEN {S} NOT IN('gestation','lactation','ps','croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
     CAST(COALESCE(SUM(tonnage),0)*1000 AS REAL) \
     FROM livraisonaliment WHERE COALESCE(NULLIF(trim(date_reference),''),date) BETWEEN ?1 AND ?2";
 
@@ -185,6 +289,16 @@ pub(super) struct DonneesPeriode {
     pub pertes_ps: i64,
     pub pertes_engr: i64,
     pub saisies: i64,
+    /// Raison si les ventes saisies ne couvrent pas la période (plus de
+    /// 75 jours sans apport abattoir) : les indicateurs qui en dépendent ne
+    /// sont alors pas calculés plutôt que d'afficher un chiffre faux.
+    pub ventes_trou: Option<String>,
+    /// Kilos vifs produits par les porcs **non vendus** sur la période :
+    /// morts (poids estimé à leur âge) + variation du stock en bâtiment.
+    /// Ajouté aux kilos vendus, il donne la production réelle — sans lui,
+    /// un élevage en montée en charge (porcs nourris mais pas encore vendus)
+    /// affichait un IC global de 5,96.
+    pub kg_morts_et_stock: f64,
 }
 
 impl DonneesPeriode {
@@ -224,7 +338,7 @@ pub(super) async fn charger(
         aliment_engr_kg,
         aliment_non_ventile_kg,
         aliment_total_kg,
-    ): (f64, f64, f64, f64, f64) = sqlx::query_as(ALIMENT_SQL)
+    ): (f64, f64, f64, f64, f64) = sqlx::query_as(&ALIMENT_SQL_MODELE.replace("{S}", STADE_EFFECTIF))
         .bind(debut)
         .bind(fin)
         .fetch_one(pool)
@@ -240,7 +354,20 @@ pub(super) async fn charger(
         .fetch_one(pool)
         .await?;
 
+    let dates_ventes: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT date FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND COALESCE(nb_porcs,0)>0 ORDER BY date",
+    )
+    .bind(debut)
+    .bind(fin)
+    .fetch_all(pool)
+    .await?;
+    let ventes_trou = trou_de_ventes(debut, fin, &dates_ventes);
+
+    let kg_morts_et_stock = morts_et_stock_kg(pool, debut, fin).await?;
+
     Ok(DonneesPeriode {
+        kg_morts_et_stock,
+        ventes_trou,
         truies_debut,
         truies_fin,
         porcs_vendus,
@@ -373,17 +500,17 @@ pub(super) async fn charger_couts(
 /// Bloc « Résultats & Coûts », dans l'ordre du livret : produit, marge sur
 /// coût alimentaire, alimentation, renouvellement (dont semence/IA à part,
 /// comme le livret l'affiche en sous-ligne), dépenses de santé.
-pub(super) fn bloc_couts(couts: &CoutsPeriode, truies: f64, jours: i64) -> Value {
+pub(super) fn bloc_couts(couts: &CoutsPeriode, truies: f64, jours: i64, trou: Option<&str>) -> Value {
     let an = |montant: f64| par_truie_et_par_an(montant, truies, jours);
-    let produit = an(couts.produit_animaux);
+    let produit = if trou.is_some() { None } else { an(couts.produit_animaux) };
     let aliment = an(couts.aliment);
     let msa = produit.zip(aliment).map(|(p, a)| p - a);
     let renouvellement = an(couts.genetique + couts.semence);
     json!({
         "titre": "Résultats & Coûts (€ / truie présente / an)",
         "lignes": [
-            ligne("Produit animaux", produit, 0, None, None),
-            ligne("Marge sur coût alimentaire", msa, 0, None, None),
+            ligne("Produit animaux", produit, 0, None, trou),
+            ligne("Marge sur coût alimentaire", msa, 0, None, trou),
             ligne("Alimentation", aliment, 0, None, None),
             ligne("Renouvellement (génétique + semence)", renouvellement, 0, None, None),
             ligne("- dont semence (IA)", an(couts.semence), 0, None, None),
@@ -444,6 +571,10 @@ fn reference_de(orientation: &Value, cle: &str) -> Option<f64> {
 const RAISON_STANDARDISE: &str =
     "Indicateur IFIP standardisé sur des bornes de poids fixes, par des courbes non publiées : non reproductible ici.";
 
+/// Mention des IC : la production compte tous les porcs.
+const RAISON_IC_TOUS_PORCS: &str =
+    "Kilos produits = vendus + morts + variation des porcs en bâtiment (poids estimé selon l'âge de la bande).";
+
 /// Raison des indicateurs qui demandent une pesée aux changements de salle.
 const RAISON_PESEE: &str =
     "Aucune pesée enregistrée à ce changement de phase : à saisir pour que l'indicateur se calcule.";
@@ -458,6 +589,8 @@ pub(super) fn tableau(
     a_truies: bool,
 ) -> Vec<Value> {
     let truies = donnees.truies_presentes();
+    let trou = donnees.ventes_trou.as_deref();
+    let si_ventes = |v: Option<f64>| if trou.is_some() { None } else { v };
     let kg_vifs_vendus = poids_vif(donnees.poids_carcasse_kg, rendement_pct);
     let poids_vente_moyen = (donnees.porcs_vendus > 0)
         .then(|| kg_vifs_vendus.map(|kg| kg / donnees.porcs_vendus as f64))
@@ -478,17 +611,17 @@ pub(super) fn tableau(
                 ligne("Truies présentes (moyenne de la période)", Some(truies), 1, orientation.get("truies_presentes").and_then(Value::as_f64), None),
                 ligne(
                     "Porcs produits / truie présente / an",
-                    par_truie_et_par_an(donnees.porcs_vendus as f64, truies, jours),
+                    si_ventes(par_truie_et_par_an(donnees.porcs_vendus as f64, truies, jours)),
                     1,
                     reference_de(orientation, "porcs_truie_an"),
-                    None,
+                    trou,
                 ),
                 ligne(
                     "Kilos vifs produits / truie présente / an",
-                    kg_vifs_vendus.and_then(|kg| par_truie_et_par_an(kg, truies, jours)),
+                    si_ventes(kg_vifs_vendus.and_then(|kg| par_truie_et_par_an(kg, truies, jours))),
                     0,
                     reference_de(orientation, "kg_vifs_truie_an"),
-                    None,
+                    trou,
                 ),
                 // Bug trouvé en comparant l'ordre de grandeur à la référence :
                 // avec l'aliment total (truies + post-sevrage + engraissement)
@@ -505,10 +638,10 @@ pub(super) fn tableau(
                 ),
                 ligne(
                     "Indice de consommation global",
-                    kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg)),
+                    kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg + donnees.kg_morts_et_stock)),
                     2,
                     reference_de(orientation, "ic_global"),
-                    None,
+                    Some(RAISON_IC_TOUS_PORCS),
                 ),
             ],
         }));
@@ -553,12 +686,12 @@ pub(super) fn tableau(
             ),
             ligne(
                 "Consommation d'aliment / porc / jour (kg)",
-                conduite.duree_engraissement().and_then(|duree| {
+                si_ventes(conduite.duree_engraissement().and_then(|duree| {
                     aliment_par_porc_jour(donnees.aliment_engr_kg, donnees.porcs_vendus as f64 * duree)
-                }),
+                })),
                 2,
                 reference_de(orientation, "engr_aliment_porc_jour"),
-                None,
+                trou,
             ),
             ligne("Indice de consommation technique 30-115", None, 2, reference_de(orientation, "engr_ic_30_115"), Some(RAISON_STANDARDISE)),
             ligne("GMQ technique 30-115 (g/j)", None, 0, reference_de(orientation, "engr_gmq_30_115"), Some(RAISON_STANDARDISE)),
@@ -580,11 +713,11 @@ pub(super) fn tableau(
             ligne(
                 "Indice de consommation réel sevrage-vente",
                 kg_vifs_vendus.zip(kg_sevres).and_then(|(vendus, sevres)| {
-                    indice_consommation(donnees.aliment_ps_kg + donnees.aliment_engr_kg, vendus - sevres)
+                    indice_consommation(donnees.aliment_ps_kg + donnees.aliment_engr_kg, vendus + donnees.kg_morts_et_stock - sevres)
                 }),
                 2,
                 reference_de(orientation, "sv_ic_8_115"),
-                None,
+                Some(RAISON_IC_TOUS_PORCS),
             ),
             ligne(
                 "GMQ réel sevrage-vente (g/j)",
@@ -711,6 +844,8 @@ mod tests {
             pertes_ps: 130,
             pertes_engr: 160,
             saisies: 20,
+            ventes_trou: None,
+            kg_morts_et_stock: 0.0,
         };
         let conduite = Conduite {
             sevrage_j: 28,
@@ -727,7 +862,7 @@ mod tests {
             genetique: 20_000.0,
         };
         let mut blocs_avec_couts = blocs.clone();
-        blocs_avec_couts.insert(0, bloc_couts(&couts, donnees.truies_presentes(), 365));
+        blocs_avec_couts.insert(0, bloc_couts(&couts, donnees.truies_presentes(), 365, None));
         // Trois "périodes" identiques ici : seule la structure de fusion est
         // testée, pas des données historiques réelles.
         let blocs = fusionner_periodes(&[

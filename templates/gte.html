@@ -44,16 +44,18 @@
 {% for bloc in blocs %}
 <div class="gte-bloc" data-bloc="{{ bloc.titre }}">
 <h3 class="gte-titre"><label class="no-print" style="font-size:14px;font-weight:400"><input type="checkbox" class="gte-bloc-toggle" checked> Afficher ce bloc</label> {{ bloc.titre }}</h3>
-<div class="rust-scroll"><table><thead><tr><th class="no-print">Afficher</th><th>Indicateur</th>{% for col in colonnes_periodes %}<th>{{ col.debut|date_fr }}<br>{{ col.fin|date_fr }}</th>{% endfor %}<th>Référence IFIP</th></tr></thead><tbody>
-{% for l in bloc.lignes %}<tr class="gte-ligne" data-ligne="{{ l.libelle }}">
+<div class="rust-scroll"><table class="cmp"><thead><tr><th class="no-print">Afficher</th><th>Indicateur</th>{% for col in colonnes_periodes %}<th class="p">{% if loop.first %}Période actuelle{% else %}Période −{{ loop.index0 }}{% endif %}<br><small>{{ col.debut|date_fr }} → {{ col.fin|date_fr }}</small></th>{% endfor %}<th class="e">Évolution</th><th class="e">Référence IFIP</th></tr></thead><tbody>
+{% for l in bloc.lignes %}<tr class="gte-ligne" data-ligne="{{ l.libelle }}" data-libelle="{{ l.libelle }}">
 <td class="no-print"><input type="checkbox" class="gte-ligne-toggle" checked></td>
-<td>{{ l.libelle }}{% if l.raison %}<br><small class="muted">{{ l.raison }}</small>{% endif %}</td>
-{% for v in l.valeurs %}<td>{% if v is not none %}<b>{{ v }}</b>{% else %}—{% endif %}</td>{% endfor %}
-<td>{{ l.reference if l.reference is not none else '—' }}</td>
+<td class="lib">{{ l.libelle }}{% if l.raison %}<br><small class="muted">{{ l.raison }}</small>{% endif %}</td>
+{% for v in l.valeurs %}<td class="v" data-v="{{ v if v is not none else '' }}">{% if v is not none %}<b>{{ v }}</b>{% else %}—{% endif %}</td>{% endfor %}
+<td class="evo"></td>
+<td class="ref" data-v="{{ l.reference if l.reference is not none else '' }}">{{ l.reference if l.reference is not none else '—' }}</td>
 </tr>{% endfor %}
 </tbody></table></div>
 </div>
 {% endfor %}
+{% include "comparatif.html" %}
 <style>.gte-titre{color:#a15a17;border-bottom:1px solid #eadfce;padding-bottom:2px}.gte-entete{border-left:4px solid #1e4d3a}</style>
 <script>(function(){
   var CLE = 'eo-sevel-gte-lignes-masquees';

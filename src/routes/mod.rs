@@ -6291,7 +6291,9 @@ async fn gttt(
             .filter(|litter| in_range(litter, from, to))
             .cloned()
             .collect::<Vec<_>>();
-        summaries.push(gttt_summary(&rows));
+        let mut summary = gttt_summary(&rows);
+        gttt_cycle_indicateurs(&state.pool, &mut summary, from, to, selected_band.as_deref()).await?;
+        summaries.push(summary);
         columns.push(json!({
             "debut": from.format("%Y-%m-%d").to_string(),
             "fin": to.format("%Y-%m-%d").to_string(),
@@ -6373,13 +6375,80 @@ struct GtttSummary {
     periode_jours: Option<i64>,
     portees_truie_an: Option<f64>,
     sevres_truie_an: Option<f64>,
+    issf_moy: Option<f64>,
+    issf_cycles: i64,
+    idsr_moy: Option<f64>,
+    reformes: Option<i64>,
+    taux_reforme: Option<f64>,
 }
+
+/// Indicateurs du modèle Cooperl qui ne se lisent pas dans `porteerang` :
+/// ils sont recalculés depuis les événements datés de la période.
+///
+/// - ISSF (intervalle sevrage → saillie fécondante) : pour chaque mise-bas de
+///   la période, l'IA fécondante est la dernière IA située 105 à 125 jours
+///   avant ; l'écart avec le sevrage qui la précède est retenu s'il est de
+///   0 à 120 jours (au-delà, ce n'est pas le cycle suivant). Les cochettes,
+///   sans sevrage antérieur, n'entrent pas dans la moyenne.
+/// - IDSR (intervalle dernier sevrage → réforme) : pour les truies réformées
+///   dans la période, écart entre leur dernier sevrage et la réforme.
+/// - Taux de réforme : truies réformées / truies présentes sur la période,
+///   ramené à l'année. Il porte sur tout le cheptel : une réforme n'est pas
+///   rattachée à une bande, il reste donc vide quand une bande est filtrée.
+async fn gttt_cycle_indicateurs(
+    pool: &SqlitePool,
+    summary: &mut GtttSummary,
+    from: NaiveDate,
+    to: NaiveDate,
+    band: Option<&str>,
+) -> AppResult<()> {
+    let (debut, fin) = (from.format("%Y-%m-%d").to_string(), to.format("%Y-%m-%d").to_string());
+    let (issf, cycles): (Option<f64>, i64) = sqlx::query_as(
+        "WITH f AS (SELECT mb.truie_id,(SELECT MAX(i.date) FROM evenement i WHERE i.truie_id=mb.truie_id AND i.type='ia' AND julianday(mb.date)-julianday(i.date) BETWEEN 105 AND 125) AS ia FROM evenement mb WHERE mb.type='mise_bas' AND mb.truie_id IS NOT NULL AND mb.date BETWEEN ? AND ? AND (? IS NULL OR mb.bande_id IN (SELECT id FROM bande WHERE code=?))), \
+         d AS (SELECT julianday(f.ia)-julianday((SELECT MAX(s.date) FROM evenement s WHERE s.truie_id=f.truie_id AND s.type='sevrage' AND s.date<f.ia)) AS j FROM f WHERE f.ia IS NOT NULL) \
+         SELECT ROUND(AVG(j),1),COUNT(j) FROM d WHERE j BETWEEN 0 AND 120",
+    )
+    .bind(&debut)
+    .bind(&fin)
+    .bind(band)
+    .bind(band)
+    .fetch_one(pool)
+    .await?;
+    summary.issf_moy = issf;
+    summary.issf_cycles = cycles;
+    if band.is_some() {
+        return Ok(());
+    }
+    let (idsr, reformes, presentes): (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT ROUND(AVG(j),1) FROM (SELECT julianday(t.date_reforme)-julianday((SELECT MAX(s.date) FROM evenement s WHERE s.truie_id=t.id AND s.type='sevrage' AND s.date<=t.date_reforme)) AS j FROM truie t WHERE t.reformee=1 AND t.date_reforme BETWEEN ?1 AND ?2) WHERE j>=0), \
+         (SELECT COUNT(*) FROM truie WHERE reformee=1 AND date_reforme BETWEEN ?1 AND ?2), \
+         (SELECT COUNT(*) FROM truie WHERE COALESCE(date_entree,'0000-01-01')<=?2 AND (reformee=0 OR date_reforme IS NULL OR date_reforme>=?1))",
+    )
+    .bind(&debut)
+    .bind(&fin)
+    .fetch_one(pool)
+    .await?;
+    let jours = (to - from).num_days() + 1;
+    summary.idsr_moy = idsr;
+    summary.reformes = Some(reformes);
+    summary.taux_reforme = (presentes > 0 && jours > 0)
+        .then(|| (reformes as f64 / presentes as f64 * 365.0 / jours as f64 * 1000.0).round() / 10.0);
+    Ok(())
+}
+
+/// Portées lues dans les mises-bas et sevrages saisis (une portée = une
+/// mise-bas avec ses nés vifs), et non plus dans la table héritée
+/// `porteerang` : celle-ci n'était plus alimentée pour les bandes récentes
+/// (B3.19, B1.25 absentes en octobre 2026), ce qui faussait tout le GTTT.
+/// Sevrés, adoptés et retirés viennent du sevrage de la même truie dans les
+/// 60 jours ; la gestation est l'écart avec l'IA fécondante (105-125 j avant).
+const GTTT_PORTEES_SQL: &str = "SELECT COALESCE(t.num_travail,''),b.code,mb.date, (SELECT COUNT(*) FROM evenement m2 WHERE m2.truie_id=mb.truie_id AND m2.type='mise_bas' AND m2.nes_vifs IS NOT NULL AND (m2.date<mb.date OR (m2.date=mb.date AND m2.id<=mb.id))), julianday(mb.date)-julianday((SELECT MAX(i.date) FROM evenement i WHERE i.truie_id=mb.truie_id AND i.type='ia' AND julianday(mb.date)-julianday(i.date) BETWEEN 105 AND 125)), CAST(mb.nes_vifs AS REAL),CAST(mb.mort_nes AS REAL),NULL, (SELECT CAST(s.nb_sevres AS REAL) FROM evenement s WHERE s.truie_id=mb.truie_id AND s.type='sevrage' AND s.date>mb.date AND julianday(s.date)-julianday(mb.date)<=60 ORDER BY s.date LIMIT 1), CAST(COALESCE((SELECT s.adoptes FROM evenement s WHERE s.truie_id=mb.truie_id AND s.type='sevrage' AND s.date>mb.date AND julianday(s.date)-julianday(mb.date)<=60 ORDER BY s.date LIMIT 1),mb.adoptes) AS REAL), CAST(COALESCE((SELECT s.retires FROM evenement s WHERE s.truie_id=mb.truie_id AND s.type='sevrage' AND s.date>mb.date AND julianday(s.date)-julianday(mb.date)<=60 ORDER BY s.date LIMIT 1),mb.retires) AS REAL) FROM evenement mb LEFT JOIN truie t ON t.id=mb.truie_id LEFT JOIN bande b ON b.id=mb.bande_id WHERE mb.type='mise_bas' AND mb.nes_vifs IS NOT NULL";
 
 async fn load_gttt_litters(pool: &SqlitePool, band: Option<&str>) -> AppResult<Vec<GtttLitter>> {
     let sql = if band.is_some() {
-        "SELECT p.num_travail,p.bande,(SELECT b.date_mb FROM bande b WHERE b.code=p.bande ORDER BY b.active DESC,b.id DESC LIMIT 1),p.rang,p.duree_gest,p.nv,p.mn,p.tx_mn_nt,p.sev,p.ad,p.re FROM porteerang p WHERE p.bande=? ORDER BY p.rang,p.id"
+        format!("{GTTT_PORTEES_SQL} AND b.code=? ORDER BY mb.date,mb.id")
     } else {
-        "SELECT p.num_travail,p.bande,(SELECT b.date_mb FROM bande b WHERE b.code=p.bande ORDER BY b.active DESC,b.id DESC LIMIT 1),p.rang,p.duree_gest,p.nv,p.mn,p.tx_mn_nt,p.sev,p.ad,p.re FROM porteerang p ORDER BY p.rang,p.id"
+        format!("{GTTT_PORTEES_SQL} ORDER BY mb.date,mb.id")
     };
     let mut query = sqlx::query_as::<
         _,
@@ -6396,7 +6465,7 @@ async fn load_gttt_litters(pool: &SqlitePool, band: Option<&str>) -> AppResult<V
             Option<f64>,
             Option<f64>,
         ),
-    >(sql);
+    >(&sql);
     if let Some(band) = band {
         query = query.bind(band);
     }
@@ -6552,6 +6621,7 @@ fn gttt_summary(litters: &[GtttLitter]) -> GtttSummary {
         } else {
             None
         },
+        ..GtttSummary::default()
     }
 }
 
@@ -9363,6 +9433,8 @@ async fn gte(
                 pertes_ps: donnees.pertes_ps,
                 pertes_engr: donnees.pertes_engr,
                 saisies: donnees.saisies,
+                ventes_trou: donnees.ventes_trou.clone(),
+                kg_morts_et_stock: donnees.kg_morts_et_stock,
             }
         } else {
             gte_periode::charger(&state.pool, debut_p, fin_p).await?
@@ -9380,7 +9452,7 @@ async fn gte(
         if session.a_truies() {
             blocs_p.insert(
                 0,
-                gte_periode::bloc_couts(&couts_p, donnees_p.truies_presentes(), jours_p),
+                gte_periode::bloc_couts(&couts_p, donnees_p.truies_presentes(), jours_p, donnees_p.ventes_trou.as_deref()),
             );
         }
         jeux_de_blocs.push(blocs_p);
@@ -14937,3 +15009,34 @@ mod renommer_bande_tests {
     }
 }
 
+
+#[cfg(test)]
+mod gte_gttt_rendu_tests {
+    use super::*;
+
+    /// Rend `/gte` et `/gttt` sur une copie de la base réelle et écrit le HTML
+    /// dans `EO_TEST_SORTIE` pour contrôle visuel :
+    /// `EO_TEST_BASE=/var/tmp/copie.db EO_TEST_SORTIE=/var/tmp cargo test -- --ignored gte_gttt_sur_copie`.
+    #[tokio::test]
+    #[ignore]
+    async fn gte_gttt_sur_copie_de_la_base_reelle() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let sortie = std::env::var("EO_TEST_SORTIE")?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: chemin.into(), secure_cookies: false },
+            pool,
+            crate::templates::build()?,
+        );
+        let session = super::documents::tests::session;
+        let html = gttt(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("table class=\"cmp\"") && html.contains("ISSF"));
+        std::fs::write(format!("{sortie}/gttt.html"), html)?;
+        let html = gte(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("table class=\"cmp\"") && html.contains("Évolution"));
+        std::fs::write(format!("{sortie}/gte.html"), html)?;
+        Ok(())
+    }
+}
