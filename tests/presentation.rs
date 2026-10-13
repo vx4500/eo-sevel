@@ -11,6 +11,7 @@ fn version_affichee_et_artifact_sont_synchronises() {
     assert!(state.contains(&format!("Version Rust {version}")));
     assert!(changelog.contains(&format!("<h2>{version} —")));
     assert!(workflow.contains(&format!("eo-sevel-{version}-linux-x86_64-musl")));
+    assert!(workflow.contains(&format!("eo-sevel-{version}-windows-x86_64")));
 }
 
 #[test]
