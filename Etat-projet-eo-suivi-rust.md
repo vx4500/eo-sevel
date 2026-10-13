@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.65.0** — GTE et GTTT fiabilisés et comparatifs.
+Version actuelle : **2.65.1** — pertes GTE avec les morts repris de l'ancien logiciel.
+
+Version Rust 2.65.1 : GTE — pertes PS/engraissement et stock vif incluent mouvementstock code_ifip 39/49 (morts antérieurs à fin juillet 2026, uniquement là). Données corrigées en prod le 13/10/2026 (sauvegarde elevage_avant_correction_stock_20261013_062020.db) : B1.52 lignes reprises 94 sevrés supprimée, entrée engr 664→284, stock 23/07 415→80, régul 339→12 ; B2.07 inventaire en double (168) et régul 169 (porcs vendus ensuite) supprimés.
 
 Version Rust 2.65.0 : GTTT lu depuis les mises-bas/sevrages (evenement) au lieu de porteerang (B3.19, B1.25 manquaient), gestation calculée, ISSF / IDSR / taux de réforme ; GTE : stade d'aliment déduit du nom du produit quand « auto », IC global = aliment ÷ (kg vendus + kg morts + variation du stock en bâtiment, poids estimé par l'âge — gte_periode::morts_et_stock_kg, morts plafonnés à sevrés − vendus), indicateurs de ventes « — » si > 75 j sans apport ; templates/comparatif.html (colonne Évolution, période actuelle surlignée, vert/rouge). Test ignoré gte_gttt_sur_copie_de_la_base_reelle.
 

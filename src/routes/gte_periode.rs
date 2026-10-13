@@ -179,6 +179,10 @@ pub(super) async fn morts_et_stock_kg(pool: &SqlitePool, debut: &str, fin: &str)
         let morts: Vec<(String, i64)> = sqlx::query_as(
             "SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=? AND date IS NOT NULL",
         ).bind(&code).fetch_all(pool).await?;
+        let reprises: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM mouvementstock WHERE bande_code=? AND code_ifip IN('39','49') AND date IS NOT NULL",
+        ).bind(&code).fetch_all(pool).await?;
+        let morts: Vec<(String, i64)> = morts.into_iter().chain(reprises).collect();
         mouvements.extend(
             morts.iter().filter_map(|(d, n)| lire(d).filter(|d| *d >= premier_sevrage).map(|d| (d, -*n, true))),
         );
@@ -270,6 +274,15 @@ const PERTES_SQL: &str = "SELECT \
     (SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM saisieabattoir WHERE date BETWEEN ?1 AND ?2) \
     FROM declarationmort WHERE date BETWEEN ?1 AND ?2";
 
+/// Pertes reprises de l'ancien logiciel (mouvements de stock IFIP : 39 =
+/// pertes post-sevrage, 49 = pertes engraissement). Jusqu'à fin juillet 2026
+/// les morts n'existent que là ; sans elles la GTE affichait 1,6 % de pertes
+/// en post-sevrage au lieu d'environ 10 %.
+const PERTES_REPRISES_SQL: &str = "SELECT \
+    CAST(COALESCE(SUM(CASE WHEN code_ifip='39' THEN nombre END),0) AS INTEGER),\
+    CAST(COALESCE(SUM(CASE WHEN code_ifip='49' THEN nombre END),0) AS INTEGER) \
+    FROM mouvementstock WHERE date BETWEEN ?1 AND ?2";
+
 /// Données brutes d'une période, avant mise en forme.
 #[derive(Debug, Default)]
 pub(super) struct DonneesPeriode {
@@ -348,11 +361,18 @@ pub(super) async fn charger(
         .bind(fin)
         .fetch_one(pool)
         .await?;
-    let (pertes_ps, pertes_engr, saisies): (i64, i64, i64) = sqlx::query_as(PERTES_SQL)
+    let (mut pertes_ps, mut pertes_engr, saisies): (i64, i64, i64) = sqlx::query_as(PERTES_SQL)
         .bind(debut)
         .bind(fin)
         .fetch_one(pool)
         .await?;
+    let (repris_ps, repris_engr): (i64, i64) = sqlx::query_as(PERTES_REPRISES_SQL)
+        .bind(debut)
+        .bind(fin)
+        .fetch_one(pool)
+        .await?;
+    pertes_ps += repris_ps;
+    pertes_engr += repris_engr;
 
     let dates_ventes: Vec<String> = sqlx::query_scalar(
         "SELECT DISTINCT date FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND COALESCE(nb_porcs,0)>0 ORDER BY date",
