@@ -19,7 +19,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Vérifier les scripts de déploiement
-        run: bash -n scripts/mettre-a-jour-debian13.sh scripts/mettre-a-jour-demo.sh scripts/installer-debian13.sh && sh -n scripts/build-linux-musl.sh scripts/lancer.sh
+        run: bash -n scripts/mettre-a-jour-zip.sh scripts/mettre-a-jour-demo.sh scripts/installer-debian13.sh && sh -n scripts/build-linux-musl.sh scripts/lancer.sh
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo fmt --all -- --check
       - name: Tests complets
