@@ -36,11 +36,17 @@ table.cmp td.lib{min-width:220px}
   var HAUT=/porcs|kg vifs|GMQ|sevr|nés vifs|nés totaux|portées|marge|produit|T\.?M\.?P|gamme|productiv/i;
   function num(td){if(!td)return null;var s=(td.dataset.v||'').replace(',','.').replace(/\s/g,'');if(s===''||s==='None'||s==='none')return null;var n=parseFloat(s);return isNaN(n)?null:n}
   function fmt(n){var a=Math.abs(n);return (n>0?'+':n<0?'−':'±')+(a>=100?a.toFixed(0):a>=10?a.toFixed(1):a.toFixed(2)).replace('.',',')}
+  // Nombres au format français : « 2 043 », « 2,76 » (et plus « 2043.0 »).
+  document.querySelectorAll('table.cmp td.v b,table.cmp td.ref').forEach(function(el){
+    var t=el.textContent.trim(),n=parseFloat(t);
+    if(t!==''&&!isNaN(n)&&/^-?\d+(\.\d+)?$/.test(t))el.textContent=n.toLocaleString('fr-FR',{maximumFractionDigits:2});
+  });
   document.querySelectorAll('table.cmp').forEach(function(t){
     t.querySelectorAll('thead th.p').forEach(function(th,i){th.classList.add(i===0?'actuelle':'ancienne')});
     t.querySelectorAll('tbody tr').forEach(function(tr){
       var vs=tr.querySelectorAll('td.v');if(!vs.length)return;
       vs.forEach(function(td,i){td.classList.add(i===0?'actuelle':'ancienne')});
+      if(![].some.call(vs,function(td){return num(td)!==null}))tr.classList.add('gte-vide');
       var lib=tr.dataset.libelle||'';var sens=tr.dataset.sens||(/marge/i.test(lib)?'+':BAS.test(lib)?'-':HAUT.test(lib)?'+':'');
       var a=num(vs[0]),b=num(vs[1]),r=num(tr.querySelector('td.ref')),evo=tr.querySelector('td.evo');
       function juge(d){if(!sens||!d)return '';return (d>0)===(sens==='+')?'mieux':'moins'}

@@ -2,45 +2,71 @@
 {% block title %}GTE · EO_Sevel{% endblock %}
 {% block content %}
 <style>
-/* Impression du GTE : A4 paysage, tableaux déroulés, en-têtes répétés */
+/* Impression du GTE : une page A4 paysage pour la synthèse (blocs sur deux
+   colonnes, lignes sans aucune valeur retirées, explications masquées), le
+   détail par lot sur la page suivante. */
+.gte-print-entete,.gte-print-pied{display:none}
 @media print{
-  @page{size:A4 landscape;margin:10mm}
-  body{background:#fff}
-  .no-print,.gte-period,.gte-shortcuts,#page-alert{display:none!important}
-  .gte-print-entete{display:block!important}
+  @page{size:A4 landscape;margin:8mm 9mm}
+  body{background:#fff!important;color:#111}
+  header,nav,footer,.no-print,.gte-ecran,.gte-period,.gte-shortcuts,#page-alert,.cmp-legende,small.muted{display:none!important}
+  .rust-main,main{padding:0!important;margin:0!important;max-width:none!important}
+  .gte-print-entete{display:flex!important;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1e4d3a;padding-bottom:3px;margin-bottom:5px}
+  .gte-print-entete b{font-size:14pt;color:#1e4d3a}
+  .gte-print-entete span{font-size:8.5pt;color:#444;text-align:right}
+  h1{display:none}
+  .gte-blocs{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:3mm 5mm;align-items:start}
+  .gte-bloc,.gte-bloc .rust-scroll{min-width:0!important;max-width:100%!important;width:auto!important}
+  .gte-bloc table.cmp{min-width:0!important;table-layout:fixed}
+  .gte-bloc table.cmp td.lib,.gte-bloc table.cmp th:nth-child(2){width:36%!important}
+  .gte-bloc table.cmp th.p,.gte-bloc table.cmp th.e{width:13%}
+    table.cmp thead th,table.cmp thead th.p,table.cmp thead th.e{font-size:6.6pt!important;padding:2px 3px!important;white-space:normal!important;line-height:1.15}
+  table.cmp td,table.cmp td.evo,table.cmp td.v,table.cmp td.ref{font-size:7.4pt!important;padding:1.5px 3px!important}
+  table.cmp td.actuelle b{font-size:7.8pt!important}
+  .gte-bloc{break-inside:avoid;page-break-inside:avoid}
+  h3.gte-titre{font-size:9.5pt;margin:0 0 1px;padding:0;border:0;color:#a15a17}
   .rust-scroll{overflow:visible!important}
-  table{width:100%;font-size:9.5pt;border-collapse:collapse}
-  thead{display:table-header-group}
-  tr,section,.card{break-inside:avoid;page-break-inside:avoid}
-  h1{font-size:16pt;margin:0 0 6px}
-  h2{font-size:13pt;margin:14px 0 4px;break-after:avoid;page-break-after:avoid}
-  h3{font-size:11pt;margin:10px 0 3px;break-after:avoid;page-break-after:avoid}
-  p,.help{font-size:9pt;margin:3px 0}
+  table.cmp{font-size:7.6pt;border-collapse:collapse!important;width:100%}
+  table.cmp th,table.cmp td{padding:1.5px 4px!important;border:0!important;border-bottom:.5px solid #ccc!important;line-height:1.2}
+  table.cmp thead th{position:static;background:#e9efeb!important;font-size:6.8pt;text-transform:none;letter-spacing:0}
+  table.cmp thead th small{font-size:6pt;font-weight:400}
+  table.cmp td.lib{min-width:0;width:34%}
+  table.cmp td.actuelle b{font-size:8pt}
+  table.cmp tbody tr:nth-child(even) td{background:#fafafa!important}
+  .rust-sortable::after{content:none!important}
+  tr.gte-vide{display:none!important}
+  .gte-print-pied{display:block!important;font-size:6.8pt;color:#555;margin-top:3mm;border-top:.5px solid #ccc;padding-top:2px}
+  .gte-lots{break-before:page;page-break-before:always}
+  .gte-lots h2{font-size:11pt;margin:0 0 3px}
+  .gte-lots table{font-size:7.5pt;border-collapse:collapse;width:100%}
+  .gte-lots th,.gte-lots td{padding:2px 4px;border:0;border-bottom:.5px solid #ccc}
+  .gte-lots th{background:#e9efeb;font-size:7pt}
+  .gte-lots .card{box-shadow:none;border:0;padding:0;margin:0 0 3px}
+  .gte-lots p{font-size:7.5pt;margin:2px 0}
+  th,td,tr{print-color-adjust:exact;-webkit-print-color-adjust:exact}
   a{color:#000;text-decoration:none}
-  th,td{padding:3px 5px;border:1px solid #bbb}
-  th{background:#eee;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 }
-.gte-print-entete{display:none}
 </style>
 <div class="no-print rust-actions" style="justify-content:flex-end">
   <button type="button" onclick="window.print()">Imprimer le GTE</button>
 </div>
-<p class="gte-print-entete">GTE — période du {{ synthese_debut|date_fr }} au {{ synthese_fin|date_fr }}</p>
+<div class="gte-print-entete"><b>GTE — {{ nom_elevage or 'Élevage' }}</b><span>Gestion technico-économique · période actuelle du {{ synthese_debut|date_fr }} au {{ synthese_fin|date_fr }}, comparée aux deux précédentes{% if orientation %}<br>Référence IFIP GT-Porc 2024 : {{ orientation.libelle }}{% endif %}</span></div>
 <h1>GTE — Gestion Technico-Économique</h1>
-<p>Indicateurs par lot, bandes actives et archivées comprises. Le périmètre calculé dépend des phases réellement présentes pour ce lot (aliment livré, ventes enregistrées, truies rattachées, animaux achetés) — une case vide signifie une donnée manquante, pas un résultat nul.</p>
+<p class="gte-ecran">Indicateurs par lot, bandes actives et archivées comprises. Le périmètre calculé dépend des phases réellement présentes pour ce lot (aliment livré, ventes enregistrées, truies rattachées, animaux achetés) — une case vide signifie une donnée manquante, pas un résultat nul.</p>
 <form class="card gte-period" method="get" action="/gte"><div><h2>Période des résultats</h2><p class="muted">Les ventes, livraisons d’aliment et achats d’animaux sont calculés uniquement entre ces deux dates.</p></div><label>Date de début<input type="date" name="debut" value="{{ date_debut or '' }}"></label><label>Date de fin<input type="date" name="fin" value="{{ date_fin or '' }}"></label><button>Calculer</button><div class="gte-shortcuts" aria-label="Périodes rapides">{% for mois in [3,12,24,36] %}<a class="button{% if periode == mois %} active{% endif %}" href="/gte?periode={{ mois }}">{{ mois }} derniers mois</a>{% endfor %}<a href="/gte">Toute la période</a></div></form>
 
-<section class="card gte-entete">
+<section class="card gte-entete gte-ecran">
   <h2 style="margin:0">{{ nom_elevage or 'GTE' }}</h2>
   <p class="help" style="margin:2px 0 0">GTE — Gestion Technico-Économique, à la structure du livret GT-Porc (IFIP)</p>
 </section>
-<p class="help">Trois périodes de {{ synthese_jours }} jours, la plus récente se terminant le {{ synthese_fin|date_fr }}{% if synthese_par_defaut %} (douze mois glissants, faute de bornes saisies ci-dessus){% endif %}. Tout est recalculé en direct depuis les saisies.</p>
+<p class="help gte-ecran">Trois périodes de {{ synthese_jours }} jours, la plus récente se terminant le {{ synthese_fin|date_fr }}{% if synthese_par_defaut %} (douze mois glissants, faute de bornes saisies ci-dessus){% endif %}. Tout est recalculé en direct depuis les saisies.</p>
 {% if orientation %}
-<p class="help">Référence : <b>{{ orientation.libelle }}</b>{% if orientation.elevages %}, {{ orientation.elevages }} élevages{% endif %}. {{ livret.source }}<br>{{ livret.avertissement }}</p>
+<p class="help gte-ecran">Référence : <b>{{ orientation.libelle }}</b>{% if orientation.elevages %}, {{ orientation.elevages }} élevages{% endif %}. {{ livret.source }}<br>{{ livret.avertissement }}</p>
 {% else %}
-<p class="help">Le livret ne publie pas de colonne pour le type d’élevage actif : les références restent vides, les valeurs de l’élevage sont calculées normalement.</p>
+<p class="help gte-ecran">Le livret ne publie pas de colonne pour le type d’élevage actif : les références restent vides, les valeurs de l’élevage sont calculées normalement.</p>
 {% endif %}
 <p class="help no-print">Décochez une ligne ou un bloc entier pour le retirer de cet affichage (ex. ne garder que ce qui vous intéresse à l'impression). Ce choix est mémorisé sur cet appareil.</p>
+<div class="gte-blocs">
 {% for bloc in blocs %}
 <div class="gte-bloc" data-bloc="{{ bloc.titre }}">
 <h3 class="gte-titre"><label class="no-print" style="font-size:14px;font-weight:400"><input type="checkbox" class="gte-bloc-toggle" checked> Afficher ce bloc</label> {{ bloc.titre }}</h3>
@@ -55,6 +81,8 @@
 </tbody></table></div>
 </div>
 {% endfor %}
+</div>
+<p class="gte-print-pied">Colonne « Évolution » : période actuelle comparée à la précédente — vert = mieux, rouge = moins bien, gris = à interpréter. « — » : donnée non disponible (le détail est donné à l'écran). Kilos produits = porcs vendus + morts + variation des porcs en bâtiment (poids estimé selon l'âge). Poids vifs = poids carcasse ÷ {{ rendement }} %. Les lignes sans aucune valeur ne sont pas imprimées.</p>
 {% include "comparatif.html" %}
 <style>.gte-titre{color:#a15a17;border-bottom:1px solid #eadfce;padding-bottom:2px}.gte-entete{border-left:4px solid #1e4d3a}</style>
 <script>(function(){
@@ -84,9 +112,10 @@
     });
   });
 })();</script>
-{% if aliment_non_ventile_kg %}<p class="help">{{ aliment_non_ventile_kg }} kg d’aliment de la période ne sont rattachés à aucun stade (livraisons « tous stades » ou stade non renseigné). Ils comptent dans l’indice de consommation global, pas dans les indices par phase. Précisez leur stade depuis Économie &gt; Aliment pour affiner.</p>{% endif %}
-<p class="help">Poids vifs déduits des poids carcasse au rendement de {{ rendement }} %. {{ livret.rendement_source }} Modifiable par le réglage <code>rendement_carcasse_pct</code>.</p>
+{% if aliment_non_ventile_kg %}<p class="help gte-ecran">{{ aliment_non_ventile_kg }} kg d’aliment de la période ne sont rattachés à aucun stade (livraisons « tous stades » ou stade non renseigné). Ils comptent dans l’indice de consommation global, pas dans les indices par phase. Précisez leur stade depuis Économie &gt; Aliment pour affiner.</p>{% endif %}
+<p class="help gte-ecran">Poids vifs déduits des poids carcasse au rendement de {{ rendement }} %. {{ livret.rendement_source }} Modifiable par le réglage <code>rendement_carcasse_pct</code>.</p>
 
+<div class="gte-lots">
 <h2>Détail par lot</h2>
 {% if session.recoit_achats %}<p class="help">Les animaux reçus par achat (écran Réception) sont imputés comme charge d'entrée du lot : la MSA ne retient que l'aliment, la colonne « Marge après achat » déduit en plus le prix payé pour les animaux.</p>{% endif %}
 {% if session.a_truies %}<section class="card"><h2>Renouvellement du cheptel</h2><p>Taux de renouvellement (12 mois glissants) : <b>{{ renouvellement }}{% if renouvellement is not none %} %{% endif %}{% if renouvellement is none %}—{% endif %}</b></p></section>{% endif %}
@@ -107,4 +136,5 @@
 {% if session.a_truies %}<td>{{ b.truies }}</td><td>{{ (b.marge_brute_truie|euro) if b.marge_brute_truie is not none else '—' }}</td>{% endif %}
 </tr>{% else %}<tr><td colspan="15" class="rust-empty">Aucun lot avec des données économiques ou d'effectif exploitables</td></tr>{% endfor %}
 </tbody></table></div>
+</div>
 {% endblock %}

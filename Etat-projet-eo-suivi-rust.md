@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.65.2** — GTE : stock en bâtiment compté dans la production et le produit.
+Version actuelle : **2.65.3** — impression GTE refaite.
+
+Version Rust 2.65.3 : gte.html @media print — synthèse sur 1 page A4 paysage (en-tête élevage/période/référence, blocs en grille 2 colonnes, table-layout fixed, lignes sans valeur masquées via tr.gte-vide posé par comparatif.html, explications et flèches de tri masquées, pied de légende), détail par lot sur la page suivante ; nombres au format français dans les tableaux cmp.
 
 Version Rust 2.65.2 : GTE — porcs et kg produits = vendus + variation du stock vif (morts_et_stock_kg renvoie morts, Δstock kg, Δstock têtes) ; produit animaux + Δstock valorisé au prix moyen de vente au kg vif ; indicateurs d'aliment « — » si plus de 75 j sans livraison (trou_de_saisies) — la règle « 75 j sans vente » est retirée (trou réel juillet 2025 → juin 2026). Données : 847 ventes 2025 reprises de mouvementstock code 46 dans venteapport (num_apport reprise-2025-*, poids vif × 0,765 ; sauvegarde elevage_avant_reprise_ventes_2025_20261013_095331.db).
 
