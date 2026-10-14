@@ -8,7 +8,7 @@
 </div>
 
 <div id="bloc-importer" hidden>
-<p>PDF, ou CSV (facture, truies, historique, génétique, eau/électricité) : <b>un seul dépose-fichier</b>, le type est reconnu automatiquement. Jusqu’à 5 PDF à la fois (8 Mo et 30 pages chacun), un seul CSV à la fois. Les photos et scans de PDF sont lus par reconnaissance de caractères. Si un fichier manque une bande ou un montant, la page suivante vous le demandera avant toute validation.</p>
+<p>PDF, ou CSV (facture, truies, historique, génétique, eau/électricité) : <b>un seul dépose-fichier</b>, le type est reconnu automatiquement. Jusqu’à 5 PDF à la fois (8 Mo et 30 pages chacun), un seul CSV à la fois. Les photos de facture et scans de PDF sont lus par reconnaissance de caractères. Si un fichier manque une bande ou un montant, la page suivante vous le demandera avant toute validation.</p>
 <form method="post" action="/import-fichier" enctype="multipart/form-data" class="rust-dropzone-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
 <label class="rust-dropzone" for="fichier-import"><span class="icon" aria-hidden="true">📎</span><span class="texte"><b id="fichier-libelle">Cliquez ici pour choisir un fichier</b><small>PDF (jusqu’à 5 à la fois) ou un seul CSV</small></span><input type="file" id="fichier-import" name="fichier" accept="application/pdf,.pdf,.csv,text/csv" multiple required></label>
 <button>Analyser le fichier</button>
@@ -23,6 +23,40 @@
     if(input.files.length === 0){ libelle.textContent = defaut; }
     else if(input.files.length === 1){ libelle.textContent = input.files[0].name; }
     else { libelle.textContent = input.files.length + ' fichiers sélectionnés'; }
+  });
+})();
+</script>
+<form method="post" action="/import-fichier" enctype="multipart/form-data" id="form-photo"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label class="rust-dropzone" for="photo-facture"><span class="icon" aria-hidden="true">📷</span><span class="texte"><b id="photo-libelle">Prendre la facture en photo</b><small>Facture bien à plat, toute la page dans l’image, sans reflet</small></span><input type="file" id="photo-facture" name="fichier" accept="image/*" capture="environment"></label>
+</form>
+<script>
+(function(){
+  var input = document.getElementById('photo-facture');
+  var form = document.getElementById('form-photo');
+  var libelle = document.getElementById('photo-libelle');
+  if(!input || !form) return;
+  input.addEventListener('change', function(){
+    var f = input.files[0]; if(!f) return;
+    libelle.textContent = 'Envoi et lecture de la photo…';
+    // Photo redressée (orientation EXIF) et réduite avant l'envoi.
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function(){
+      var k = Math.min(1, 2600 / Math.max(img.naturalWidth, img.naturalHeight));
+      var c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){
+        try {
+          var dt = new DataTransfer();
+          dt.items.add(new File([b], 'facture-photo.jpg', {type: 'image/jpeg'}));
+          input.files = dt.files;
+        } catch(e) {}
+        form.submit();
+      }, 'image/jpeg', 0.9);
+    };
+    img.onerror = function(){ form.submit(); };
+    img.src = url;
   });
 })();
 </script>

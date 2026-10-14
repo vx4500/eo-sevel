@@ -6035,7 +6035,9 @@ async fn import_unifie(
         return Err(AppError::Invalid("Fichier manquant".into()));
     }
     if files.len() > 1 {
-        if files.iter().all(|(_, bytes)| bytes.starts_with(b"%PDF")) {
+        if files.iter().all(|(_, bytes)| {
+            bytes.starts_with(b"%PDF") || economic_import::extension_image(bytes).is_some()
+        }) {
             return pdf_analyser_bytes(&state, &session, files).await;
         }
         return Err(AppError::Invalid(
@@ -6047,7 +6049,7 @@ async fn import_unifie(
         .next()
         .expect("un fichier vérifié ci-dessus");
 
-    if bytes.starts_with(b"%PDF") {
+    if bytes.starts_with(b"%PDF") || economic_import::extension_image(&bytes).is_some() {
         return pdf_analyser_bytes(&state, &session, vec![(filename, bytes)]).await;
     }
 
@@ -9694,15 +9696,22 @@ async fn pdf_analyser_bytes(
             rejected.push(format!("{filename} : dépasse 8 Mo"));
             continue;
         }
-        if !filename.to_lowercase().ends_with(".pdf") {
-            rejected.push(format!("{filename} : n'est pas un fichier PDF"));
+        let photo = economic_import::extension_image(&bytes);
+        if photo.is_none() && !filename.to_lowercase().ends_with(".pdf") {
+            rejected.push(format!("{filename} : n'est ni un PDF ni une photo"));
             continue;
         }
         // Un scan sans couche texte passe par la reconnaissance de caractères
         // lorsque les outils système sont présents (appel bloquant, donc isolé).
         let contenu = bytes.to_vec();
-        let texte = match economic_import::extract_pdf_text(&contenu) {
+        let texte = match photo.map_or_else(|| economic_import::extract_pdf_text(&contenu), |_| Err(String::new())) {
             Ok(texte) => Ok(texte),
+            Err(_) if photo.is_some() => {
+                let contenu = contenu.clone();
+                tokio::task::spawn_blocking(move || economic_import::ocr_image_text(&contenu))
+                    .await
+                    .map_err(|error| AppError::Internal(error.into()))?
+            }
             Err(error) if error == economic_import::SCAN_SANS_TEXTE => {
                 tokio::task::spawn_blocking(move || economic_import::ocr_pdf_text(&contenu))
                     .await
@@ -9715,7 +9724,7 @@ async fn pdf_analyser_bytes(
         if let Some(dossier) = state.config.db_path.parent().map(|d| d.join("imports")) {
             let nom = contenu_sha256(&bytes);
             if std::fs::create_dir_all(&dossier).is_ok() {
-                let _ = std::fs::write(dossier.join(format!("{nom}.pdf")), &bytes);
+                let _ = std::fs::write(dossier.join(format!("{nom}.{}", photo.unwrap_or("pdf"))), &bytes);
                 let _ = std::fs::write(dossier.join(format!("{nom}.txt")), texte.as_deref().unwrap_or_else(|e| e.as_str()));
             }
         }

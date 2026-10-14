@@ -148,8 +148,52 @@ fn ocr_dans_dossier(bytes: &[u8], dossier: &std::path::Path) -> Result<String, S
     images.sort();
     let mut texte = String::new();
     for image in images {
+        texte.push_str(&tesseract_page(&image)?);
+    }
+    if texte.trim().chars().count() < 40 {
+        return Err("La reconnaissance de caractères n'a rien donné d'exploitable".into());
+    }
+    Ok(texte)
+}
+
+/// Format d'une photo de facture reconnue à sa signature (JPEG ou PNG).
+pub fn extension_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if bytes.starts_with(b"\x89PNG") {
+        Some("png")
+    } else {
+        None
+    }
+}
+
+/// Reconnaissance de caractères d'une photo de facture prise au téléphone.
+/// La page d'import redresse et réduit la photo avant l'envoi.
+/// Appel bloquant : à lancer hors du fil d'exécution des requêtes.
+pub fn ocr_image_text(bytes: &[u8]) -> Result<String, String> {
+    let extension = extension_image(bytes).ok_or("Photo illisible : formats acceptés JPEG ou PNG")?;
+    if !commande_disponible("tesseract") {
+        return Err("Aucune reconnaissance de caractères sur ce serveur (installez tesseract-ocr)".into());
+    }
+    let dossier = std::env::temp_dir().join(format!("eo-ocr-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dossier).map_err(|error| error.to_string())?;
+    let image = dossier.join(format!("photo.{extension}"));
+    let resultat = std::fs::write(&image, bytes)
+        .map_err(|error| error.to_string())
+        .and_then(|_| tesseract_page(&image));
+    let _ = std::fs::remove_dir_all(&dossier);
+    let texte = resultat?;
+    if texte.trim().chars().count() < 40 {
+        return Err("La photo n'a rien donné de lisible : reprenez-la bien à plat, nette et éclairée".into());
+    }
+    Ok(texte)
+}
+
+fn tesseract_page(image: &std::path::Path) -> Result<String, String> {
+    let mut texte = String::new();
+    {
         let page = std::process::Command::new("tesseract")
-            .arg(&image)
+            .arg(image)
             .arg("stdout")
             // --psm 6 + espaces conservés : chaque ligne d'un tableau de
             // facture reste sur une seule ligne (sinon les colonnes quantité,
@@ -162,9 +206,6 @@ fn ocr_dans_dossier(bytes: &[u8], dossier: &std::path::Path) -> Result<String, S
             texte.push_str(&String::from_utf8_lossy(&page.stdout).replace('|', " "));
             texte.push('\n');
         }
-    }
-    if texte.trim().chars().count() < 40 {
-        return Err("La reconnaissance de caractères n'a rien donné d'exploitable".into());
     }
     Ok(texte)
 }
