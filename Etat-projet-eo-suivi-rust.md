@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.1** — suivi maternité : sans truies réformées ni revenues vides, mises-bas prévues = à mettre bas.
+Version actuelle : **2.66.2** — suivi maternité : seules les truies présentes en maternité.
+
+Version Rust 2.66.2 : Suivi maternité — une truie de la bande qui n’est pas dans une salle de maternité (ex. restée en gestante) n’est plus listée, sauf portée déjà sevrée.
 
 Version Rust 2.66.1 : Suivi maternité — les truies réformées et les truies inséminées revenues vides ne sont plus listées ; une mise-bas prévue reprise de l’ancien logiciel (rien saisi) reste « À mettre bas ».
 
