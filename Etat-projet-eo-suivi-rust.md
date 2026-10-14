@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.65.4** — démo publique et bouton « Tout réafficher » en GTE.
+Version actuelle : **2.66.0** — prendre la facture en photo au téléphone.
+
+Version Rust 2.66.0 : Importer un document — bouton « Prendre la facture en photo » (appareil photo direct, photo redressée et réduite sur le téléphone, lecture par tesseract puis même analyse que les PDF).
 
 Version Rust 2.65.4 : GTE — bouton « Tout réafficher » (vide le mémo localStorage des blocs/lignes masqués). Démo publique EO_DEMO_PUBLIC=1 (compte admin/demo affiché et pré-rempli, verrouillé, pages système consultables en lecture), Windows : dossier static livré et cherché à côté de l'exe.
 
