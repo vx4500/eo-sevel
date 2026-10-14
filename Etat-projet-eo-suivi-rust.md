@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.0** — prendre la facture en photo au téléphone.
+Version actuelle : **2.66.1** — suivi maternité : sans truies réformées ni revenues vides, mises-bas prévues = à mettre bas.
+
+Version Rust 2.66.1 : Suivi maternité — les truies réformées et les truies inséminées revenues vides ne sont plus listées ; une mise-bas prévue reprise de l’ancien logiciel (rien saisi) reste « À mettre bas ».
 
 Version Rust 2.66.0 : Importer un document — bouton « Prendre la facture en photo » (appareil photo direct, photo redressée et réduite sur le téléphone, lecture par tesseract puis même analyse que les PDF).
 
