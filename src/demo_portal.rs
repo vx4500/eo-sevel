@@ -57,6 +57,7 @@ pub async fn init(pool: &SqlitePool) -> anyhow::Result<()> {
             .execute(pool)
             .await?;
     }
+    vente_directe(pool).await?;
     completer_economie(pool).await?;
     prune(pool).await?;
     Ok(())
@@ -227,6 +228,114 @@ pub async fn prune(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query("UPDATE utilisateur SET actif=0,nom='Ancien testeur',prenom=NULL,identifiant='expire-'||id,hash_mdp='' WHERE id IN(SELECT utilisateur_id FROM demo_acces WHERE cree<?)").bind(cutoff).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM demo_acces WHERE cree<?")
         .bind(cutoff)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+
+/// Catalogue de vente directe de la démo (produits, prix, photos de
+/// l'élevage), une session de vente ouverte et quelques commandes de clients
+/// fictifs. Réservé au portail de démonstration, dont la base est dédiée :
+/// rien n'est créé si des produits existent déjà.
+const PRODUITS_DEMO: &[(&str, f64, &str, Option<&[u8]>)] = &[
+    ("Côte échine", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/01.jpg"))),
+    ("Côte première", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/02.jpg"))),
+    ("Rôti échine avec os", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/03.jpg"))),
+    ("Rôti filet avec os", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/04.jpg"))),
+    ("Palette", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/05.jpg"))),
+    ("Sauté", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/06.jpg"))),
+    ("Poitrine à griller", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/07.jpg"))),
+    ("Ribs", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/08.jpg"))),
+    ("Poitrine morceaux", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/09.jpg"))),
+    ("Jarret", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/10.jpg"))),
+    ("Rôti dans le jambon", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/11.jpg"))),
+    ("Rouelle de jambon", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/12.jpg"))),
+    ("Saucisse nature", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/13.jpg"))),
+    ("Saucisse herbe", 6.5, "kg", Some(include_bytes!("../resources/demo-vente-directe/14.jpg"))),
+    ("Chipolatas nature", 7.0, "kg", Some(include_bytes!("../resources/demo-vente-directe/15.jpg"))),
+    ("Chipolatas herbe", 7.0, "kg", Some(include_bytes!("../resources/demo-vente-directe/16.jpg"))),
+    ("Filet mignon", 8.0, "kg", Some(include_bytes!("../resources/demo-vente-directe/17.jpg"))),
+    ("tranche pâté campagne (100g)", 2.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/18.jpg"))),
+    ("tranche pâté campagne (200g)", 2.5, "pièce", Some(include_bytes!("../resources/demo-vente-directe/19.jpg"))),
+    ("Tête", 5.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/20.jpg"))),
+    ("Oreille", 0.5, "pièce", Some(include_bytes!("../resources/demo-vente-directe/21.jpg"))),
+    ("Langue", 2.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/22.jpg"))),
+    ("Joue", 1.5, "pièce", Some(include_bytes!("../resources/demo-vente-directe/23.jpg"))),
+    ("Pieds", 1.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/24.jpg"))),
+    ("Cochon entier (env. 90kg)", 350.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/25.jpg"))),
+    ("Demi Porc (env. 45kg)", 180.0, "pièce", Some(include_bytes!("../resources/demo-vente-directe/26.jpg"))),
+];
+
+async fn vente_directe(pool: &SqlitePool) -> anyhow::Result<()> {
+    let existants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM produitventedirecte")
+        .fetch_one(pool)
+        .await?;
+    if existants > 0 {
+        return Ok(());
+    }
+    let today = chrono::Local::now().date_naive();
+    let jour = |d: i64| (today + chrono::Duration::days(d)).format("%Y-%m-%d").to_string();
+    let mut tx = pool.begin().await?;
+    let mut ids = Vec::new();
+    for (ordre, (nom, prix, unite, image)) in PRODUITS_DEMO.iter().enumerate() {
+        let stock = if *unite == "kg" { 12.0 } else { 4.0 };
+        let id = sqlx::query("INSERT INTO produitventedirecte(nom,prix,unite,actif,ordre,quantite_disponible,image_data,image_mime) VALUES(?,?,?,1,?,?,?,?)")
+            .bind(nom)
+            .bind(prix)
+            .bind(unite)
+            .bind(ordre as i64 + 1)
+            .bind(stock)
+            .bind(image.map(|b| b.to_vec()))
+            .bind(image.map(|_| "image/jpeg"))
+            .execute(&mut *tx)
+            .await?
+            .last_insert_rowid();
+        ids.push((id, *nom, *prix, *unite));
+    }
+    let session = sqlx::query("INSERT INTO sessionventedirecte(nom,date_creation,date_livraison,nb_porcs,bande_reference,active,notes,date_limite_commandes) VALUES('Colis du mois (démo)',?,?,3,'Démo',1,'Session de démonstration',?)")
+        .bind(jour(-5))
+        .bind(jour(9))
+        .bind(jour(6))
+        .execute(&mut *tx)
+        .await?
+        .last_insert_rowid();
+    let commandes: [(&str, &str, &[(usize, f64)]); 6] = [
+        ("Martin Claire", "validee", &[(0, 1.5), (12, 2.0), (16, 1.0)]),
+        ("Dubois Patrick", "validee", &[(24, 1.0)]),
+        ("Lefèvre Anne", "prete", &[(3, 2.0), (14, 1.0), (17, 2.0)]),
+        ("Moreau Julien", "validee", &[(7, 1.2), (8, 1.0), (13, 1.5)]),
+        ("Bernard Sophie", "livree", &[(5, 2.0), (6, 1.0), (21, 2.0)]),
+        ("Petit Laurent", "validee", &[(25, 1.0), (15, 1.0)]),
+    ];
+    for (n, (client, statut, lignes)) in commandes.iter().enumerate() {
+        let lignes: Vec<_> = lignes.iter().filter_map(|(i, q)| ids.get(*i).map(|p| (p, *q))).collect();
+        let total: f64 = lignes.iter().map(|((_, _, prix, _), q)| prix * q).sum();
+        let commande = sqlx::query("INSERT INTO commandeventedirecte(cree_le,nom_client,telephone,email,statut,total,session_vente_id) VALUES(?,?,?,NULL,?,?,?)")
+            .bind(format!("{} 1{}:{}0:00", jour(-4 + n as i64 / 2), n, n))
+            .bind(client)
+            .bind(format!("06 00 00 00 0{n}"))
+            .bind(statut)
+            .bind((total * 100.0).round() / 100.0)
+            .bind(session)
+            .execute(&mut *tx)
+            .await?
+            .last_insert_rowid();
+        for ((id, nom, prix, unite), q) in lignes {
+            sqlx::query("INSERT INTO lignecommandeventedirecte(commande_id,produit_id,nom_produit,prix_unitaire,unite,quantite,total_ligne) VALUES(?,?,?,?,?,?,?)")
+                .bind(commande)
+                .bind(id)
+                .bind(nom)
+                .bind(prix)
+                .bind(unite)
+                .bind(q)
+                .bind(((prix * q) * 100.0).round() / 100.0)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    sqlx::query("INSERT INTO parametre(cle,valeur) VALUES('module_vente_directe','1') ON CONFLICT(cle) DO UPDATE SET valeur='1'")
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
