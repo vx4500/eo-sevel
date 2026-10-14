@@ -16,7 +16,9 @@ pub(super) async fn actuelle(pool: &SqlitePool, sow: i64) -> AppResult<Value> {
 
 /// La fin de mise-bas et la surveillance sont deux informations indépendantes.
 pub(super) fn annoter(row: &mut Value, mise_bas: bool) {
-    let (code, label, icon) = if !mise_bas {
+    // Mise-bas prévue (reprise de l'ancien logiciel) : rien n'a encore été saisi.
+    let prevue = row["mb_prevue"].as_i64() == Some(1);
+    let (code, label, icon) = if !mise_bas || prevue {
         ("a_mettre_bas", "À mettre bas", "◷")
     } else if row["date_sevrage"].is_string() {
         ("sevree", "Portée sevrée", "↗")
@@ -32,6 +34,7 @@ pub(super) fn annoter(row: &mut Value, mise_bas: bool) {
         ("en_cours", "Mise-bas en cours", "◔")
     };
     let surveillance = mise_bas
+        && !prevue
         && !matches!(code, "sevree" | "archivee")
         && (row["suivi_actif"].as_i64() == Some(1) || row["delivrance_ok"].as_i64() == Some(0));
     row["statut_code"] = json!(code);
