@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.65.3** — impression GTE refaite.
+Version actuelle : **2.65.4** — démo publique et bouton « Tout réafficher » en GTE.
+
+Version Rust 2.65.4 : GTE — bouton « Tout réafficher » (vide le mémo localStorage des blocs/lignes masqués). Démo publique EO_DEMO_PUBLIC=1 (compte admin/demo affiché et pré-rempli, verrouillé, pages système consultables en lecture), Windows : dossier static livré et cherché à côté de l'exe.
 
 Version Rust 2.65.3 : gte.html @media print — synthèse sur 1 page A4 paysage (en-tête élevage/période/référence, blocs en grille 2 colonnes, table-layout fixed, lignes sans valeur masquées via tr.gte-vide posé par comparatif.html, explications et flèches de tri masquées, pied de légende), détail par lot sur la page suivante ; nombres au format français dans les tableaux cmp.
 

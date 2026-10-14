@@ -65,7 +65,7 @@
 {% else %}
 <p class="help gte-ecran">Le livret ne publie pas de colonne pour le type d’élevage actif : les références restent vides, les valeurs de l’élevage sont calculées normalement.</p>
 {% endif %}
-<p class="help no-print">Décochez une ligne ou un bloc entier pour le retirer de cet affichage (ex. ne garder que ce qui vous intéresse à l'impression). Ce choix est mémorisé sur cet appareil.</p>
+<p class="help no-print">Décochez une ligne ou un bloc entier pour le retirer de cet affichage (ex. ne garder que ce qui vous intéresse à l'impression). Ce choix est mémorisé sur cet appareil. <button type="button" id="gte-tout-reafficher">Tout réafficher</button></p>
 <div class="gte-blocs">
 {% for bloc in blocs %}
 <div class="gte-bloc" data-bloc="{{ bloc.titre }}">
@@ -90,6 +90,13 @@
   var masquees = {};
   try { masquees = JSON.parse(localStorage.getItem(CLE) || '{}'); } catch (e) { masquees = {}; }
   function sauvegarder() { try { localStorage.setItem(CLE, JSON.stringify(masquees)); } catch (e) {} }
+  var bouton = document.getElementById('gte-tout-reafficher');
+  if (bouton) bouton.addEventListener('click', function(){
+    masquees = {}; sauvegarder();
+    document.querySelectorAll('.gte-bloc').forEach(function(b){ b.style.display = ''; });
+    document.querySelectorAll('.gte-ligne').forEach(function(l){ l.hidden = false; });
+    document.querySelectorAll('.gte-bloc-toggle,.gte-ligne-toggle').forEach(function(c){ c.checked = true; });
+  });
   document.querySelectorAll('.gte-bloc').forEach(function(bloc){
     var titreBloc = bloc.dataset.bloc;
     var toggleBloc = bloc.querySelector('.gte-bloc-toggle');
