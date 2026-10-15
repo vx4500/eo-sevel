@@ -171,6 +171,79 @@ pub async fn cycle_present(
     result.dedup();
     Ok(result)
 }
+/// Durée d'amortissement d'une cochette : ses portées de carrière fois un
+/// cycle (gestation + lactation + retour en chaleur ≈ 150 jours).
+const CYCLE_TRUIE_J: i64 = 150;
+
+/// Amortit les achats de cochettes sur les portées de leur carrière : une
+/// cochette coûte son prix divisé par `portees_carriere` à chaque mise-bas du
+/// troupeau pendant sa carrière. Pour une facture i et une bande b :
+/// part = Σ (mises-bas de b dans la fenêtre de i) / (portées × cochettes
+/// achetées encore en carrière ce jour-là). Les avoirs (quantité et montant
+/// négatifs) s'annulent avec leur facture ; le reste non amorti attend les
+/// bandes suivantes. Sans cela, le cheptel de départ pesait en entier sur les
+/// trois premières bandes.
+pub async fn amortir_cochettes(pool: &SqlitePool) -> anyhow::Result<u64> {
+    let portees: f64 = sqlx::query_scalar::<_, f64>("SELECT CAST(valeur AS REAL) FROM reglage WHERE cle='portees_carriere'")
+        .fetch_optional(pool)
+        .await?
+        .filter(|p| *p >= 1.0)
+        .unwrap_or(5.0);
+    let horizon = (portees * CYCLE_TRUIE_J as f64).round() as i64;
+    let achats: Vec<(i64, String, f64)> = sqlx::query_as(
+        "SELECT id,date,CAST(nb_animaux AS REAL) FROM achatgenetique \
+         WHERE COALESCE(toutes_bandes,0)=0 AND COALESCE(nb_animaux,0)<>0 AND date IS NOT NULL \
+         AND lower(COALESCE(designation,'')) LIKE '%cochette%'",
+    )
+    .fetch_all(pool)
+    .await?;
+    let achats: Vec<(i64, chrono::NaiveDate, f64)> = achats
+        .into_iter()
+        .filter_map(|(id, d, n)| chrono::NaiveDate::parse_from_str(d.get(..10).unwrap_or(&d), "%Y-%m-%d").ok().map(|d| (id, d, n)))
+        .collect();
+    let mises_bas: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT bande_id,date FROM evenement WHERE type='mise_bas' AND bande_id IS NOT NULL AND date IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    let actif = |d: chrono::NaiveDate, debut: chrono::NaiveDate| d >= debut && (d - debut).num_days() < horizon;
+    let mut parts: std::collections::HashMap<(i64, i64), f64> = std::collections::HashMap::new();
+    for (bande, date) in &mises_bas {
+        let Ok(d) = chrono::NaiveDate::parse_from_str(date.get(..10).unwrap_or(date), "%Y-%m-%d") else { continue };
+        let en_carriere: f64 = achats.iter().filter(|(_, debut, _)| actif(d, *debut)).map(|(_, _, n)| n).sum();
+        if en_carriere <= 0.0 {
+            continue;
+        }
+        for (id, debut, _) in &achats {
+            if actif(d, *debut) {
+                *parts.entry((*id, *bande)).or_insert(0.0) += 1.0 / (portees * en_carriere);
+            }
+        }
+    }
+    let mut count = 0;
+    let mut tx = pool.begin().await?;
+    for (id, _, _) in &achats {
+        let mut lignes: Vec<(i64, f64)> = parts.iter().filter(|((f, _), _)| f == id).map(|((_, b), p)| (*b, *p)).collect();
+        if lignes.is_empty() {
+            continue;
+        }
+        let total: f64 = lignes.iter().map(|(_, p)| p).sum();
+        if total > 1.0 {
+            for l in lignes.iter_mut() {
+                l.1 /= total;
+            }
+        }
+        sqlx::query("DELETE FROM affectationfacturebande WHERE categorie='genetique' AND facture_id=?").bind(id).execute(&mut *tx).await?;
+        lignes.sort_by_key(|(b, _)| *b);
+        for (bande, part) in lignes {
+            count += sqlx::query("INSERT INTO affectationfacturebande(categorie,facture_id,bande_id,automatique,part) VALUES('genetique',?,?,1,?)")
+                .bind(id).bind(bande).bind(part).execute(&mut *tx).await?.rows_affected();
+        }
+    }
+    tx.commit().await?;
+    Ok(count)
+}
+
 pub async fn boars(pool: &SqlitePool) -> anyhow::Result<u64> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM affectationfacturebande WHERE categorie='genetique' AND facture_id IN(SELECT id FROM achatgenetique WHERE toutes_bandes=1)").execute(&mut *tx).await?;
@@ -392,6 +465,31 @@ mod tests {
         for label in ["ACTI PLUS B", "PS FINITION", "GESTA LACTA", "CAPSULE"] {
             assert_eq!(feed_stage(label), "inconnu", "{label}");
         }
+    }
+
+    #[tokio::test]
+    async fn les_cochettes_s_amortissent_sur_les_portees_de_leur_carriere() -> anyhow::Result<()> {
+        let state = crate::routes::documents::tests::state().await;
+        let p = &state.pool;
+        let mut sql = String::from("INSERT INTO bande(id,code,date_mb) VALUES(1,'B1','2026-06-01'),(2,'B2','2026-11-01'); \
+            INSERT INTO achatgenetique(id,date,designation,nb_animaux,montant_ht,toutes_bandes) VALUES(1,'2026-01-01','10 cochettes',10,3000,0),(2,'2026-01-01','10 cochettes',10,3000,0),(3,'2026-01-02','AVOIR — 10 cochettes',-10,-3000,0);");
+        for (bande, date) in [(1, "2026-06-01"), (2, "2026-11-01")] {
+            for t in 0..10 {
+                sql.push_str(&format!(" INSERT INTO evenement(type,date,bande_id,truie_id,suivi_actif) VALUES('mise_bas','{date}',{bande},NULL,0); -- {t}\n"));
+            }
+        }
+        sqlx::raw_sql(&sql).execute(p).await?;
+        amortir_cochettes(p).await?;
+        let parts: Vec<(i64, i64, f64)> = sqlx::query_as("SELECT facture_id,bande_id,part FROM affectationfacturebande WHERE categorie='genetique' ORDER BY facture_id,bande_id").fetch_all(p).await?;
+        // 10 cochettes en carrière (20 achetées − 10 en avoir), 5 portées :
+        // chaque mise-bas porte 1/50 de chaque facture, 10 mises-bas = 0,2.
+        assert_eq!(parts.len(), 6);
+        for (_, _, part) in &parts {
+            assert!((part - 0.2).abs() < 1e-9, "{parts:?}");
+        }
+        let b1: f64 = sqlx::query_scalar("SELECT SUM(g.montant_ht*a.part) FROM affectationfacturebande a JOIN achatgenetique g ON g.id=a.facture_id WHERE a.categorie='genetique' AND a.bande_id=1").fetch_one(p).await?;
+        assert!((b1 - 600.0).abs() < 1e-6, "{b1}");
+        Ok(())
     }
 
     #[tokio::test]

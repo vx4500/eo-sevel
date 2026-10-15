@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.4** — dates à l’heure de Paris, plage horaire Automatique, retenues d’abattoir comptées une seule fois.
+Version actuelle : **2.66.5** — cochettes amorties sur les portées de leur carrière.
+
+Version Rust 2.66.5 : affectation::amortir_cochettes (au démarrage, après les affectations) — chaque achat de cochettes (designation « cochette », avoirs compris) est réparti sur les mises-bas du troupeau pendant portees_carriere × 150 j : part = mises-bas de la bande / (portees_carriere × cochettes en carrière ce jour-là), stockée dans affectationfacturebande.part ; réglage portees_carriere (défaut 5). Toutes les requêtes de coûts lisent part pour aliment, véto, semence et génétique. Avant, le cheptel de départ (≈ 31 000 €) pesait en entier sur B1.52, B2.07 et B3.14 ; maintenant ≈ 2 000 € par bande, le reste attend les portées suivantes.
 
 Version Rust 2.66.4 : date('now')/julianday('now') SQLite passés en 'localtime' (entre 0 h et 2 h la date du jour était la veille ; préchauffage eo-regul 1 à 2 h en retard) ; Automatique : la fin de la plage horaire arrête la règle ; marge par bande : aliment avec affectationfacturebande.part, retenues plus soustraites (le « Total bon » Cooperl les inclut déjà en lignes négatives — vérifié sur l’apport 226081270686 : 103,89 + 99,85 = 203,74 €) ; graphique Économie, fiche bande et Productivité alignés.
 
