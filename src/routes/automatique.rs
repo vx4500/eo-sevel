@@ -112,7 +112,9 @@ fn etape(
             let depuis = vrai_depuis.unwrap_or(instant);
             Pas {
                 declencher: !declenche && en_plage && instant - depuis >= delai_s,
-                finir: false,
+                // « Seulement de … à … » : à la fin de la plage horaire, la
+                // règle s'arrête même si la condition est toujours vraie.
+                finir: declenche && !en_plage,
                 vrai_depuis: Some(depuis),
             }
         }
@@ -1006,6 +1008,13 @@ mod tests {
         assert!(!etape(Some(false), None, false, 0, true, 2000).finir);
         let p = etape(None, Some(1000), true, 0, true, 2000);
         assert!(!p.declencher && !p.finir && p.vrai_depuis == Some(1000));
+    }
+
+    #[test]
+    fn la_fin_de_la_plage_horaire_arrete_la_regle() {
+        let p = etape(Some(true), Some(1000), true, 0, false, 5000);
+        assert!(p.finir && !p.declencher);
+        assert!(!etape(Some(true), Some(1000), true, 0, true, 5000).finir);
     }
 
     #[test]

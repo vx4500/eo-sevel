@@ -327,13 +327,13 @@ async fn charger_bandes(pool: &SqlitePool, archivees: i64) -> AppResult<Vec<Band
             "SELECT \
              (SELECT COUNT(*) FROM truie WHERE reformee=0 AND bande_code=?2) AS truies,\
              (SELECT COUNT(DISTINCT truie_id) FROM evenement WHERE bande_id=?1 AND type='ia') AS ia_truies,\
-             (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now') AND COALESCE(nes_totaux,0)>0) AS portees,\
-             (SELECT CAST(COALESCE(SUM(nes_totaux),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now')) AS nt,\
-             (SELECT CAST(COALESCE(SUM(nes_vifs),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now')) AS nv,\
-             (SELECT CAST(COALESCE(SUM(mort_nes),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now')) AS mn,\
+             (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now','localtime') AND COALESCE(nes_totaux,0)>0) AS portees,\
+             (SELECT CAST(COALESCE(SUM(nes_totaux),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now','localtime')) AS nt,\
+             (SELECT CAST(COALESCE(SUM(nes_vifs),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now','localtime')) AS nv,\
+             (SELECT CAST(COALESCE(SUM(mort_nes),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='mise_bas' AND date<=date('now','localtime')) AS mn,\
              (SELECT CAST(COALESCE(SUM(nb),0) AS INTEGER) FROM perteporcelet WHERE bande_id=?1) AS pertes,\
-             (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='sevrage' AND date<=date('now')) AS sevrages,\
-             (SELECT CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='sevrage' AND date<=date('now')) AS sevres,\
+             (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='sevrage' AND date<=date('now','localtime')) AS sevrages,\
+             (SELECT CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=?1 AND type='sevrage' AND date<=date('now','localtime')) AS sevres,\
              (SELECT AVG(NULLIF(poids_moyen,0)) FROM evenement WHERE bande_id=?1 AND type='sevrage') AS poids",
         )
         .bind(id)
@@ -806,7 +806,7 @@ async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id
                      AND e2.date >= (SELECT MAX(e3.date) FROM evenement e3 WHERE e3.truie_id=t.id AND e3.bande_id=?1 AND e3.type='sevrage'))",
         // Vaccins et traitements de gestation : truies non vides, pas encore mises bas.
         "soin" => "COALESCE((SELECT e.resultat FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1),'pleine')<>'vide' \
-                   AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now'))",
+                   AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now','localtime'))",
         // Retours en chaleur : inséminées, pas encore échographiées.
         "retour" => "EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='ia') \
                    AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie'))",
@@ -819,7 +819,7 @@ async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id
         "echo" => "EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='ia') \
                    AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie'))",
         "maternite" | "mise_bas" => "COALESCE((SELECT e.resultat FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type IN ('echo','echographie') ORDER BY e.date DESC,e.id DESC LIMIT 1),'pleine')<>'vide' \
-                   AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now') AND COALESCE(e.nes_totaux,0)>0)",
+                   AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now','localtime') AND COALESCE(e.nes_totaux,0)>0)",
         "sevrage" => "EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='mise_bas') \
                    AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.bande_id=?1 AND e.type='sevrage')",
         _ => return Ok(Vec::new()),
@@ -1320,7 +1320,7 @@ fn coefficient_variation(valeurs: &[f64]) -> Option<f64> {
 
 async fn homogeneite(pool: &SqlitePool, bande: &BandeCycle) -> AppResult<Value> {
     let dates: Vec<String> = sqlx::query_scalar(
-        "SELECT date FROM evenement WHERE bande_id=? AND type='mise_bas' AND date<=date('now') AND COALESCE(nes_totaux,0)>0 ORDER BY date",
+        "SELECT date FROM evenement WHERE bande_id=? AND type='mise_bas' AND date<=date('now','localtime') AND COALESCE(nes_totaux,0)>0 ORDER BY date",
     )
     .bind(bande.id)
     .fetch_all(pool)
@@ -1394,7 +1394,7 @@ async fn truies_faibles(pool: &SqlitePool, bande: &BandeCycle) -> AppResult<(Vec
          (SELECT AVG(o.nes_vifs) FROM evenement o WHERE o.truie_id=t.id AND o.type='mise_bas' AND COALESCE(o.bande_id,0)<>?1 AND COALESCE(o.nes_totaux,0)>0 AND o.date<e.date) AS nv_avant,\
          (SELECT COUNT(*) FROM evenement o WHERE o.truie_id=t.id AND o.type='mise_bas' AND COALESCE(o.bande_id,0)<>?1 AND COALESCE(o.nes_totaux,0)>0 AND o.date<e.date) AS portees_avant \
          FROM evenement e JOIN truie t ON t.id=e.truie_id \
-         WHERE e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now') AND COALESCE(e.nes_totaux,0)>0",
+         WHERE e.bande_id=?1 AND e.type='mise_bas' AND e.date<=date('now','localtime') AND COALESCE(e.nes_totaux,0)>0",
     )
     .bind(bande.id)
     .fetch_all(pool)

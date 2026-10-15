@@ -456,7 +456,7 @@ async fn charger_salles(pool: &SqlitePool) -> Result<Vec<SalleRegulee>> {
 /// permet à la consigne de descendre toute seule au fil du lot.
 async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> Result<Option<(i64, i64)>> {
     let ligne = sqlx::query(
-        "SELECT t.bande_id, CAST(julianday('now') - julianday(t.date) AS INTEGER) AS jours \
+        "SELECT t.bande_id, CAST(julianday('now','localtime') - julianday(t.date) AS INTEGER) AS jours \
          FROM transfert t JOIN bande b ON b.id=t.bande_id \
          WHERE t.salle_dest_id=? AND t.bande_id IS NOT NULL AND t.date IS NOT NULL AND b.active=1 \
          ORDER BY t.date DESC, t.id DESC LIMIT 1",
@@ -483,7 +483,7 @@ async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> Result<Option<(i64,
 /// le vrai jour 0 d'une maternité, tel que l'éleveur le vit.
 async fn bande_via_mise_bas(pool: &SqlitePool, salle_id: i64) -> Result<Option<(i64, i64)>> {
     let ligne = sqlx::query(
-        "SELECT e.bande_id, CAST(julianday('now') - julianday(e.date) AS INTEGER) AS jours \
+        "SELECT e.bande_id, CAST(julianday('now','localtime') - julianday(e.date) AS INTEGER) AS jours \
          FROM evenement e JOIN truie t ON t.id=e.truie_id JOIN bande b ON b.id=e.bande_id \
          WHERE e.type='mise_bas' AND t.salle_id=? AND t.reformee=0 AND e.bande_id IS NOT NULL \
          AND b.active=1 ORDER BY e.date DESC, e.id DESC LIMIT 1",
@@ -518,8 +518,8 @@ async fn preconditionnement_en_attente(
     let ligne = sqlx::query(
         "SELECT bande_id FROM ambiance_preconditionnement \
          WHERE salle_id=? AND bande_id IS NOT NULL \
-         AND julianday('now') >= julianday(arrivee_prevue) - heures_avant/24.0 \
-         AND julianday('now') < julianday(arrivee_prevue) + ?/24.0",
+         AND julianday('now','localtime') >= julianday(arrivee_prevue) - heures_avant/24.0 \
+         AND julianday('now','localtime') < julianday(arrivee_prevue) + ?/24.0",
     )
     .bind(salle_id)
     .bind(PRECONDITIONNEMENT_GRACE_H)
@@ -1682,7 +1682,7 @@ mod bande_via_mise_bas_tests {
         .last_insert_rowid();
         // Aucun transfert de bande créé : uniquement l'événement mise-bas,
         // daté il y a trois jours.
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nes_vifs) VALUES('mise_bas',date('now','-3 days'),?,?,12)")
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nes_vifs) VALUES('mise_bas',date('now','localtime','-3 days'),?,?,12)")
             .bind(truie)
             .bind(bande)
             .execute(&pool)
@@ -1731,7 +1731,7 @@ mod bande_via_mise_bas_tests {
         .execute(&pool)
         .await?
         .last_insert_rowid();
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nes_vifs) VALUES('mise_bas',date('now','-3 days'),?,?,12)")
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nes_vifs) VALUES('mise_bas',date('now','localtime','-3 days'),?,?,12)")
             .bind(truie)
             .bind(bande)
             .execute(&pool)
@@ -1832,7 +1832,7 @@ mod preconditionnement_tests {
         preconditionner(&pool, salle, bande, 4.0).await;
         sqlx::query(
             "INSERT INTO transfert(date,espece,bande_id,salle_dest_id,nombre) \
-             VALUES(date('now'),'porc',?,?,10)",
+             VALUES(date('now','localtime'),'porc',?,?,10)",
         )
         .bind(bande)
         .bind(salle)

@@ -2,7 +2,7 @@ use super::*;
 
 /// La fiche courante lit les événements réels, sans les compléments de l'historique importé.
 pub(super) async fn actuelle(pool: &SqlitePool, sow: i64) -> AppResult<Value> {
-    let rows = sqlx::query("SELECT e.id,e.date,e.nes_vifs,e.heure_debut,e.heure_fin,e.delivrance_ok,e.suivi_actif,p.date_sevrage,p.cloturee,p.adoptes,p.retires,p.pertes,p.presents FROM evenement e JOIN portee_effectif p ON p.id=e.id WHERE e.truie_id=? AND e.date<=date('now') ORDER BY e.date DESC,e.id DESC LIMIT 1")
+    let rows = sqlx::query("SELECT e.id,e.date,e.nes_vifs,e.heure_debut,e.heure_fin,e.delivrance_ok,e.suivi_actif,p.date_sevrage,p.cloturee,p.adoptes,p.retires,p.pertes,p.presents FROM evenement e JOIN portee_effectif p ON p.id=e.id WHERE e.truie_id=? AND e.date<=date('now','localtime') ORDER BY e.date DESC,e.id DESC LIMIT 1")
         .bind(sow).fetch_all(pool).await?;
     let mut row = rows_to_json(rows)?
         .into_iter()
@@ -61,7 +61,7 @@ pub(super) async fn changer_etat(
     };
     let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
     let (sow, band, delivrance): (i64, Option<i64>, Option<i64>) = sqlx::query_as(
-        "SELECT e.truie_id,e.bande_id,e.delivrance_ok FROM evenement e JOIN portee_effectif p ON p.id=e.id WHERE e.id=? AND p.cloturee=0 AND e.date<=date('now')",
+        "SELECT e.truie_id,e.bande_id,e.delivrance_ok FROM evenement e JOIN portee_effectif p ON p.id=e.id WHERE e.id=? AND p.cloturee=0 AND e.date<=date('now','localtime')",
     ).bind(id).fetch_optional(&mut *tx).await?.ok_or_else(|| AppError::Invalid("Cette portée n’est pas en cours de suivi.".into()))?;
     if action == "arreter_surveillance" && delivrance == Some(0) {
         return Err(AppError::Invalid(
@@ -108,7 +108,7 @@ pub(super) async fn enregistrer_perte(
         ));
     }
     let (band_id,birth,presents): (Option<i64>,String,i64) = sqlx::query_as(
-        "SELECT bande_id,date,presents FROM portee_effectif WHERE truie_id=? AND (? IS NULL OR bande_id=?) AND cloturee=0 AND date<=date('now') ORDER BY date DESC,id DESC LIMIT 1"
+        "SELECT bande_id,date,presents FROM portee_effectif WHERE truie_id=? AND (? IS NULL OR bande_id=?) AND cloturee=0 AND date<=date('now','localtime') ORDER BY date DESC,id DESC LIMIT 1"
     ).bind(sow).bind(band).bind(band).fetch_optional(&mut *tx).await?
         .ok_or_else(|| AppError::Invalid("Aucune portée non sevrée pour cette truie.".into()))?;
     let age = (parse_stored_date(&date)

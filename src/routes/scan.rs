@@ -170,7 +170,7 @@ pub(super) async fn enregistrer(
     );
     sqlx::query(
         "INSERT INTO mouvementpharmacie(produit,date,type,quantite,note,lot,peremption,code_scanne) \
-         VALUES(?,date('now'),'entree',?,?,?,?,?)",
+         VALUES(?,date('now','localtime'),'entree',?,?,?,?,?)",
     )
     .bind(&produit)
     .bind(quantite)

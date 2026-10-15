@@ -365,7 +365,7 @@ async fn tableau_de_bord_delai_depuis_fin_traitement() -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../../migrations/0003_portee_effectif.sql"))
         .execute(&state.pool)
         .await?;
-    sqlx::raw_sql("INSERT INTO truie(id,num_travail) VALUES(1,'T1'); INSERT INTO evenement(type,date,date_fin,truie_id,produit,delai_attente) VALUES('traitement',date('now','-20 days'),date('now','-1 day'),1,'ALERTE_FIN_TRAITEMENT',5)").execute(&state.pool).await?;
+    sqlx::raw_sql("INSERT INTO truie(id,num_travail) VALUES(1,'T1'); INSERT INTO evenement(type,date,date_fin,truie_id,produit,delai_attente) VALUES('traitement',date('now','localtime','-20 days'),date('now','localtime','-1 day'),1,'ALERTE_FIN_TRAITEMENT',5)").execute(&state.pool).await?;
     let response = dashboard(State(state), Extension(session())).await?;
     let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
     let html = String::from_utf8(body.to_vec())?;

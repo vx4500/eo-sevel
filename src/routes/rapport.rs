@@ -506,7 +506,7 @@ async fn actions_48h(
         let soins = sqlx::query(
             "SELECT sp.date_prevue,a.libelle,b.id AS bande_id,COALESCE(b.code,'sans bande') AS code,COUNT(*) AS n \
              FROM soinportee sp JOIN acteprotocole a ON a.id=sp.protocole_id LEFT JOIN bande b ON b.id=sp.bande_id \
-             WHERE sp.date_realisee IS NULL AND date(sp.date_prevue)<=? AND date(sp.date_prevue)>=date('now',?) \
+             WHERE sp.date_realisee IS NULL AND date(sp.date_prevue)<=? AND date(sp.date_prevue)>=date('now','localtime',?) \
              GROUP BY sp.date_prevue,a.libelle,sp.bande_id ORDER BY sp.date_prevue",
         )
         .bind(&limite_iso)

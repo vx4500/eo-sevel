@@ -209,7 +209,7 @@ pub(super) async fn truie_sevrage(
         sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,poids_moyen,adoptes,retires,eld_entree,eld_sortie,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,?,?,?,?,?,0)")
             .bind(&date).bind(id).bind(band_id).bind(weaned).bind(form_f64(&form,"poids_moyen")).bind(adopted).bind(removed).bind(form_f64(&form,"eld_entree")).bind(form_f64(&form,"eld_sortie")).bind(form_text(&form,"note")).execute(&mut *tx).await?;
     }
-    sqlx::query("UPDATE truie SET perf_sevres=?,perf_adoptes=?,perf_retires=?,bande_code=CASE WHEN date(?)<=date('now') AND bande_code=(SELECT code FROM bande WHERE id=?) THEN NULL ELSE bande_code END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    sqlx::query("UPDATE truie SET perf_sevres=?,perf_adoptes=?,perf_retires=?,bande_code=CASE WHEN date(?)<=date('now','localtime') AND bande_code=(SELECT code FROM bande WHERE id=?) THEN NULL ELSE bande_code END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
         .bind(weaned as f64).bind(adopted as f64).bind(removed as f64).bind(&date).bind(band_id).bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Redirect::to(&format!("/truie/{id}")).into_response())
@@ -1793,7 +1793,7 @@ pub(super) async fn saisie_rapide(
                 .bind(sow_id)
                 .execute(&mut *tx)
                 .await?;
-                sqlx::query("UPDATE truie SET bande_code=CASE WHEN date(?)<=date('now') AND bande_code=(SELECT code FROM bande WHERE id=?) THEN NULL ELSE bande_code END,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(&date).bind(band_id).bind(sow_id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE truie SET bande_code=CASE WHEN date(?)<=date('now','localtime') AND bande_code=(SELECT code FROM bande WHERE id=?) THEN NULL ELSE bande_code END,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(&date).bind(band_id).bind(sow_id).execute(&mut *tx).await?;
             }
             // Vérification de capacité : pour chaque case destination, s'assurer que la somme actuelle + nb ne dépasse pas nb_max_porcs si défini
             for (case_id, nb) in dlines.iter() {

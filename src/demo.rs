@@ -145,7 +145,7 @@ pub async fn activer(tx: &mut Transaction<'_, Sqlite>) -> anyhow::Result<()> {
         ("Vérifier les températures des nids", "quotidien", 1),
         ("Inventaire pharmacie", "stock", 7),
     ] {
-        let id=sqlx::query("INSERT INTO tache(titre,type,echeance,note) VALUES(?,?,date('now',printf('+%d day',?)),'Donnée de démonstration')").bind(titre).bind(kind).bind(days).execute(&mut **tx).await?.last_insert_rowid();
+        let id=sqlx::query("INSERT INTO tache(titre,type,echeance,note) VALUES(?,?,date('now','localtime',printf('+%d day',?)),'Donnée de démonstration')").bind(titre).bind(kind).bind(days).execute(&mut **tx).await?.last_insert_rowid();
         marquer(tx, "tache", id).await?;
     }
 

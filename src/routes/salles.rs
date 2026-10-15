@@ -90,7 +90,7 @@ async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> AppResult<Option<Va
                 .await?;
         }
         if let Some((id, code)) = bande_trouvee {
-            let jours: i64 = sqlx::query_scalar("SELECT CAST(julianday('now') - julianday(?) AS INTEGER)")
+            let jours: i64 = sqlx::query_scalar("SELECT CAST(julianday('now','localtime') - julianday(?) AS INTEGER)")
                 .bind(&date_arrivee)
                 .fetch_one(pool)
                 .await?;
@@ -98,7 +98,7 @@ async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> AppResult<Option<Va
         }
     }
     let ligne: Option<(i64, String, i64)> = sqlx::query_as(
-        "SELECT b.id, b.code, CAST(julianday('now') - julianday(t.date) AS INTEGER) \
+        "SELECT b.id, b.code, CAST(julianday('now','localtime') - julianday(t.date) AS INTEGER) \
          FROM transfert t JOIN bande b ON b.id=t.bande_id \
          WHERE t.salle_dest_id=? AND t.date IS NOT NULL AND b.active=1 \
          ORDER BY t.date DESC, t.id DESC LIMIT 1",
@@ -110,7 +110,7 @@ async fn bande_en_place(pool: &SqlitePool, salle_id: i64) -> AppResult<Option<Va
         Some(ligne) => Some(ligne),
         None => {
             sqlx::query_as(
-                "SELECT b.id, b.code, CAST(julianday('now') - julianday(e.date) AS INTEGER) \
+                "SELECT b.id, b.code, CAST(julianday('now','localtime') - julianday(e.date) AS INTEGER) \
                  FROM evenement e JOIN truie t ON t.id=e.truie_id JOIN bande b ON b.id=e.bande_id \
                  WHERE e.type='mise_bas' AND t.salle_id=? AND t.reformee=0 AND b.active=1 \
                  ORDER BY e.date DESC, e.id DESC LIMIT 1",
@@ -380,7 +380,7 @@ pub(super) async fn fiche(
     });
     let jours: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
         "SELECT jour, grandeur, moy, mini, maxi FROM ambiance_jour \
-         WHERE salle_id=? AND grandeur IN ('t','h','lux') AND jour >= date('now','-13 day') ORDER BY jour",
+         WHERE salle_id=? AND grandeur IN ('t','h','lux') AND jour >= date('now','localtime','-13 day') ORDER BY jour",
     )
     .bind(id)
     .fetch_all(pool)
@@ -517,7 +517,7 @@ pub(super) async fn fiche(
         pool,
         "SELECT d.date, d.nombre, d.stade, d.cause, c.nom AS case_nom, d.bande_code \
          FROM declarationmort d JOIN casesalle c ON c.id=d.case_id \
-         WHERE c.salle_id=? AND COALESCE(d.date, date(d.horodatage)) >= date('now','-30 day') \
+         WHERE c.salle_id=? AND COALESCE(d.date, date(d.horodatage)) >= date('now','localtime','-30 day') \
          ORDER BY COALESCE(d.date, d.horodatage) DESC LIMIT 20",
         id,
     )
@@ -528,7 +528,7 @@ pub(super) async fn fiche(
         "SELECT o.date, o.categorie, o.gravite, o.nombre, o.note, b.code AS bande \
          FROM observation_comportement o LEFT JOIN bande b ON b.id=o.bande_id \
          WHERE (o.salle_id=?1 OR o.case_id IN (SELECT id FROM casesalle WHERE salle_id=?1)) \
-           AND o.date >= date('now','-30 day') ORDER BY o.date DESC LIMIT 10",
+           AND o.date >= date('now','localtime','-30 day') ORDER BY o.date DESC LIMIT 10",
         id,
     )
     .await

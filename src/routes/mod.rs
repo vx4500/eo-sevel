@@ -1336,7 +1336,7 @@ async fn synchroniser_protocole_portees(pool: &SqlitePool, protocole_id: i64) ->
         .bind(protocole_id)
         .execute(pool)
         .await?;
-    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas' AND e.date>=date('now','-60 day') AND NOT EXISTS(SELECT 1 FROM evenement s WHERE s.truie_id=e.truie_id AND s.type='sevrage' AND s.date>=e.date)")
+    sqlx::query("INSERT OR IGNORE INTO soinportee(protocole_id,evenement_id,truie_id,bande_id,date_prevue) SELECT a.id,e.id,e.truie_id,e.bande_id,date(e.date,printf('%+d day',a.jour)) FROM acteprotocole a JOIN evenement e ON e.type='mise_bas' AND e.truie_id IS NOT NULL WHERE a.id=? AND a.actif=1 AND lower(trim(a.cible)) IN ('porcelet','porcelets') AND lower(trim(a.reference))='mise_bas' AND e.date>=date('now','localtime','-60 day') AND NOT EXISTS(SELECT 1 FROM evenement s WHERE s.truie_id=e.truie_id AND s.type='sevrage' AND s.date>=e.date)")
         .bind(protocole_id).execute(pool).await?;
     Ok(())
 }
@@ -1449,8 +1449,8 @@ pub(crate) async fn rattacher_cycle_a_la_bande(
     sqlx::query(
         "UPDATE evenement SET bande_id=(SELECT b.id FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=?1 ORDER BY b.active DESC,b.id DESC LIMIT 1) \
          WHERE truie_id=?1 AND bande_id IS NULL AND type IN ('ia','chaleur','echo','echographie') \
-         AND date>=date('now','-60 day') \
-         AND date>=COALESCE((SELECT MAX(date) FROM evenement WHERE truie_id=?1 AND type IN ('sevrage','mise_bas') AND date<=date('now')),'0000-00-00') \
+         AND date>=date('now','localtime','-60 day') \
+         AND date>=COALESCE((SELECT MAX(date) FROM evenement WHERE truie_id=?1 AND type IN ('sevrage','mise_bas') AND date<=date('now','localtime')),'0000-00-00') \
          AND EXISTS(SELECT 1 FROM truie t JOIN bande b ON b.code=t.bande_code WHERE t.id=?1)",
     )
     .bind(truie_id)
@@ -1569,7 +1569,7 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         ("electricite", "Relevés d’électricité attendus"),
     ] {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM compteur_energie c WHERE c.actif=1 AND c.type=? AND COALESCE(c.rappel_jours,0)>0 AND date(COALESCE((SELECT MAX(r.date_releve) FROM releve_compteur r WHERE r.compteur_id=c.id),'1900-01-01'),printf('+%d day',c.rappel_jours))<=date('now')",
+            "SELECT COUNT(*) FROM compteur_energie c WHERE c.actif=1 AND c.type=? AND COALESCE(c.rappel_jours,0)>0 AND date(COALESCE((SELECT MAX(r.date_releve) FROM releve_compteur r WHERE r.compteur_id=c.id),'1900-01-01'),printf('+%d day',c.rappel_jours))<=date('now','localtime')",
         )
         .bind(kind)
         .fetch_one(pool)
@@ -1604,7 +1604,7 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
     push_farm_alert(&mut alerts, steriles, "Truies improductives depuis plus de 2 mois : à déclarer stériles", "/truies/improductives", "attention");
     let schedule = load_band_schedule(pool).await?;
     let missing_weaning: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM bande b WHERE b.active=1 AND b.date_mb IS NOT NULL AND date(b.date_mb,printf('+%d day',?))<date('now') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage')",
+        "SELECT COUNT(*) FROM bande b WHERE b.active=1 AND b.date_mb IS NOT NULL AND date(b.date_mb,printf('+%d day',?))<date('now','localtime') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage')",
     )
     .bind(schedule.weaning)
     .fetch_one(pool)
@@ -1617,7 +1617,7 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         "attention",
     );
     let overdue_tasks: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tache WHERE fait=0 AND echeance IS NOT NULL AND date(echeance)<date('now')",
+        "SELECT COUNT(*) FROM tache WHERE fait=0 AND echeance IS NOT NULL AND date(echeance)<date('now','localtime')",
     )
     .fetch_one(pool)
     .await?;
@@ -2604,7 +2604,7 @@ async fn actual_band_stage(pool: &SqlitePool, band: &Bande) -> AppResult<Option<
         return Ok(Some(stade));
     }
     let state = sqlx::query_as::<_, (i64, i64, i64)>(
-        "SELECT EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now') AND lower(COALESCE(resultat,'')) IN('positive','positif','pleine','oui')),EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type='mise_bas' AND date<=date('now')),EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type='sevrage' AND date<=date('now'))",
+        "SELECT EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now','localtime') AND lower(COALESCE(resultat,'')) IN('positive','positif','pleine','oui')),EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type='mise_bas' AND date<=date('now','localtime')),EXISTS(SELECT 1 FROM evenement WHERE bande_id=? AND type='sevrage' AND date<=date('now','localtime'))",
     )
     .bind(band.id)
     .bind(band.id)
@@ -2679,7 +2679,7 @@ async fn band_reproduction_stats(pool: &SqlitePool, band: &Bande) -> AppResult<V
             .fetch_one(pool)
             .await?;
     let derniere_echo = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT date,resultat FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now') AND date>=COALESCE(?,'') ORDER BY date DESC,id DESC LIMIT 1",
+        "SELECT date,resultat FROM evenement WHERE bande_id=? AND type IN('echo','echographie') AND date<=date('now','localtime') AND date>=COALESCE(?,'') ORDER BY date DESC,id DESC LIMIT 1",
     )
     .bind(band.id)
     .bind(&date_ia)
@@ -2739,7 +2739,7 @@ async fn band_flow_summary(pool: &SqlitePool, band: &Bande) -> AppResult<Value> 
     let births = generic_rows(
         pool,
         &format!(
-            "SELECT COUNT(*) AS truies_mises_bas,CAST(COALESCE(SUM(COALESCE(nes_totaux,COALESCE(nes_vifs,0)+COALESCE(mort_nes,0)+COALESCE(momifies,0))),0) AS INTEGER) AS porcelets_nes,ROUND(COALESCE(AVG(COALESCE(nes_totaux,COALESCE(nes_vifs,0)+COALESCE(mort_nes,0)+COALESCE(momifies,0))),0),1) AS moyenne_par_truie FROM evenement WHERE bande_id={} AND type='mise_bas' AND date<=date('now')",
+            "SELECT COUNT(*) AS truies_mises_bas,CAST(COALESCE(SUM(COALESCE(nes_totaux,COALESCE(nes_vifs,0)+COALESCE(mort_nes,0)+COALESCE(momifies,0))),0) AS INTEGER) AS porcelets_nes,ROUND(COALESCE(AVG(COALESCE(nes_totaux,COALESCE(nes_vifs,0)+COALESCE(mort_nes,0)+COALESCE(momifies,0))),0),1) AS moyenne_par_truie FROM evenement WHERE bande_id={} AND type='mise_bas' AND date<=date('now','localtime')",
             band.id
         ),
     )
@@ -2914,12 +2914,12 @@ async fn dashboard(
     // décalage toujours positif ou nul.
     let delais_attente_truies = generic_rows(
         &state.pool,
-        "SELECT t.num_travail AS reference,e.produit,e.date AS date_traitement,date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day') AS fin_attente FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.type='traitement' AND e.delai_attente IS NOT NULL AND e.delai_attente>0 AND date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day')>=date('now') ORDER BY fin_attente",
+        "SELECT t.num_travail AS reference,e.produit,e.date AS date_traitement,date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day') AS fin_attente FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.type='traitement' AND e.delai_attente IS NOT NULL AND e.delai_attente>0 AND date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day')>=date('now','localtime') ORDER BY fin_attente",
     )
     .await?;
     let delais_attente_charcutiers = generic_rows(
         &state.pool,
-        "SELECT COALESCE(NULLIF(p.rfid,''),'Porc #'||p.id) AS reference,tc.produit,tc.date AS date_traitement,date(tc.date,'+'||tc.delai_attente||' day') AS fin_attente FROM traitementcharcutier tc JOIN porccharcutier p ON p.id=tc.charcutier_id WHERE tc.delai_attente IS NOT NULL AND tc.delai_attente>0 AND date(tc.date,'+'||tc.delai_attente||' day')>=date('now') AND p.date_mort IS NULL ORDER BY fin_attente",
+        "SELECT COALESCE(NULLIF(p.rfid,''),'Porc #'||p.id) AS reference,tc.produit,tc.date AS date_traitement,date(tc.date,'+'||tc.delai_attente||' day') AS fin_attente FROM traitementcharcutier tc JOIN porccharcutier p ON p.id=tc.charcutier_id WHERE tc.delai_attente IS NOT NULL AND tc.delai_attente>0 AND date(tc.date,'+'||tc.delai_attente||' day')>=date('now','localtime') AND p.date_mort IS NULL ORDER BY fin_attente",
     )
     .await?;
     let alertes_delai_attente: i64 =
@@ -2997,7 +2997,7 @@ async fn bandes(
         // truies sont reparties ; il ne reste que les porcs de la bande.
         let (sevrages, ouvertes): (i64, i64) = sqlx::query_as(
             "SELECT (SELECT COUNT(*) FROM evenement WHERE bande_id=?1 AND type='sevrage'),\
-             (SELECT COUNT(*) FROM portee_effectif WHERE bande_id=?1 AND cloturee=0 AND date<=date('now'))",
+             (SELECT COUNT(*) FROM portee_effectif WHERE bande_id=?1 AND cloturee=0 AND date<=date('now','localtime'))",
         )
         .bind(band.id)
         .fetch_one(&state.pool)
@@ -4427,7 +4427,7 @@ async fn maternite(
             .await?
     } else {
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM bande WHERE date_mb IS NOT NULL AND trim(date_mb)<>'' ORDER BY CASE WHEN date('now') BETWEEN date(date_mb,'-10 day') AND date(date_mb,'+28 day') THEN 0 ELSE 1 END,ABS(julianday('now')-julianday(date_mb)),id DESC LIMIT 1",
+            "SELECT id FROM bande WHERE date_mb IS NOT NULL AND trim(date_mb)<>'' ORDER BY CASE WHEN date('now','localtime') BETWEEN date(date_mb,'-10 day') AND date(date_mb,'+28 day') THEN 0 ELSE 1 END,ABS(julianday('now','localtime')-julianday(date_mb)),id DESC LIMIT 1",
         )
         .fetch_optional(&state.pool)
         .await?
@@ -4450,7 +4450,7 @@ async fn maternite(
         return render(&state, "maternite.html", Value::Object(ctx));
     };
     let band_row = sqlx::query(
-        "SELECT id,code,date_mb,site,active,CAST(julianday('now')-julianday(date_mb) AS INTEGER) AS jour_cycle,date(date_mb,'+28 day') AS fin_suivi FROM bande WHERE id=?",
+        "SELECT id,code,date_mb,site,active,CAST(julianday('now','localtime')-julianday(date_mb) AS INTEGER) AS jour_cycle,date(date_mb,'+28 day') AS fin_suivi FROM bande WHERE id=?",
     )
     .bind(band_id)
     .fetch_all(&state.pool)
@@ -4460,7 +4460,7 @@ async fn maternite(
         .next()
         .ok_or(AppError::NotFound)?;
     let sow_rows = sqlx::query(
-        "WITH sow_ids AS (SELECT id FROM truie WHERE bande_code=(SELECT code FROM bande WHERE id=?) AND reformee=0 UNION SELECT DISTINCT truie_id FROM evenement WHERE bande_id=? AND type='mise_bas' AND truie_id IS NOT NULL) SELECT t.id,t.num_travail,t.rfid,t.rang,t.race,e.id AS mise_bas_id,e.date AS date_mise_bas,COALESCE(e.nes_totaux,0) AS nes_totaux,COALESCE(e.nes_vifs,0) AS nes_vifs,COALESCE(e.mort_nes,0) AS mort_nes,COALESCE(e.momifies,0) AS momifies,COALESCE(e.chetifs,0) AS chetifs,COALESCE(e.ecrases,0) AS ecrases,COALESCE(e.tues_truie,0) AS tues_truie,e.heure_debut,e.heure_fin,COALESCE(e.suivi_actif,0) AS suivi_actif,e.delivrance_ok,e.note,CASE WHEN e.id IS NOT NULL AND e.nes_vifs IS NULL AND COALESCE(e.nes_totaux,0)=0 AND COALESCE(e.mort_nes,0)=0 AND COALESCE(e.heure_debut,'')='' AND COALESCE(e.heure_fin,'')='' AND e.delivrance_ok IS NULL AND COALESCE(e.suivi_actif,0)=0 THEN 1 ELSE 0 END AS mb_prevue,c.num_vanne,c.nom AS case_nom,COALESCE((SELECT COUNT(*) FROM soinportee sp WHERE sp.evenement_id=e.id AND sp.date_realisee IS NULL),0) AS soins_attendus,(SELECT MIN(sp.date_prevue) FROM soinportee sp WHERE sp.evenement_id=e.id AND sp.date_realisee IS NULL) AS prochain_soin,pe.date_sevrage,pe.cloturee,pe.adoptes,pe.retires,CASE WHEN e.date IS NOT NULL THEN CAST(julianday('now')-julianday(e.date) AS INTEGER) END AS jour_lactation,CASE WHEN e.date IS NOT NULL THEN date(e.date,'+28 day') END AS fin_suivi,CASE WHEN date('now')<date(e.date) THEN date(e.date) WHEN date('now')>date(e.date,'+28 day') THEN date(e.date,'+28 day') ELSE date('now') END AS date_perte_defaut,COALESCE(pe.pertes,0) AS pertes,COALESCE(pe.presents,0) AS porcelets_presents FROM sow_ids s JOIN truie t ON t.id=s.id LEFT JOIN evenement e ON e.id=(SELECT e2.id FROM evenement e2 WHERE e2.truie_id=t.id AND e2.bande_id=? AND e2.type='mise_bas' AND e2.date<=date('now') ORDER BY e2.date DESC,e2.id DESC LIMIT 1) LEFT JOIN portee_effectif pe ON pe.id=e.id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE t.salle_id IS NULL OR (SELECT lower(sa.type) FROM salle sa WHERE sa.id=t.salle_id) LIKE 'mater%' OR pe.date_sevrage IS NOT NULL OR COALESCE(pe.cloturee,0)=1 ORDER BY t.num_travail COLLATE NOCASE",
+        "WITH sow_ids AS (SELECT id FROM truie WHERE bande_code=(SELECT code FROM bande WHERE id=?) AND reformee=0 UNION SELECT DISTINCT truie_id FROM evenement WHERE bande_id=? AND type='mise_bas' AND truie_id IS NOT NULL) SELECT t.id,t.num_travail,t.rfid,t.rang,t.race,e.id AS mise_bas_id,e.date AS date_mise_bas,COALESCE(e.nes_totaux,0) AS nes_totaux,COALESCE(e.nes_vifs,0) AS nes_vifs,COALESCE(e.mort_nes,0) AS mort_nes,COALESCE(e.momifies,0) AS momifies,COALESCE(e.chetifs,0) AS chetifs,COALESCE(e.ecrases,0) AS ecrases,COALESCE(e.tues_truie,0) AS tues_truie,e.heure_debut,e.heure_fin,COALESCE(e.suivi_actif,0) AS suivi_actif,e.delivrance_ok,e.note,CASE WHEN e.id IS NOT NULL AND e.nes_vifs IS NULL AND COALESCE(e.nes_totaux,0)=0 AND COALESCE(e.mort_nes,0)=0 AND COALESCE(e.heure_debut,'')='' AND COALESCE(e.heure_fin,'')='' AND e.delivrance_ok IS NULL AND COALESCE(e.suivi_actif,0)=0 THEN 1 ELSE 0 END AS mb_prevue,c.num_vanne,c.nom AS case_nom,COALESCE((SELECT COUNT(*) FROM soinportee sp WHERE sp.evenement_id=e.id AND sp.date_realisee IS NULL),0) AS soins_attendus,(SELECT MIN(sp.date_prevue) FROM soinportee sp WHERE sp.evenement_id=e.id AND sp.date_realisee IS NULL) AS prochain_soin,pe.date_sevrage,pe.cloturee,pe.adoptes,pe.retires,CASE WHEN e.date IS NOT NULL THEN CAST(julianday('now','localtime')-julianday(e.date) AS INTEGER) END AS jour_lactation,CASE WHEN e.date IS NOT NULL THEN date(e.date,'+28 day') END AS fin_suivi,CASE WHEN date('now','localtime')<date(e.date) THEN date(e.date) WHEN date('now','localtime')>date(e.date,'+28 day') THEN date(e.date,'+28 day') ELSE date('now','localtime') END AS date_perte_defaut,COALESCE(pe.pertes,0) AS pertes,COALESCE(pe.presents,0) AS porcelets_presents FROM sow_ids s JOIN truie t ON t.id=s.id LEFT JOIN evenement e ON e.id=(SELECT e2.id FROM evenement e2 WHERE e2.truie_id=t.id AND e2.bande_id=? AND e2.type='mise_bas' AND e2.date<=date('now','localtime') ORDER BY e2.date DESC,e2.id DESC LIMIT 1) LEFT JOIN portee_effectif pe ON pe.id=e.id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE t.salle_id IS NULL OR (SELECT lower(sa.type) FROM salle sa WHERE sa.id=t.salle_id) LIKE 'mater%' OR pe.date_sevrage IS NOT NULL OR COALESCE(pe.cloturee,0)=1 ORDER BY t.num_travail COLLATE NOCASE",
     )
     .bind(band_id)
     .bind(band_id)
@@ -4469,7 +4469,7 @@ async fn maternite(
     .await?;
     let mut sows = rows_to_json(sow_rows)?;
     let loss_rows = sqlx::query(
-        "SELECT p.id,p.truie_id,p.date,p.age_j,p.nb,p.cause,p.evenement_id FROM perteporcelet p JOIN portee_effectif pe ON pe.truie_id=p.truie_id WHERE pe.bande_id=? AND pe.id=(SELECT e.id FROM evenement e WHERE e.truie_id=pe.truie_id AND e.bande_id=pe.bande_id AND e.type='mise_bas' AND e.date<=date('now') ORDER BY e.date DESC,e.id DESC LIMIT 1) AND (p.evenement_id=pe.id OR (p.evenement_id IS NULL AND (p.bande_id IS pe.bande_id OR p.bande_id IS NULL OR pe.bande_id IS NULL) AND p.date>=pe.date AND (pe.prochaine_mb IS NULL OR p.date<pe.prochaine_mb))) AND p.date<=COALESCE(pe.date_sevrage,date('now')) ORDER BY p.date DESC,p.id DESC",
+        "SELECT p.id,p.truie_id,p.date,p.age_j,p.nb,p.cause,p.evenement_id FROM perteporcelet p JOIN portee_effectif pe ON pe.truie_id=p.truie_id WHERE pe.bande_id=? AND pe.id=(SELECT e.id FROM evenement e WHERE e.truie_id=pe.truie_id AND e.bande_id=pe.bande_id AND e.type='mise_bas' AND e.date<=date('now','localtime') ORDER BY e.date DESC,e.id DESC LIMIT 1) AND (p.evenement_id=pe.id OR (p.evenement_id IS NULL AND (p.bande_id IS pe.bande_id OR p.bande_id IS NULL OR pe.bande_id IS NULL) AND p.date>=pe.date AND (pe.prochaine_mb IS NULL OR p.date<pe.prochaine_mb))) AND p.date<=COALESCE(pe.date_sevrage,date('now','localtime')) ORDER BY p.date DESC,p.id DESC",
     )
     .bind(band_id)
     .fetch_all(&state.pool)
@@ -4554,7 +4554,7 @@ async fn maternite(
     )
     .await?;
     let weaning_sows = generic_rows(&state.pool, &format!(
-        "SELECT t.id,e.id AS mise_bas_id,COALESCE(e.nes_totaux,0) AS nt,COALESCE(e.nes_vifs,0) AS nv,t.num_travail,e.date AS date_mise_bas,e.case_id AS case_source_id,c.nom AS case_source,c.num_vanne AS vanne_source,COALESCE((SELECT presents FROM portee_effectif pe WHERE pe.id=e.id),0) AS porcelets_presents FROM evenement e JOIN truie t ON t.id=e.truie_id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE e.bande_id={band_id} AND e.type='mise_bas' AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.bande_id={band_id} AND e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now')) ORDER BY e.date,t.num_travail COLLATE NOCASE"
+        "SELECT t.id,e.id AS mise_bas_id,COALESCE(e.nes_totaux,0) AS nt,COALESCE(e.nes_vifs,0) AS nv,t.num_travail,e.date AS date_mise_bas,e.case_id AS case_source_id,c.nom AS case_source,c.num_vanne AS vanne_source,COALESCE((SELECT presents FROM portee_effectif pe WHERE pe.id=e.id),0) AS porcelets_presents FROM evenement e JOIN truie t ON t.id=e.truie_id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) WHERE e.bande_id={band_id} AND e.type='mise_bas' AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.bande_id={band_id} AND e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now','localtime')) ORDER BY e.date,t.num_travail COLLATE NOCASE"
     )).await?;
     let mut destinations = generic_rows(&state.pool, "SELECT c.id,c.salle_id,c.nom,c.num_vanne,c.nb_max_porcs,s.nom AS salle,COALESCE(si.nom,si.code) AS site FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id WHERE lower(COALESCE(s.type,'')) LIKE '%sevr%' OR lower(s.nom) LIKE '%sevr%' ORDER BY COALESCE(si.nom,si.code),s.ordre,c.nom").await?;
     for destination in &mut destinations {
@@ -4570,7 +4570,7 @@ async fn maternite(
                 .unwrap_or(Value::Null),
         );
     }
-    let receveuses = generic_rows(&state.pool, "SELECT e.id,t.num_travail,b.code AS bande,p.presents FROM portee_effectif p JOIN evenement e ON e.id=p.id JOIN truie t ON t.id=e.truie_id JOIN bande b ON b.id=e.bande_id WHERE t.reformee=0 AND p.cloturee=0 AND p.date<=date('now') AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) ORDER BY t.num_travail").await?;
+    let receveuses = generic_rows(&state.pool, "SELECT e.id,t.num_travail,b.code AS bande,p.presents FROM portee_effectif p JOIN evenement e ON e.id=p.id JOIN truie t ON t.id=e.truie_id JOIN bande b ON b.id=e.bande_id WHERE t.reformee=0 AND p.cloturee=0 AND p.date<=date('now','localtime') AND e.id=(SELECT e2.id FROM evenement e2 WHERE e2.truie_id=t.id AND e2.type='mise_bas' ORDER BY e2.date DESC,e2.id DESC LIMIT 1) ORDER BY t.num_travail").await?;
     let adoptions = generic_rows(&state.pool, &format!("SELECT a.date,a.nombre,a.case_nourrice_id,a.note,ts.num_travail AS donneuse,td.num_travail AS receveuse,c.nom AS case_nourrice,s.nom AS salle_nourrice FROM adoptionporcelet a JOIN evenement es ON es.id=a.source_id LEFT JOIN evenement ed ON ed.id=a.destination_id JOIN truie ts ON ts.id=es.truie_id LEFT JOIN truie td ON td.id=ed.truie_id LEFT JOIN casesalle c ON c.id=a.case_nourrice_id LEFT JOIN salle s ON s.id=c.salle_id WHERE es.bande_id={band_id} OR ed.bande_id={band_id} ORDER BY a.date DESC,a.id DESC")).await?;
     let cases_nourrices = generic_rows(&state.pool, "SELECT c.id,c.nom,s.nom AS salle FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE lower(COALESCE(s.type,'')) LIKE '%nourri%' OR lower(s.nom) LIKE '%nourri%' OR lower(COALESCE(s.type,'')) LIKE '%matern%' OR lower(s.nom) LIKE '%matern%' ORDER BY s.nom,c.nom").await?;
     let nourrices = generic_rows(&state.pool, &format!("SELECT n.id,n.date,n.presents,c.nom AS case_nom,s.nom AS salle,t.num_travail AS donneuse FROM nourrice_effectif n JOIN casesalle c ON c.id=n.case_nourrice_id JOIN salle s ON s.id=c.salle_id JOIN truie t ON t.id=n.truie_id WHERE n.bande_id={band_id} ORDER BY s.nom,c.nom,n.date,n.id")).await?;
@@ -4636,9 +4636,9 @@ async fn maternite_sevrage(
                     "Choisissez une case de post-sevrage pour chaque truie cochée".into(),
                 )
             })?;
-        let source: Option<i64> = sqlx::query_scalar("SELECT COALESCE(e.case_id,t.case_id) FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.bande_id=? AND e.truie_id=? AND e.type='mise_bas' AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now')) ORDER BY e.date DESC,e.id DESC LIMIT 1")
+        let source: Option<i64> = sqlx::query_scalar("SELECT COALESCE(e.case_id,t.case_id) FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.bande_id=? AND e.truie_id=? AND e.type='mise_bas' AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now','localtime')) ORDER BY e.date DESC,e.id DESC LIMIT 1")
             .bind(band_id).bind(sow_id).fetch_optional(&state.pool).await?.flatten();
-        let born: Option<i64> = sqlx::query_scalar("SELECT (SELECT presents FROM portee_effectif pe WHERE pe.id=e.id) FROM evenement e WHERE e.bande_id=? AND e.truie_id=? AND e.type='mise_bas' AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now')) ORDER BY e.date DESC,e.id DESC LIMIT 1")
+        let born: Option<i64> = sqlx::query_scalar("SELECT (SELECT presents FROM portee_effectif pe WHERE pe.id=e.id) FROM evenement e WHERE e.bande_id=? AND e.truie_id=? AND e.type='mise_bas' AND EXISTS(SELECT 1 FROM portee_effectif pe WHERE pe.id=e.id AND pe.cloturee=0 AND pe.date<=date('now','localtime')) ORDER BY e.date DESC,e.id DESC LIMIT 1")
             .bind(band_id).bind(sow_id).fetch_optional(&state.pool).await?.flatten();
         let present = born.ok_or_else(|| {
             AppError::Invalid(
@@ -5054,7 +5054,7 @@ async fn inseminations(
             sqlx::query(
                 "SELECT t.id AS truie_id,t.num_travail,t.rang,t.reformee,t.bande_code,e.type,e.date,e.creneaux_ia,e.produit,e.note \
                  FROM truie t JOIN salle s ON s.id=t.salle_id \
-                 LEFT JOIN evenement e ON e.truie_id=t.id AND e.type IN ('ia','chaleur','sans_chaleur') AND e.date>=date('now','-21 day') \
+                 LEFT JOIN evenement e ON e.truie_id=t.id AND e.type IN ('ia','chaleur','sans_chaleur') AND e.date>=date('now','localtime','-21 day') \
                  WHERE t.reformee=0 AND lower(s.nom) LIKE 'verrat%' \
                  ORDER BY CAST(t.num_travail AS INTEGER),t.num_travail,e.date,e.id",
             )
@@ -5074,7 +5074,7 @@ async fn inseminations(
              (SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS nb_ia,\
              (SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS premiere_ia,\
              (SELECT MAX(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS derniere_ia \
-             FROM bande b WHERE b.active=1 OR EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='ia' AND e.date>=date('now','-1 year')) \
+             FROM bande b WHERE b.active=1 OR EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='ia' AND e.date>=date('now','localtime','-1 year')) \
              ORDER BY b.date_mb IS NULL DESC,b.date_mb DESC,b.id DESC",
         )
         .await?;
@@ -6164,7 +6164,7 @@ async fn api_bandes_actives(State(state): State<AppState>) -> AppResult<axum::Js
 async fn api_truies(State(state): State<AppState>) -> AppResult<axum::Json<Value>> {
     let rows = generic_rows(
         &state.pool,
-        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,(SELECT lower(s.nom) FROM salle s WHERE s.id=t.salle_id) AS salle,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','-10 day') AND date('now','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
+        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,(SELECT lower(s.nom) FROM salle s WHERE s.id=t.salle_id) AS salle,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','localtime','-10 day') AND date('now','localtime','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
     )
     .await?;
     Ok(axum::Json(Value::Array(rows)))
@@ -6847,7 +6847,7 @@ async fn productivite_objectives(
             _ => {
                 if let Some(expression) = objective_sql_expression(&key) {
                     let sql = format!(
-                        "SELECT CAST(({expression}) AS REAL) FROM bande WHERE date_mb>=date('now',?)"
+                        "SELECT CAST(({expression}) AS REAL) FROM bande WHERE date_mb>=date('now','localtime',?)"
                     );
                     sqlx::query_scalar::<_, Option<f64>>(&sql)
                         .bind(cutoff)
@@ -7034,20 +7034,20 @@ async fn productivite(
     let gttt_period = gttt_summary(&gttt_litters);
     let (objectives, available_objectives) =
         productivite_objectives(&state.pool, &cutoff, &gttt_period).await?;
-    let rows = sqlx::query("SELECT b.id,b.code,b.date_mb,b.site,b.cs_truies_saillies,b.cs_pleines,b.cs_truies_mb,b.cs_nv_portee,b.cs_sevres_portee,b.cs_total_sevres,b.cs_tx_pertes_nv,b.cs_poids_sevrage,b.cs_gmq_ps,b.cs_gmq_engr,(SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS premiere_ia_reelle,(SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='mise_bas' AND e.date<=date('now')) AS premiere_mb_reelle,(SELECT MAX(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage') AS dernier_sevrage_reel,(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie')) AS echos,(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie') AND lower(COALESCE(e.resultat,'')) IN('positive','positif','pleine','oui')) AS echos_positives,ROUND(100.0*(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie') AND lower(COALESCE(e.resultat,'')) IN('positive','positif','pleine','oui'))/NULLIF((SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie')),0),1) AS taux_pleines_echo,ROUND(100.0*COALESCE(b.cs_truies_mb,0)/NULLIF(b.cs_truies_saillies,0),1) AS taux_mb_saillies FROM bande b WHERE b.date_mb>=date('now',?) ORDER BY b.date_mb DESC,b.id DESC")
+    let rows = sqlx::query("SELECT b.id,b.code,b.date_mb,b.site,b.cs_truies_saillies,b.cs_pleines,b.cs_truies_mb,b.cs_nv_portee,b.cs_sevres_portee,b.cs_total_sevres,b.cs_tx_pertes_nv,b.cs_poids_sevrage,b.cs_gmq_ps,b.cs_gmq_engr,(SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='ia') AS premiere_ia_reelle,(SELECT MIN(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='mise_bas' AND e.date<=date('now','localtime')) AS premiere_mb_reelle,(SELECT MAX(e.date) FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage') AS dernier_sevrage_reel,(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie')) AS echos,(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie') AND lower(COALESCE(e.resultat,'')) IN('positive','positif','pleine','oui')) AS echos_positives,ROUND(100.0*(SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie') AND lower(COALESCE(e.resultat,'')) IN('positive','positif','pleine','oui'))/NULLIF((SELECT COUNT(*) FROM evenement e WHERE e.bande_id=b.id AND e.type IN('echo','echographie')),0),1) AS taux_pleines_echo,ROUND(100.0*COALESCE(b.cs_truies_mb,0)/NULLIF(b.cs_truies_saillies,0),1) AS taux_mb_saillies FROM bande b WHERE b.date_mb>=date('now','localtime',?) ORDER BY b.date_mb DESC,b.id DESC")
         .bind(&cutoff)
         .fetch_all(&state.pool)
         .await?;
     // `total_retenues` regroupe déjà groupement, équarrissage, CVEE et cotisations
     // (voir `economique_valorisation`) : elles sont saisies par n° d'apport, pas par
     // bande, mais chaque apport porte un bande_id, donc la somme par bande est fiable.
-    let technical = sqlx::query("SELECT b.id,b.code,b.date_mb,CAST(SUM(COALESCE(v.nb_porcs,0)) AS INTEGER) AS porcs,ROUND(SUM(COALESCE(v.poids_total,0))/NULLIF(SUM(COALESCE(v.nb_porcs,0)),0),1) AS poids_moyen,ROUND(SUM(CASE WHEN v.tmp IS NOT NULL THEN v.tmp*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.tmp IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS tmp,ROUND(SUM(CASE WHEN v.muscle_lot IS NOT NULL THEN v.muscle_lot*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.muscle_lot IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS muscle_lot,ROUND(SUM(COALESCE(v.montant_ht,0))/NULLIF(SUM(COALESCE(v.poids_total,0)),0),3) AS prix_ht_kg,ROUND(SUM(CASE WHEN v.plus_value IS NOT NULL THEN v.plus_value*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.plus_value IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS plus_value,CAST(ROUND(SUM(COALESCE(v.montant_ht,0)),2) AS REAL) AS montant_ht,CAST(ROUND(SUM(COALESCE(v.total_retenues,0)),2) AS REAL) AS frais_retenues,CAST(ROUND(SUM(COALESCE(v.montant_ht,0))-SUM(COALESCE(v.total_retenues,0)),2) AS REAL) AS montant_net_bande FROM venteapport v JOIN bande b ON b.id=v.bande_id WHERE v.date IS NULL OR v.date>=date('now',?) GROUP BY b.id,b.code,b.date_mb ORDER BY b.date_mb DESC,b.id DESC")
+    let technical = sqlx::query("SELECT b.id,b.code,b.date_mb,CAST(SUM(COALESCE(v.nb_porcs,0)) AS INTEGER) AS porcs,ROUND(SUM(COALESCE(v.poids_total,0))/NULLIF(SUM(COALESCE(v.nb_porcs,0)),0),1) AS poids_moyen,ROUND(SUM(CASE WHEN v.tmp IS NOT NULL THEN v.tmp*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.tmp IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS tmp,ROUND(SUM(CASE WHEN v.muscle_lot IS NOT NULL THEN v.muscle_lot*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.muscle_lot IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS muscle_lot,ROUND(SUM(COALESCE(v.montant_ht,0))/NULLIF(SUM(COALESCE(v.poids_total,0)),0),3) AS prix_ht_kg,ROUND(SUM(CASE WHEN v.plus_value IS NOT NULL THEN v.plus_value*COALESCE(v.nb_porcs,0) ELSE 0 END)/NULLIF(SUM(CASE WHEN v.plus_value IS NOT NULL THEN COALESCE(v.nb_porcs,0) ELSE 0 END),0),2) AS plus_value,CAST(ROUND(SUM(COALESCE(v.montant_ht,0)),2) AS REAL) AS montant_ht,CAST(ROUND(SUM(COALESCE(v.total_retenues,0)),2) AS REAL) AS frais_retenues,CAST(ROUND(SUM(COALESCE(v.montant_ht,0))-SUM(COALESCE(v.total_retenues,0)),2) AS REAL) AS montant_net_bande FROM venteapport v JOIN bande b ON b.id=v.bande_id WHERE v.date IS NULL OR v.date>=date('now','localtime',?) GROUP BY b.id,b.code,b.date_mb ORDER BY b.date_mb DESC,b.id DESC")
         .bind(&cutoff)
         .fetch_all(&state.pool)
         .await?;
     let funnel = generic_rows(
         &state.pool,
-        &format!("SELECT CAST(COALESCE(SUM(cs_truies_saillies),0) AS INTEGER) AS saillies,CAST(COALESCE(SUM(cs_pleines),0) AS INTEGER) AS pleines,CAST(COALESCE(SUM(cs_truies_mb),0) AS INTEGER) AS mises_bas,CAST(COALESCE(SUM(cs_total_sevres),0) AS INTEGER) AS sevres,CAST(COALESCE(SUM(cs_adoptes),0) AS INTEGER) AS adoptes,CAST(COALESCE(SUM(cs_retires),0) AS INTEGER) AS retires FROM bande WHERE date_mb>=date('now','-{months} months')"),
+        &format!("SELECT CAST(COALESCE(SUM(cs_truies_saillies),0) AS INTEGER) AS saillies,CAST(COALESCE(SUM(cs_pleines),0) AS INTEGER) AS pleines,CAST(COALESCE(SUM(cs_truies_mb),0) AS INTEGER) AS mises_bas,CAST(COALESCE(SUM(cs_total_sevres),0) AS INTEGER) AS sevres,CAST(COALESCE(SUM(cs_adoptes),0) AS INTEGER) AS adoptes,CAST(COALESCE(SUM(cs_retires),0) AS INTEGER) AS retires FROM bande WHERE date_mb>=date('now','localtime','-{months} months')"),
     )
     .await?
     .into_iter()
@@ -9286,7 +9286,7 @@ async fn economique(
     .await?;
     let band_results = generic_rows(
         &state.pool,
-        "WITH ventes AS (SELECT bande_id,SUM(COALESCE(nb_porcs,0)) AS porcs,SUM(COALESCE(poids_total,0)) AS poids,SUM(COALESCE(montant_ht,0)) AS recettes FROM ventelot GROUP BY bande_id),ap AS (SELECT num_apport,MAX(COALESCE(plus_value,0)) AS pv,MAX(COALESCE(total_retenues,0)) AS ret FROM venteapport WHERE num_apport IS NOT NULL GROUP BY num_apport),lp AS (SELECT num_apport,SUM(COALESCE(poids_total,0)) AS p FROM ventelot GROUP BY num_apport),pvr AS (SELECT l.bande_id,SUM(COALESCE(l.poids_total,0)*ap.pv) AS plus_values,SUM(ap.ret*COALESCE(l.poids_total,0)/NULLIF(lp.p,0)) AS retenues FROM ventelot l JOIN ap ON ap.num_apport=l.num_apport JOIN lp ON lp.num_apport=l.num_apport GROUP BY l.bande_id),nb AS (SELECT categorie,facture_id,COUNT(*) AS n FROM affectationfacturebande GROUP BY categorie,facture_id),aliment AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM livraisonaliment x JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),veto AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatveto x JOIN affectationfacturebande af ON af.categorie='veto' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),semence AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatsemence x JOIN affectationfacturebande af ON af.categorie='semence' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),genetique AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatgenetique x JOIN affectationfacturebande af ON af.categorie='genetique' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id) SELECT b.id,b.code,b.site,CAST(COALESCE(v.porcs,0) AS INTEGER) AS porcs,ROUND(COALESCE(v.poids,0),1) AS poids,ROUND(COALESCE(v.recettes,0),2) AS recettes,ROUND(COALESCE(a.cout,0),2) AS aliment,ROUND(COALESCE(vt.cout,0),2) AS veto,ROUND(COALESCE(se.cout,0),2) AS semence,ROUND(COALESCE(g.cout,0),2) AS genetique,ROUND(COALESCE(pv.plus_values,0),2) AS plus_values,ROUND(COALESCE(pv.retenues,0),2) AS retenues,ROUND(COALESCE(v.recettes,0)-COALESCE(pv.retenues,0)-COALESCE(a.cout,0)-COALESCE(vt.cout,0)-COALESCE(se.cout,0)-COALESCE(g.cout,0),2) AS marge,ROUND((COALESCE(a.cout,0)+COALESCE(vt.cout,0)+COALESCE(se.cout,0)+COALESCE(g.cout,0))/NULLIF(v.porcs,0),2) AS cout_par_porc,ROUND(COALESCE(v.recettes,0)/NULLIF(v.poids,0),3) AS prix_ht_kg FROM bande b LEFT JOIN ventes v ON v.bande_id=b.id LEFT JOIN pvr pv ON pv.bande_id=b.id LEFT JOIN aliment a ON a.bande_id=b.id LEFT JOIN veto vt ON vt.bande_id=b.id LEFT JOIN semence se ON se.bande_id=b.id LEFT JOIN genetique g ON g.bande_id=b.id WHERE v.porcs IS NOT NULL OR a.cout IS NOT NULL OR vt.cout IS NOT NULL OR se.cout IS NOT NULL OR g.cout IS NOT NULL ORDER BY b.date_mb IS NULL,b.date_mb,b.id",
+        "WITH ventes AS (SELECT bande_id,SUM(COALESCE(nb_porcs,0)) AS porcs,SUM(COALESCE(poids_total,0)) AS poids,SUM(COALESCE(montant_ht,0)) AS recettes FROM ventelot GROUP BY bande_id),ap AS (SELECT num_apport,MAX(COALESCE(plus_value,0)) AS pv,MAX(COALESCE(total_retenues,0)) AS ret FROM venteapport WHERE num_apport IS NOT NULL GROUP BY num_apport),lp AS (SELECT num_apport,SUM(COALESCE(poids_total,0)) AS p FROM ventelot GROUP BY num_apport),pvr AS (SELECT l.bande_id,SUM(COALESCE(l.poids_total,0)*ap.pv) AS plus_values,SUM(ap.ret*COALESCE(l.poids_total,0)/NULLIF(lp.p,0)) AS retenues FROM ventelot l JOIN ap ON ap.num_apport=l.num_apport JOIN lp ON lp.num_apport=l.num_apport GROUP BY l.bande_id),nb AS (SELECT categorie,facture_id,COUNT(*) AS n FROM affectationfacturebande GROUP BY categorie,facture_id),aliment AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)*COALESCE(af.part,1.0/nb.n)) AS cout FROM livraisonaliment x JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),veto AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatveto x JOIN affectationfacturebande af ON af.categorie='veto' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),semence AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatsemence x JOIN affectationfacturebande af ON af.categorie='semence' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id),genetique AS (SELECT af.bande_id,SUM(COALESCE(x.montant_ht,0)/nb.n) AS cout FROM achatgenetique x JOIN affectationfacturebande af ON af.categorie='genetique' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id GROUP BY af.bande_id) SELECT b.id,b.code,b.site,CAST(COALESCE(v.porcs,0) AS INTEGER) AS porcs,ROUND(COALESCE(v.poids,0),1) AS poids,ROUND(COALESCE(v.recettes,0),2) AS recettes,ROUND(COALESCE(a.cout,0),2) AS aliment,ROUND(COALESCE(vt.cout,0),2) AS veto,ROUND(COALESCE(se.cout,0),2) AS semence,ROUND(COALESCE(g.cout,0),2) AS genetique,ROUND(COALESCE(pv.plus_values,0),2) AS plus_values,ROUND(COALESCE(pv.retenues,0),2) AS retenues,ROUND(COALESCE(v.recettes,0)-COALESCE(pv.retenues,0)-COALESCE(a.cout,0)-COALESCE(vt.cout,0)-COALESCE(se.cout,0)-COALESCE(g.cout,0),2) AS marge,ROUND((COALESCE(a.cout,0)+COALESCE(vt.cout,0)+COALESCE(se.cout,0)+COALESCE(g.cout,0))/NULLIF(v.porcs,0),2) AS cout_par_porc,ROUND(COALESCE(v.recettes,0)/NULLIF(v.poids,0),3) AS prix_ht_kg FROM bande b LEFT JOIN ventes v ON v.bande_id=b.id LEFT JOIN pvr pv ON pv.bande_id=b.id LEFT JOIN aliment a ON a.bande_id=b.id LEFT JOIN veto vt ON vt.bande_id=b.id LEFT JOIN semence se ON se.bande_id=b.id LEFT JOIN genetique g ON g.bande_id=b.id WHERE v.porcs IS NOT NULL OR a.cout IS NOT NULL OR vt.cout IS NOT NULL OR se.cout IS NOT NULL OR g.cout IS NOT NULL ORDER BY b.date_mb IS NULL,b.date_mb,b.id",
     )
     .await?;
     let ventes = ventes::rows(&state.pool).await?;
@@ -9298,7 +9298,7 @@ async fn economique(
     crate::affectation::explain_unassigned(&state.pool, "veto", &mut veterinaires).await?;
     let semences = generic_rows(&state.pool,"SELECT a.id,a.date,a.num_facture,a.fournisseur,a.designation,a.nb_doses,a.montant_ht,COALESCE((SELECT GROUP_CONCAT(b.code,', ') FROM affectationfacturebande af JOIN bande b ON b.id=af.bande_id WHERE af.categorie='semence' AND af.facture_id=a.id),'Non affecté') AS bandes_affectees,COALESCE((SELECT GROUP_CONCAT(af.bande_id) FROM affectationfacturebande af WHERE af.categorie='semence' AND af.facture_id=a.id),'') AS bandes_ids,EXISTS(SELECT 1 FROM affectationfacturebande af WHERE af.categorie='semence' AND af.facture_id=a.id AND af.automatique=1) AS affectation_auto FROM achatsemence a ORDER BY a.date DESC,a.id DESC LIMIT 250").await?;
     let valuations = generic_rows(&state.pool,"SELECT id,num_apport,date,libelle,montant,categorie,CASE WHEN lower(COALESCE(categorie,''))='retenue' THEN 1 ELSE 0 END AS est_retenue FROM valorisationapport ORDER BY date DESC,id DESC LIMIT 200").await?;
-    let monthly = generic_rows(&state.pool,"WITH RECURSIVE mois(m) AS (SELECT date('now','start of month',CASE WHEN EXISTS(SELECT 1 FROM parametre WHERE cle='demo_portal' AND valeur='1') THEN '-60 months' ELSE '-11 months' END) UNION ALL SELECT date(m,'+1 month') FROM mois WHERE m<date('now','start of month')),depenses AS (SELECT substr(date,1,7) AS m,SUM(COALESCE(montant_ht,0)) AS montant FROM livraisonaliment GROUP BY m UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatveto GROUP BY substr(date,1,7) UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatsemence GROUP BY substr(date,1,7) UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatgenetique GROUP BY substr(date,1,7)),revenus AS (SELECT substr(date,1,7) AS m,SUM(COALESCE(montant_ht,0)) AS montant,SUM(COALESCE(poids_total,0)) AS poids FROM venteapport GROUP BY m) SELECT substr(m.m,1,7) AS mois,ROUND(COALESCE((SELECT SUM(d.montant) FROM depenses d WHERE d.m=substr(m.m,1,7)),0),2) AS depenses,ROUND(COALESCE(r.montant,0),2) AS revenus,ROUND(r.montant/NULLIF(r.poids,0),3) AS prix_ht_kg FROM mois m LEFT JOIN revenus r ON r.m=substr(m.m,1,7) ORDER BY m.m").await?;
+    let monthly = generic_rows(&state.pool,"WITH RECURSIVE mois(m) AS (SELECT date('now','localtime','start of month',CASE WHEN EXISTS(SELECT 1 FROM parametre WHERE cle='demo_portal' AND valeur='1') THEN '-60 months' ELSE '-11 months' END) UNION ALL SELECT date(m,'+1 month') FROM mois WHERE m<date('now','localtime','start of month')),depenses AS (SELECT substr(date,1,7) AS m,SUM(COALESCE(montant_ht,0)) AS montant FROM livraisonaliment GROUP BY m UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatveto GROUP BY substr(date,1,7) UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatsemence GROUP BY substr(date,1,7) UNION ALL SELECT substr(date,1,7),SUM(COALESCE(montant_ht,0)) FROM achatgenetique GROUP BY substr(date,1,7)),revenus AS (SELECT substr(date,1,7) AS m,SUM(COALESCE(montant_ht,0)) AS montant,SUM(COALESCE(poids_total,0)) AS poids FROM venteapport GROUP BY m) SELECT substr(m.m,1,7) AS mois,ROUND(COALESCE((SELECT SUM(d.montant) FROM depenses d WHERE d.m=substr(m.m,1,7)),0),2) AS depenses,ROUND(COALESCE(r.montant,0),2) AS revenus,ROUND(r.montant/NULLIF(r.poids,0),3) AS prix_ht_kg FROM mois m LEFT JOIN revenus r ON r.m=substr(m.m,1,7) ORDER BY m.m").await?;
     let unallocated = generic_rows(&state.pool,"SELECT 'Aliment' AS categorie,ROUND(COALESCE(SUM(montant_ht),0),2) AS montant FROM livraisonaliment x WHERE NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie='aliment' AND a.facture_id=x.id) UNION ALL SELECT 'Vétérinaire',ROUND(COALESCE(SUM(montant_ht),0),2) FROM achatveto x WHERE NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie='veto' AND a.facture_id=x.id) UNION ALL SELECT 'Semence',ROUND(COALESCE(SUM(montant_ht),0),2) FROM achatsemence x WHERE NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie='semence' AND a.facture_id=x.id) UNION ALL SELECT 'Génétique',ROUND(COALESCE(SUM(COALESCE(montant_ht,0)),0),2) FROM achatgenetique x WHERE NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie='genetique' AND a.facture_id=x.id)").await?;
     let imports = generic_rows(&state.pool,"SELECT token,replace(type_import,'economique:','') AS type_import,nom_fichier,statut,cree_le,applique_le FROM importjournal WHERE type_import LIKE 'economique:%' ORDER BY cree_le DESC LIMIT 15").await?;
     let total_weight: f64 = sqlx::query_scalar(
@@ -11541,7 +11541,7 @@ async fn vente_preparation_imprimer(
 
 async fn client_order_by_token(pool: &SqlitePool, token: &str) -> AppResult<Value> {
     let row = sqlx::query(
-        "SELECT c.id,c.client_id,c.nom_client,c.telephone,c.email,c.notes,c.statut,c.total,c.token_modification,c.code_modification,c.recap_envoye_le,c.cree_le,s.nom AS session_nom,s.date_livraison,s.date_limite_commandes,CASE WHEN s.active=1 AND COALESCE((SELECT commandes_ouvertes FROM reglageventedirecte WHERE id=1),1)=1 AND (s.date_limite_commandes IS NULL OR date('now')<=date(s.date_limite_commandes)) AND c.statut NOT IN('livree','annulee') THEN 1 ELSE 0 END AS modification_ouverte FROM commandeventedirecte c LEFT JOIN sessionventedirecte s ON s.id=c.session_vente_id WHERE c.token_modification=?",
+        "SELECT c.id,c.client_id,c.nom_client,c.telephone,c.email,c.notes,c.statut,c.total,c.token_modification,c.code_modification,c.recap_envoye_le,c.cree_le,s.nom AS session_nom,s.date_livraison,s.date_limite_commandes,CASE WHEN s.active=1 AND COALESCE((SELECT commandes_ouvertes FROM reglageventedirecte WHERE id=1),1)=1 AND (s.date_limite_commandes IS NULL OR date('now','localtime')<=date(s.date_limite_commandes)) AND c.statut NOT IN('livree','annulee') THEN 1 ELSE 0 END AS modification_ouverte FROM commandeventedirecte c LEFT JOIN sessionventedirecte s ON s.id=c.session_vente_id WHERE c.token_modification=?",
     )
     .bind(token)
     .fetch_optional(pool)
@@ -11703,7 +11703,7 @@ async fn commande_client_modifier(
         .into_response());
     }
     let mut tx = state.pool.begin().await?;
-    let still_open: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte c JOIN sessionventedirecte s ON s.id=c.session_vente_id WHERE c.id=? AND c.token_modification=? AND c.statut NOT IN('livree','annulee') AND s.active=1 AND (s.date_limite_commandes IS NULL OR date('now')<=date(s.date_limite_commandes)) AND COALESCE((SELECT commandes_ouvertes FROM reglageventedirecte WHERE id=1),1)=1")
+    let still_open: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte c JOIN sessionventedirecte s ON s.id=c.session_vente_id WHERE c.id=? AND c.token_modification=? AND c.statut NOT IN('livree','annulee') AND s.active=1 AND (s.date_limite_commandes IS NULL OR date('now','localtime')<=date(s.date_limite_commandes)) AND COALESCE((SELECT commandes_ouvertes FROM reglageventedirecte WHERE id=1),1)=1")
         .bind(id).bind(&token).fetch_one(&mut *tx).await?;
     if still_open == 0 {
         return Err(AppError::Invalid(
@@ -11781,13 +11781,13 @@ async fn commande_page(
     let products=sqlx::query_as::<_,ProduitVenteDirecte>("SELECT id,nom,prix,unite,actif,ordre,quantite_disponible,image_mime FROM produitventedirecte WHERE actif=1 AND (quantite_disponible IS NULL OR quantite_disponible>0) ORDER BY ordre,nom").fetch_all(&state.pool).await?;
     let settings = generic_rows(
         &state.pool,
-        "SELECT date_livraison,texte_livraison,CASE WHEN commandes_ouvertes=1 AND EXISTS(SELECT 1 FROM sessionventedirecte s WHERE s.active=1 AND (s.date_limite_commandes IS NULL OR date('now')<=date(s.date_limite_commandes))) THEN 1 ELSE 0 END AS commandes_ouvertes,message_fermeture,logo_data IS NOT NULL AS logo FROM reglageventedirecte WHERE id=1",
+        "SELECT date_livraison,texte_livraison,CASE WHEN commandes_ouvertes=1 AND EXISTS(SELECT 1 FROM sessionventedirecte s WHERE s.active=1 AND (s.date_limite_commandes IS NULL OR date('now','localtime')<=date(s.date_limite_commandes))) THEN 1 ELSE 0 END AS commandes_ouvertes,message_fermeture,logo_data IS NOT NULL AS logo FROM reglageventedirecte WHERE id=1",
     )
     .await?
     .into_iter()
     .next()
     .unwrap_or_else(|| json!({"date_livraison":null,"texte_livraison":null,"commandes_ouvertes":1,"message_fermeture":null,"logo":false}));
-    let active=generic_rows(&state.pool,"SELECT id,nom,date_livraison,date_limite_commandes FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now')<=date(date_limite_commandes)) ORDER BY id DESC LIMIT 1").await?.into_iter().next().unwrap_or(Value::Null);
+    let active=generic_rows(&state.pool,"SELECT id,nom,date_livraison,date_limite_commandes FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now','localtime')<=date(date_limite_commandes)) ORDER BY id DESC LIMIT 1").await?.into_iter().next().unwrap_or(Value::Null);
     render(
         &state,
         "commande.html",
@@ -11845,7 +11845,7 @@ async fn commande_post(
     if lines.is_empty() {
         return Ok(Redirect::to("/commande?err=commande-vide").into_response());
     }
-    let session_id:Option<i64>=sqlx::query_scalar("SELECT id FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now')<=date(date_limite_commandes)) ORDER BY date_creation DESC,id DESC LIMIT 1").fetch_optional(&mut *tx).await?;
+    let session_id:Option<i64>=sqlx::query_scalar("SELECT id FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now','localtime')<=date(date_limite_commandes)) ORDER BY date_creation DESC,id DESC LIMIT 1").fetch_optional(&mut *tx).await?;
     let Some(session_id) = session_id else {
         return Ok(Redirect::to("/commande?err=fermee").into_response());
     };
@@ -13200,7 +13200,7 @@ async fn planning(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
 ) -> AppResult<Html<String>> {
-    let events=generic_rows(&state.pool,"SELECT e.id,e.date,e.type,t.num_travail,b.code AS bande,e.produit,e.note FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id LEFT JOIN bande b ON b.id=e.bande_id WHERE date(e.date)>=date('now','-30 days') ORDER BY e.date LIMIT 500").await?;
+    let events=generic_rows(&state.pool,"SELECT e.id,e.date,e.type,t.num_travail,b.code AS bande,e.produit,e.note FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id LEFT JOIN bande b ON b.id=e.bande_id WHERE date(e.date)>=date('now','localtime','-30 days') ORDER BY e.date LIMIT 500").await?;
     let tasks=generic_rows(&state.pool,"SELECT id,titre,type,bande_code,echeance,fait,note FROM tache WHERE fait=0 ORDER BY echeance IS NULL,echeance,id").await?;
     let bands = sqlx::query_as::<_, Bande>(BAND_SELECT_ACTIVE)
         .fetch_all(&state.pool)
@@ -13273,12 +13273,12 @@ async fn entretien(
 ) -> AppResult<Html<String>> {
     let rows = generic_rows(
         &state.pool,
-        "SELECT id,nom,type,site,derniere_date,frequence_jours,date(derniere_date,'+'||frequence_jours||' days') AS prochaine_date,CASE WHEN derniere_date IS NOT NULL AND date(derniere_date,'+'||frequence_jours||' days')<=date('now') THEN 1 ELSE 0 END AS en_retard,note FROM entretien ORDER BY en_retard DESC,COALESCE(prochaine_date,'9999-12-31'),nom",
+        "SELECT id,nom,type,site,derniere_date,frequence_jours,date(derniere_date,'+'||frequence_jours||' days') AS prochaine_date,CASE WHEN derniere_date IS NOT NULL AND date(derniere_date,'+'||frequence_jours||' days')<=date('now','localtime') THEN 1 ELSE 0 END AS en_retard,note FROM entretien ORDER BY en_retard DESC,COALESCE(prochaine_date,'9999-12-31'),nom",
     )
     .await?;
     let salles = generic_rows(
         &state.pool,
-        "SELECT sa.id,si.code AS site,sa.nom,sa.type,sa.dernier_lavage,CAST(julianday('now')-julianday(sa.dernier_lavage) AS INTEGER) AS jours_depuis_lavage FROM salle sa JOIN site si ON si.id=sa.site_id ORDER BY si.code,sa.ordre,sa.nom",
+        "SELECT sa.id,si.code AS site,sa.nom,sa.type,sa.dernier_lavage,CAST(julianday('now','localtime')-julianday(sa.dernier_lavage) AS INTEGER) AS jours_depuis_lavage FROM salle sa JOIN site si ON si.id=sa.site_id ORDER BY si.code,sa.ordre,sa.nom",
     )
     .await?;
     let mut ctx = context(&session);
@@ -13863,7 +13863,7 @@ async fn aliment_previsions(
     // même facture, plutôt que de le compter en entier sur chacune.
     let consommation_bandes = generic_rows(
         &state.pool,
-        "SELECT b.id,b.code,CAST(COALESCE(SUM(l.tonnage*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))),0) AS REAL) AS tonnage_90j FROM bande b JOIN affectationfacturebande af ON af.categorie='aliment' AND af.bande_id=b.id JOIN livraisonaliment l ON l.id=af.facture_id WHERE b.active=1 AND l.date>=date('now','-90 days') GROUP BY b.id,b.code ORDER BY tonnage_90j DESC",
+        "SELECT b.id,b.code,CAST(COALESCE(SUM(l.tonnage*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))),0) AS REAL) AS tonnage_90j FROM bande b JOIN affectationfacturebande af ON af.categorie='aliment' AND af.bande_id=b.id JOIN livraisonaliment l ON l.id=af.facture_id WHERE b.active=1 AND l.date>=date('now','localtime','-90 days') GROUP BY b.id,b.code ORDER BY tonnage_90j DESC",
     )
     .await?;
     let sites = generic_rows(&state.pool, "SELECT id,code,nom FROM site ORDER BY code").await?;
@@ -14305,7 +14305,7 @@ async fn vente_session_creer(
         .execute(&mut *tx)
         .await?;
     let deadline = form_date(&form, "date_limite_commandes")?.or_else(|| delivery_date.clone());
-    let id=sqlx::query("INSERT INTO sessionventedirecte(nom,date_creation,date_livraison,date_limite_commandes,nb_porcs,bande_reference,active,notes) VALUES(?,date('now'),?,?,?,?,1,?)").bind(name).bind(&delivery_date).bind(deadline).bind(form_i64(&form,"nb_porcs").unwrap_or(0).max(0)).bind(form_text(&form,"bande_reference")).bind(form_text(&form,"notes")).execute(&mut *tx).await?.last_insert_rowid();
+    let id=sqlx::query("INSERT INTO sessionventedirecte(nom,date_creation,date_livraison,date_limite_commandes,nb_porcs,bande_reference,active,notes) VALUES(?,date('now','localtime'),?,?,?,?,1,?)").bind(name).bind(&delivery_date).bind(deadline).bind(form_i64(&form,"nb_porcs").unwrap_or(0).max(0)).bind(form_text(&form,"bande_reference")).bind(form_text(&form,"notes")).execute(&mut *tx).await?.last_insert_rowid();
     sqlx::query("INSERT OR IGNORE INTO coutelevageventedirecte(session_vente_id) VALUES(?)")
         .bind(id)
         .execute(&mut *tx)

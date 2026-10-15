@@ -120,7 +120,7 @@ fn version_227_calcule_les_couts_et_permet_la_modification_client() {
 
     assert!(routes.contains("/vente-directe/session/{id}/cout-calculer"));
     assert!(routes.contains("/commande/modifier/{token}"));
-    assert!(routes.contains("date_limite_commandes IS NULL OR date('now')"));
+    assert!(routes.contains("date_limite_commandes IS NULL OR date('now','localtime')"));
     assert!(sessions.contains("coût d’élevage"));
     assert!(sessions.contains("par porc"));
     assert!(sessions.contains("par kg"));

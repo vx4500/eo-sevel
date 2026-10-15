@@ -11,7 +11,7 @@ SELECT e.id,e.date,b.code AS bande,e.nes_totaux,e.nes_vifs,e.mort_nes,e.momifies
  pe.date_sevrage,pe.nb_sevres,pe.poids_moyen,pe.eld_entree AS eld1,pe.eld_sortie AS eld2,
  pe.adoptes,pe.retires,pe.pertes,pe.presents,pe.cloturee
 FROM evenement e JOIN portee_effectif pe ON pe.id=e.id LEFT JOIN bande b ON b.id=e.bande_id
-WHERE e.truie_id=? AND e.date<=date('now') ORDER BY e.date DESC,e.id DESC
+WHERE e.truie_id=? AND e.date<=date('now','localtime') ORDER BY e.date DESC,e.id DESC
 "#,
     )
     .bind(sow.id)

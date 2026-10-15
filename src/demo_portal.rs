@@ -94,7 +94,7 @@ async fn completer_economie(pool: &SqlitePool) -> anyhow::Result<()> {
         ).fetch_optional(&mut *tx).await?;
         let Some((id, date)) = ancienne else { break };
         let suffisant: bool = sqlx::query_scalar(
-            "SELECT date(?) <= date('now','start of month','-5 years','-180 days')",
+            "SELECT date(?) <= date('now','localtime','start of month','-5 years','-180 days')",
         )
         .bind(&date)
         .fetch_one(&mut *tx)
@@ -111,9 +111,9 @@ async fn completer_economie(pool: &SqlitePool) -> anyhow::Result<()> {
             .await?;
     }
     let bandes: Vec<(i64, String, String, i64, i64)> = sqlx::query_as(
-        "SELECT b.id,b.code,b.date_mb,CAST(ROUND(b.cs_total_sevres*0.96) AS INTEGER),CAST(julianday(date('now'))-julianday(b.date_mb) AS INTEGER) FROM bande b
+        "SELECT b.id,b.code,b.date_mb,CAST(ROUND(b.cs_total_sevres*0.96) AS INTEGER),CAST(julianday(date('now','localtime'))-julianday(b.date_mb) AS INTEGER) FROM bande b
          WHERE b.id IN(SELECT row_id FROM demoobjet WHERE table_name='bande')
-         AND b.code LIKE 'DEMO-%' AND date(b.date_mb)<=date('now') AND b.cs_total_sevres>0
+         AND b.code LIKE 'DEMO-%' AND date(b.date_mb)<=date('now','localtime') AND b.cs_total_sevres>0
          AND NOT EXISTS(SELECT 1 FROM ventelot v WHERE v.bande_id=b.id)
          AND NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.bande_id=b.id)
          AND NOT EXISTS(SELECT 1 FROM livraisonaliment a WHERE a.bande_id=b.id)
@@ -361,10 +361,10 @@ mod tests {
         sqlx::raw_sql("INSERT INTO parametre(cle,valeur) VALUES('demo_portal','1');
           INSERT INTO utilisateur(identifiant,nom,hash_mdp,role) VALUES('testeur','Testeur','hash-conserve','eleveur');
           INSERT INTO bande(id,code,date_mb,cs_total_sevres) VALUES
-          (1,'DEMO-B1',date('now','-5 years','-210 days'),1200),
-          (2,'DEMO-B2',date('now','-10 days'),1200),
-          (3,'DEMO-B3',date('now','-250 days'),1200),
-          (4,'AUTRE',date('now','-300 days'),1200);
+          (1,'DEMO-B1',date('now','localtime','-5 years','-210 days'),1200),
+          (2,'DEMO-B2',date('now','localtime','-10 days'),1200),
+          (3,'DEMO-B3',date('now','localtime','-250 days'),1200),
+          (4,'AUTRE',date('now','localtime','-300 days'),1200);
           INSERT INTO demoobjet(table_name,row_id) VALUES('bande',1),('bande',2),('bande',3);
           INSERT INTO achatsemence(bande_id,montant_ht,note) VALUES(3,42,'Saisie à conserver');").execute(&p).await?;
         completer_economie(&p).await?;
@@ -438,7 +438,7 @@ mod tests {
             "achatsemence",
             "achatgenetique",
         ] {
-            let sql = format!("SELECT MIN(date)<=date('now','start of month','-5 years'),SUM(CASE WHEN date>date('now') THEN 1 ELSE 0 END) FROM {table}");
+            let sql = format!("SELECT MIN(date)<=date('now','localtime','start of month','-5 years'),SUM(CASE WHEN date>date('now','localtime') THEN 1 ELSE 0 END) FROM {table}");
             let (cinq_ans, futur): (bool, i64) = sqlx::query_as(&sql).fetch_one(&p).await?;
             assert!(cinq_ans, "historique insuffisant : {table}");
             assert_eq!(futur, 0, "date future : {table}");
@@ -450,7 +450,7 @@ mod tests {
             "achatsemence",
             "achatgenetique",
         ] {
-            let query = format!("SELECT COUNT(DISTINCT substr(date,1,7)) FROM {table} WHERE date>=date('now','start of month','-5 years') AND date<date('now','start of month')");
+            let query = format!("SELECT COUNT(DISTINCT substr(date,1,7)) FROM {table} WHERE date>=date('now','localtime','start of month','-5 years') AND date<date('now','localtime','start of month')");
             let mois: i64 = sqlx::query_scalar(&query).fetch_one(&p).await?;
             assert_eq!(mois, 60, "mois manquant : {table}");
         }
@@ -484,7 +484,7 @@ mod tests {
             .execute(&p)
             .await?;
         sqlx::raw_sql("INSERT INTO parametre(cle,valeur) VALUES('demo_portal','1');
-          INSERT INTO bande(id,code,date_mb,cs_total_sevres) VALUES(1,'DEMO-B1',date('now','-200 days'),1200);
+          INSERT INTO bande(id,code,date_mb,cs_total_sevres) VALUES(1,'DEMO-B1',date('now','localtime','-200 days'),1200);
           INSERT INTO demoobjet(table_name,row_id) VALUES('bande',1);
           CREATE TRIGGER panne BEFORE INSERT ON achatveto BEGIN SELECT RAISE(ABORT,'panne simulée'); END;").execute(&p).await?;
         assert!(completer_economie(&p).await.is_err());

@@ -149,7 +149,7 @@ fn la_version_224_gere_la_file_ia_et_la_capacite_de_verraterie() {
     // mais surtout pas la préremplir avec les chiffres d'un élevage donné.
     assert!(migration.contains("('capacite_verraterie',0"));
     assert!(!migration.contains("('capacite_verraterie',31"));
-    assert!(routes.contains("bande_code=CASE WHEN date(?)<=date('now')"));
+    assert!(routes.contains("bande_code=CASE WHEN date(?)<=date('now','localtime')"));
     assert!(routes.contains("Sortie maternité"));
     assert!(routes.contains("Retour IA"));
     assert!(template.contains("action=\"/truies/affecter-bande\""));

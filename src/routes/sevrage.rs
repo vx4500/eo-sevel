@@ -14,12 +14,12 @@ async fn portees_ouvertes(pool: &SqlitePool, band_id: i64) -> AppResult<Vec<Valu
     rows_to_json(
         sqlx::query(
             "SELECT pe.id AS mise_bas_id,t.id AS truie_id,t.num_travail,t.rang,pe.date AS date_mb,\
-             CAST(julianday('now')-julianday(pe.date) AS INTEGER) AS age,\
+             CAST(julianday('now','localtime')-julianday(pe.date) AS INTEGER) AS age,\
              e.nes_vifs AS nv,pe.adoptes,pe.retires,pe.pertes,pe.presents,\
              s.nom AS salle,c.nom AS case_nom \
              FROM portee_effectif pe JOIN truie t ON t.id=pe.truie_id JOIN evenement e ON e.id=pe.id \
              LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) LEFT JOIN salle s ON s.id=c.salle_id \
-             WHERE pe.bande_id=? AND pe.cloturee=0 AND pe.date<=date('now') \
+             WHERE pe.bande_id=? AND pe.cloturee=0 AND pe.date<=date('now','localtime') \
              ORDER BY s.nom,c.nom,CAST(t.num_travail AS INTEGER)",
         )
         .bind(band_id)
@@ -234,7 +234,7 @@ pub(super) async fn enregistrer(
         let portee = sqlx::query(
             "SELECT pe.id,pe.date,pe.presents,t.num_travail,COALESCE(e.case_id,t.case_id) AS case_source \
              FROM portee_effectif pe JOIN truie t ON t.id=pe.truie_id JOIN evenement e ON e.id=pe.id \
-             WHERE pe.truie_id=? AND pe.bande_id=? AND pe.cloturee=0 AND pe.date<=date('now') \
+             WHERE pe.truie_id=? AND pe.bande_id=? AND pe.cloturee=0 AND pe.date<=date('now','localtime') \
              ORDER BY pe.date DESC,pe.id DESC LIMIT 1",
         )
         .bind(truie_id)
@@ -622,11 +622,11 @@ mod tests {
              INSERT INTO salle(id,site_id,nom,type) VALUES(1,1,'Mater','maternite'),(2,1,'PS','post_sevrage'),(3,1,'Verraterie','verraterie'); \
              INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'M1'),(2,2,'P1'); \
              INSERT INTO causeperte(libelle) VALUES('Autre'); \
-             INSERT INTO bande(id,code,date_mb,active) VALUES(1,'B1.01',date('now','-28 day'),1); \
+             INSERT INTO bande(id,code,date_mb,active) VALUES(1,'B1.01',date('now','localtime','-28 day'),1); \
              INSERT INTO truie(id,num_travail,bande_code,case_id,salle_id,rang) VALUES(1,'T1','B1.01',1,1,2),(2,'T2','B1.01',1,1,3),(3,'T3','B1.01',1,1,1); \
              INSERT INTO evenement(id,type,date,truie_id,bande_id,nes_totaux,nes_vifs,case_id,suivi_actif) VALUES \
-             (10,'mise_bas',date('now','-28 day'),1,1,14,13,1,0),(11,'mise_bas',date('now','-28 day'),2,1,12,12,1,0),(12,'mise_bas',date('now','-28 day'),3,1,10,10,1,0); \
-             INSERT INTO perteporcelet(truie_id,bande_id,nb,cause,date,evenement_id) VALUES(1,1,1,'Autre',date('now','-20 day'),10);",
+             (10,'mise_bas',date('now','localtime','-28 day'),1,1,14,13,1,0),(11,'mise_bas',date('now','localtime','-28 day'),2,1,12,12,1,0),(12,'mise_bas',date('now','localtime','-28 day'),3,1,10,10,1,0); \
+             INSERT INTO perteporcelet(truie_id,bande_id,nb,cause,date,evenement_id) VALUES(1,1,1,'Autre',date('now','localtime','-20 day'),10);",
         )
         .execute(&state.pool)
         .await
@@ -685,7 +685,7 @@ mod tests {
                 .await?;
         assert_eq!(sevres, 34);
         let pertes: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM perteporcelet WHERE date=date('now')")
+            sqlx::query_scalar("SELECT COUNT(*) FROM perteporcelet WHERE date=date('now','localtime')")
                 .fetch_one(&state.pool)
                 .await?;
         assert_eq!(pertes, 0);
@@ -725,7 +725,7 @@ mod tests {
         let state = elevage().await;
         sqlx::raw_sql(
             "INSERT INTO truie(id,num_travail,bande_code,rang) VALUES(4,'T4','B1.01',2); \
-             INSERT INTO evenement(id,type,date,truie_id,bande_id,nes_totaux,nes_vifs,suivi_actif) VALUES(13,'mise_bas',date('now','-20 day'),4,1,0,0,0);",
+             INSERT INTO evenement(id,type,date,truie_id,bande_id,nes_totaux,nes_vifs,suivi_actif) VALUES(13,'mise_bas',date('now','localtime','-20 day'),4,1,0,0,0);",
         )
         .execute(&state.pool)
         .await?;
@@ -765,7 +765,7 @@ mod tests {
         let state = elevage().await;
         // Bande dont l'IA prévue tombe aujourd'hui (gestation par défaut 115 j).
         sqlx::raw_sql(
-            "INSERT INTO bande(id,code,date_mb,active) VALUES(2,'B2.33',date('now','+115 day'),1); \
+            "INSERT INTO bande(id,code,date_mb,active) VALUES(2,'B2.33',date('now','localtime','+115 day'),1); \
              INSERT INTO truie(id,num_travail,rang) VALUES(5,'T5',2);",
         )
         .execute(&state.pool)
@@ -779,7 +779,7 @@ mod tests {
         // Loin de toute date d'IA prévue : pas de bande inventée.
         assert_eq!(bande_pour_ia(&mut conn, 5, "2020-01-01", 115).await?, None);
         // IA saisie sans bande, puis truie affectée à la bande : rattachée.
-        sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES('ia',date('now','-3 day'),5,0)")
+        sqlx::query("INSERT INTO evenement(type,date,truie_id,suivi_actif) VALUES('ia',date('now','localtime','-3 day'),5,0)")
             .execute(&mut *conn)
             .await?;
         sqlx::query("UPDATE truie SET bande_code='B2.33' WHERE id=5")
@@ -902,7 +902,7 @@ mod tests {
                     || ligne.contains("'2025-")
                     || ligne.contains("'2999-")
                     || ligne.contains("raw_sql")
-                    || ligne.contains("date('now'")
+                    || ligne.contains("date('now','localtime'")
                     || ligne.trim_start().starts_with("//")
                     || ligne.contains("fixture");
                 if ligne.contains(&["INSERT INTO evenement", "("].concat()) && !fixture {
