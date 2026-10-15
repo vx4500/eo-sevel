@@ -3512,7 +3512,7 @@ async fn bande_detail(
     // cette bande, avec sa part si elle est aussi affectée à d'autres bandes.
     let lignes_depenses = generic_rows(&state.pool, &format!(
         "WITH nb AS (SELECT categorie,facture_id,COUNT(*) AS n FROM affectationfacturebande GROUP BY categorie,facture_id) \
-         SELECT 'Aliment' AS categorie,x.date,COALESCE(x.fournisseur,x.produit,'—') AS libelle,x.produit,ROUND(COALESCE(x.montant_ht/nb.n,0),2) AS montant,nb.n AS partage FROM livraisonaliment x JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id WHERE af.bande_id={id} \
+         SELECT 'Aliment' AS categorie,x.date,COALESCE(x.fournisseur,x.produit,'—') AS libelle,x.produit,ROUND(COALESCE(x.montant_ht*COALESCE(af.part,1.0/nb.n),0),2) AS montant,nb.n AS partage FROM livraisonaliment x JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id WHERE af.bande_id={id} \
          UNION ALL SELECT 'Vétérinaire',x.date,COALESCE(x.fournisseur,x.produit,'—'),x.produit,ROUND(COALESCE(x.montant_ht/nb.n,0),2),nb.n FROM achatveto x JOIN affectationfacturebande af ON af.categorie='veto' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id WHERE af.bande_id={id} \
          UNION ALL SELECT 'Semence',x.date,COALESCE(x.fournisseur,x.designation,'—'),x.designation,ROUND(COALESCE(x.montant_ht/nb.n,0),2),nb.n FROM achatsemence x JOIN affectationfacturebande af ON af.categorie='semence' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id WHERE af.bande_id={id} \
          UNION ALL SELECT 'Génétique',x.date,COALESCE(x.fournisseur,x.designation,'—'),x.designation,ROUND(COALESCE(x.montant_ht/nb.n,0),2),nb.n FROM achatgenetique x JOIN affectationfacturebande af ON af.categorie='genetique' AND af.facture_id=x.id JOIN nb ON nb.categorie=af.categorie AND nb.facture_id=af.facture_id WHERE af.bande_id={id} \
@@ -8859,7 +8859,7 @@ fn cout_consommation(consommation: Option<f64>, prix_unitaire: Option<f64>) -> O
 /// Présence d'une bande, jour par jour : ses truies de l'IA au sevrage,
 /// ses porcelets de la mise-bas au sevrage, puis ses porcs sevrés jusqu'à
 /// leur sortie (vente ou mort).
-struct PresenceBande {
+pub struct PresenceBande {
     debut_truies: NaiveDate,
     mise_bas: NaiveDate,
     sevrage: NaiveDate,
@@ -8871,6 +8871,12 @@ struct PresenceBande {
 
 impl PresenceBande {
     fn effectif(&self, jour: NaiveDate) -> i64 {
+        let (truies, porcs) = self.effectifs(jour);
+        truies + porcs
+    }
+
+    /// (truies, porcs) présents ce jour-là.
+    pub fn effectifs(&self, jour: NaiveDate) -> (i64, i64) {
         let truies = if jour >= self.debut_truies && jour < self.sevrage { self.truies } else { 0 };
         let porcs = if jour < self.mise_bas {
             0
@@ -8880,7 +8886,7 @@ impl PresenceBande {
             let sortis: i64 = self.sorties.iter().filter(|(d, _)| *d <= jour).map(|(_, n)| *n).sum();
             (self.sevres - sortis).max(0)
         };
-        truies + porcs
+        (truies, porcs)
     }
 
     fn animaux_jours(&self, debut: NaiveDate, fin: NaiveDate) -> f64 {
@@ -8894,6 +8900,53 @@ impl PresenceBande {
     }
 }
 
+/// Présence d'une bande lue en base ; `None` si elle n'a pas de date de
+/// mise-bas.
+pub async fn charger_presence(pool: &SqlitePool, id: i64) -> AppResult<Option<PresenceBande>> {
+    let gestation = reglage_i64(pool, "gestation", 115).await?;
+    let sevrage_j = reglage_i64(pool, "sevrage", 28).await?;
+    let bande: Option<(String, Option<String>, Option<i64>)> =
+        sqlx::query_as("SELECT code,date_mb,COALESCE(cs_truies_mb,cs_truies_saillies) FROM bande WHERE id=?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    let Some((code, Some(date_mb), truies_cs)) = bande else { return Ok(None) };
+    let Some(mise_bas) = parse_stored_date(&date_mb) else { return Ok(None) };
+    let (truies_mb, nes_vifs): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(DISTINCT truie_id),CAST(COALESCE(SUM(nes_vifs),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='mise_bas'",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    let (sevrage, sevres): (Option<String>, i64) = sqlx::query_as(
+        "SELECT MIN(date),CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage'",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    let lignes: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT date,CAST(COALESCE(nb_porcs,0) AS INTEGER) FROM venteapport WHERE bande_id=?1 AND date IS NOT NULL \
+         UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=?2 AND date IS NOT NULL \
+         UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM mouvementstock WHERE bande_code=?2 AND code_ifip IN('39','49') AND date IS NOT NULL",
+    )
+    .bind(id)
+    .bind(&code)
+    .fetch_all(pool)
+    .await?;
+    Ok(Some(PresenceBande {
+        debut_truies: mise_bas - Duration::days(gestation),
+        mise_bas,
+        sevrage: sevrage
+            .as_deref()
+            .and_then(parse_stored_date)
+            .unwrap_or(mise_bas + Duration::days(sevrage_j)),
+        truies: if truies_mb > 0 { truies_mb } else { truies_cs.unwrap_or(0) },
+        nes_vifs,
+        sevres,
+        sorties: lignes.iter().filter_map(|(d, n)| parse_stored_date(d).map(|d| (d, *n))).collect(),
+    }))
+}
+
 /// Animaux-jours de chaque bande sur [debut, fin).
 async fn animaux_jours_par_bande(
     pool: &SqlitePool,
@@ -8901,53 +8954,13 @@ async fn animaux_jours_par_bande(
     debut: NaiveDate,
     fin: NaiveDate,
 ) -> AppResult<Vec<(String, f64)>> {
-    let gestation = reglage_i64(pool, "gestation", 115).await?;
-    let sevrage_j = reglage_i64(pool, "sevrage", 28).await?;
     let mut sortie = Vec::new();
     for code in codes {
-        let bande: Option<(i64, Option<String>, Option<i64>)> =
-            sqlx::query_as("SELECT id,date_mb,COALESCE(cs_truies_mb,cs_truies_saillies) FROM bande WHERE code=?")
-                .bind(code)
-                .fetch_optional(pool)
-                .await?;
-        let Some((id, Some(date_mb), truies_cs)) = bande else { continue };
-        let Some(mise_bas) = parse_stored_date(&date_mb) else { continue };
-        let (truies_mb, nes_vifs): (i64, i64) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT truie_id),CAST(COALESCE(SUM(nes_vifs),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='mise_bas'",
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
-        let (sevrage, sevres): (Option<String>, i64) = sqlx::query_as(
-            "SELECT MIN(date),CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage'",
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
-        let mut sorties: Vec<(NaiveDate, i64)> = Vec::new();
-        let lignes: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT date,CAST(COALESCE(nb_porcs,0) AS INTEGER) FROM venteapport WHERE bande_id=?1 AND date IS NOT NULL \
-             UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=?2 AND date IS NOT NULL \
-             UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM mouvementstock WHERE bande_code=?2 AND code_ifip IN('39','49') AND date IS NOT NULL",
-        )
-        .bind(id)
-        .bind(code)
-        .fetch_all(pool)
-        .await?;
-        sorties.extend(lignes.iter().filter_map(|(d, n)| parse_stored_date(d).map(|d| (d, *n))));
-        let presence = PresenceBande {
-            debut_truies: mise_bas - Duration::days(gestation),
-            mise_bas,
-            sevrage: sevrage
-                .as_deref()
-                .and_then(parse_stored_date)
-                .unwrap_or(mise_bas + Duration::days(sevrage_j)),
-            truies: if truies_mb > 0 { truies_mb } else { truies_cs.unwrap_or(0) },
-            nes_vifs,
-            sevres,
-            sorties,
-        };
-        sortie.push((code.clone(), presence.animaux_jours(debut, fin)));
+        let id: Option<i64> = sqlx::query_scalar("SELECT id FROM bande WHERE code=?").bind(code).fetch_optional(pool).await?;
+        let Some(id) = id else { continue };
+        if let Some(presence) = charger_presence(pool, id).await? {
+            sortie.push((code.clone(), presence.animaux_jours(debut, fin)));
+        }
     }
     Ok(sortie)
 }
@@ -9418,7 +9431,7 @@ const GTE_LOTS_SQL: &str = "SELECT b.id,b.code,b.site,\
          CAST(COALESCE(r.achat,0) AS REAL),CAST(COALESCE(r.entres,0) AS INTEGER) \
          FROM bande b \
          LEFT JOIN (SELECT bande_id,SUM(COALESCE(nb_porcs,0)) AS porcs,SUM(COALESCE(poids_total,0)) AS poids,SUM(COALESCE(montant_ht,0)) AS recettes FROM ventelot GROUP BY bande_id) v ON v.bande_id=b.id \
-         LEFT JOIN (SELECT af.bande_id,SUM(COALESCE(l.tonnage,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id)) AS tonnes,SUM(COALESCE(l.montant_ht,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id)) AS cout FROM livraisonaliment l JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=l.id GROUP BY af.bande_id) a ON a.bande_id=b.id \
+         LEFT JOIN (SELECT af.bande_id,SUM(COALESCE(l.tonnage,0)*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))) AS tonnes,SUM(COALESCE(l.montant_ht,0)*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))) AS cout FROM livraisonaliment l JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=l.id GROUP BY af.bande_id) a ON a.bande_id=b.id \
          LEFT JOIN (SELECT bande_code,COUNT(*) AS truies FROM truie WHERE reformee=0 GROUP BY bande_code) t ON t.bande_code=b.code \
          LEFT JOIN (SELECT bande_code,SUM(COALESCE(prix_total,0)) AS achat,SUM(COALESCE(effectif,0)) AS entres FROM receptionachat WHERE COALESCE(trim(bande_code),'')<>'' GROUP BY bande_code) r ON r.bande_code=b.code \
          WHERE (v.porcs IS NOT NULL OR a.cout IS NOT NULL OR t.truies IS NOT NULL OR r.entres IS NOT NULL) \
@@ -9432,7 +9445,7 @@ const GTE_LOTS_PERIOD_SQL: &str = "WITH periode(debut,fin) AS (VALUES(?,?)) \
          CAST(COALESCE(r.achat,0) AS REAL),CAST(COALESCE(r.entres,0) AS INTEGER) \
          FROM bande b \
          LEFT JOIN (SELECT bande_id,SUM(COALESCE(nb_porcs,0)) AS porcs,SUM(COALESCE(poids_total,0)) AS poids,SUM(COALESCE(montant_ht,0)) AS recettes FROM ventelot,periode WHERE (debut IS NULL OR date(ventelot.date)>=date(debut)) AND (fin IS NULL OR date(ventelot.date)<=date(fin)) GROUP BY bande_id) v ON v.bande_id=b.id \
-         LEFT JOIN (SELECT af.bande_id,SUM(COALESCE(l.tonnage,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id)) AS tonnes,SUM(COALESCE(l.montant_ht,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id)) AS cout FROM livraisonaliment l JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=l.id CROSS JOIN periode WHERE (debut IS NULL OR date(COALESCE(NULLIF(l.date_reference,''),l.date))>=date(debut)) AND (fin IS NULL OR date(COALESCE(NULLIF(l.date_reference,''),l.date))<=date(fin)) GROUP BY af.bande_id) a ON a.bande_id=b.id \
+         LEFT JOIN (SELECT af.bande_id,SUM(COALESCE(l.tonnage,0)*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))) AS tonnes,SUM(COALESCE(l.montant_ht,0)*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))) AS cout FROM livraisonaliment l JOIN affectationfacturebande af ON af.categorie='aliment' AND af.facture_id=l.id CROSS JOIN periode WHERE (debut IS NULL OR date(COALESCE(NULLIF(l.date_reference,''),l.date))>=date(debut)) AND (fin IS NULL OR date(COALESCE(NULLIF(l.date_reference,''),l.date))<=date(fin)) GROUP BY af.bande_id) a ON a.bande_id=b.id \
          LEFT JOIN (SELECT bande_code,COUNT(*) AS truies FROM truie WHERE reformee=0 GROUP BY bande_code) t ON t.bande_code=b.code \
          LEFT JOIN (SELECT bande_code,SUM(COALESCE(prix_total,0)) AS achat,SUM(COALESCE(effectif,0)) AS entres FROM receptionachat,periode WHERE COALESCE(trim(bande_code),'')<>'' AND (debut IS NULL OR date(receptionachat.date)>=date(debut)) AND (fin IS NULL OR date(receptionachat.date)<=date(fin)) GROUP BY bande_code) r ON r.bande_code=b.code \
          WHERE (v.porcs IS NOT NULL OR a.cout IS NOT NULL OR t.truies IS NOT NULL OR r.entres IS NOT NULL) \
@@ -13850,7 +13863,7 @@ async fn aliment_previsions(
     // même facture, plutôt que de le compter en entier sur chacune.
     let consommation_bandes = generic_rows(
         &state.pool,
-        "SELECT b.id,b.code,CAST(COALESCE(SUM(l.tonnage/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id)),0) AS REAL) AS tonnage_90j FROM bande b JOIN affectationfacturebande af ON af.categorie='aliment' AND af.bande_id=b.id JOIN livraisonaliment l ON l.id=af.facture_id WHERE b.active=1 AND l.date>=date('now','-90 days') GROUP BY b.id,b.code ORDER BY tonnage_90j DESC",
+        "SELECT b.id,b.code,CAST(COALESCE(SUM(l.tonnage*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=l.id))),0) AS REAL) AS tonnage_90j FROM bande b JOIN affectationfacturebande af ON af.categorie='aliment' AND af.bande_id=b.id JOIN livraisonaliment l ON l.id=af.facture_id WHERE b.active=1 AND l.date>=date('now','-90 days') GROUP BY b.id,b.code ORDER BY tonnage_90j DESC",
     )
     .await?;
     let sites = generic_rows(&state.pool, "SELECT id,code,nom FROM site ORDER BY code").await?;
@@ -14449,7 +14462,7 @@ async fn vente_session_cout_calculer(
         .await?
         .ok_or(AppError::NotFound)?;
     let costs = sqlx::query_as::<_, (f64, f64, f64, f64)>(
-        "SELECT CAST(COALESCE((SELECT SUM(x.montant_ht/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=x.id)) FROM livraisonaliment x JOIN affectationfacturebande a ON a.categorie='aliment' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(x.montant_ht/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='veto' AND n.facture_id=x.id)) FROM achatveto x JOIN affectationfacturebande a ON a.categorie='veto' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(x.montant_ht/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='semence' AND n.facture_id=x.id)) FROM achatsemence x JOIN affectationfacturebande a ON a.categorie='semence' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(COALESCE(x.montant_ht,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='genetique' AND n.facture_id=x.id)) FROM achatgenetique x JOIN affectationfacturebande a ON a.categorie='genetique' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL)",
+        "SELECT CAST(COALESCE((SELECT SUM(x.montant_ht*COALESCE(a.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='aliment' AND n.facture_id=x.id))) FROM livraisonaliment x JOIN affectationfacturebande a ON a.categorie='aliment' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(x.montant_ht/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='veto' AND n.facture_id=x.id)) FROM achatveto x JOIN affectationfacturebande a ON a.categorie='veto' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(x.montant_ht/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='semence' AND n.facture_id=x.id)) FROM achatsemence x JOIN affectationfacturebande a ON a.categorie='semence' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL),CAST(COALESCE((SELECT SUM(COALESCE(x.montant_ht,0)/(SELECT COUNT(*) FROM affectationfacturebande n WHERE n.categorie='genetique' AND n.facture_id=x.id)) FROM achatgenetique x JOIN affectationfacturebande a ON a.categorie='genetique' AND a.facture_id=x.id WHERE a.bande_id=?),0) AS REAL)",
     )
     .bind(band_id)
     .bind(band_id)

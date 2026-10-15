@@ -418,6 +418,7 @@ CREATE TABLE IF NOT EXISTS affectationfacturebande (
     bande_id INTEGER NOT NULL REFERENCES bande(id) ON DELETE CASCADE,
     automatique INTEGER NOT NULL DEFAULT 0,
     score REAL,
+    part REAL,
     UNIQUE(categorie,facture_id,bande_id)
 );
 

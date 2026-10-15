@@ -178,6 +178,7 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         ),
         ("bande", "cs_mn_portee", "REAL"),
         ("bande", "cs_adoptes", "INTEGER"),
+        ("affectationfacturebande", "part", "REAL"),
         ("bande", "cs_retires", "INTEGER"),
         ("bande", "site", "TEXT"),
         ("livraisonaliment", "site", "TEXT"),

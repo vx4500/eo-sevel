@@ -178,6 +178,36 @@ pub async fn boars(pool: &SqlitePool) -> anyhow::Result<u64> {
     tx.commit().await?;
     Ok(changed)
 }
+/// Part de chaque bande au prorata de ses animaux présents ce jour-là.
+async fn parts_presence(
+    pool: &SqlitePool,
+    bands: &[i64],
+    date: Option<&str>,
+    stage: &str,
+) -> anyhow::Result<Vec<Option<f64>>> {
+    let Some(day) = date.and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()) else {
+        return Ok(vec![None; bands.len()]);
+    };
+    let mut poids = Vec::new();
+    for band in bands {
+        let (truies, porcs) = match crate::routes::charger_presence(pool, *band).await.map_err(|e| anyhow::anyhow!("{e:?}"))? {
+            Some(p) => p.effectifs(day),
+            None => (0, 0),
+        };
+        poids.push(match stage {
+            "gestation" | "lactation" => truies,
+            "ps" | "croissance" | "finition" => porcs,
+            _ => truies + porcs,
+        } as f64);
+    }
+    let total: f64 = poids.iter().sum();
+    Ok(if total > 0.0 {
+        poids.iter().map(|p| Some(p / total)).collect()
+    } else {
+        vec![None; bands.len()]
+    })
+}
+
 pub async fn refresh(pool: &SqlitePool, category: &str, table: &str) -> anyhow::Result<u64> {
     let extra = if category == "aliment" {
         "stade_aliment"
@@ -195,6 +225,7 @@ pub async fn refresh(pool: &SqlitePool, category: &str, table: &str) -> anyhow::
     let rows:Vec<InvoiceContext>=sqlx::query_as(&format!("SELECT id,COALESCE(NULLIF(trim(date_reference),''),trim(date)),sites_json,site,produit,{extra} FROM {table} x WHERE NOT EXISTS(SELECT 1 FROM affectationfacturecontrole c WHERE c.categorie=? AND c.facture_id=x.id AND c.verrou_manuel=1) AND NOT EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie=? AND a.facture_id=x.id AND a.automatique=0)")).bind(category).bind(category).fetch_all(pool).await?;
     let mut count = 0;
     for (id, date, raw, site, product, stage) in rows {
+        let date_livraison = date.clone();
         let sites = selected_sites(pool, &raw, site.as_deref()).await?;
         let stage = if stage == "auto" {
             feed_stage(product.as_deref().unwrap_or_default())
@@ -224,12 +255,51 @@ pub async fn refresh(pool: &SqlitePool, category: &str, table: &str) -> anyhow::
         } else {
             vec![]
         };
+        // Aliment : chaque bande reçoit une part proportionnelle à ses animaux
+        // présents le jour de la livraison (truies pour gestation/lactation,
+        // porcs pour post-sevrage/croissance/finition, tous sinon). Sans
+        // effectif connu, parts égales (part NULL).
+        let parts = if category == "aliment" {
+            parts_presence(pool, &bands, date_livraison.as_deref(), stage).await?
+        } else {
+            vec![None; bands.len()]
+        };
         let mut tx = pool.begin().await?;
         sqlx::query("DELETE FROM affectationfacturebande WHERE categorie=? AND facture_id=? AND automatique=1").bind(category).bind(id).execute(&mut *tx).await?;
-        for band in bands {
-            count+=sqlx::query("INSERT OR IGNORE INTO affectationfacturebande(categorie,facture_id,bande_id,automatique) VALUES(?,?,?,1)").bind(category).bind(id).bind(band).execute(&mut *tx).await?.rows_affected();
+        for (band, part) in bands.into_iter().zip(parts) {
+            count+=sqlx::query("INSERT OR IGNORE INTO affectationfacturebande(categorie,facture_id,bande_id,automatique,part) VALUES(?,?,?,1,?)").bind(category).bind(id).bind(band).bind(part).execute(&mut *tx).await?.rows_affected();
         }
         tx.commit().await?;
+    }
+    if category == "aliment" {
+        // Factures partagées à la main entre plusieurs bandes : le choix des
+        // bandes reste celui de l'éleveur, seule la part suit la présence.
+        let partagees: Vec<(i64, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT x.id,COALESCE(NULLIF(trim(x.date_reference),''),trim(x.date)),x.stade_aliment,x.produit FROM livraisonaliment x \
+             WHERE (SELECT COUNT(*) FROM affectationfacturebande a WHERE a.categorie='aliment' AND a.facture_id=x.id)>1 \
+             AND EXISTS(SELECT 1 FROM affectationfacturebande a WHERE a.categorie='aliment' AND a.facture_id=x.id AND a.automatique=0)",
+        )
+        .fetch_all(pool)
+        .await?;
+        for (id, date, stade, produit) in partagees {
+            let stade = stade.unwrap_or_else(|| "auto".into());
+            let stage = if stade == "auto" { feed_stage(produit.as_deref().unwrap_or_default()) } else { &stade };
+            let bands: Vec<i64> = sqlx::query_scalar(
+                "SELECT bande_id FROM affectationfacturebande WHERE categorie='aliment' AND facture_id=? ORDER BY id",
+            )
+            .bind(id)
+            .fetch_all(pool)
+            .await?;
+            let parts = parts_presence(pool, &bands, date.as_deref(), stage).await?;
+            for (band, part) in bands.into_iter().zip(parts) {
+                sqlx::query("UPDATE affectationfacturebande SET part=? WHERE categorie='aliment' AND facture_id=? AND bande_id=?")
+                    .bind(part)
+                    .bind(id)
+                    .bind(band)
+                    .execute(pool)
+                    .await?;
+            }
+        }
     }
     Ok(count)
 }

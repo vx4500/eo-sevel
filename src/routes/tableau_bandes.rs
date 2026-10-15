@@ -62,8 +62,8 @@ async fn ic_bande(
     poids_sevrage: Option<f64>,
 ) -> AppResult<(Option<f64>, Option<f64>)> {
     let aliment: f64 = sqlx::query_scalar(&format!(
-        "SELECT CAST(COALESCE(SUM(tonnage*1000.0/(SELECT COUNT(*) FROM affectationfacturebande n \
-         WHERE n.categorie='aliment' AND n.facture_id=livraisonaliment.id)),0) AS REAL) \
+        "SELECT CAST(COALESCE(SUM(tonnage*1000.0*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n \
+         WHERE n.categorie='aliment' AND n.facture_id=livraisonaliment.id))),0) AS REAL) \
          FROM affectationfacturebande af JOIN livraisonaliment ON livraisonaliment.id=af.facture_id \
          WHERE af.categorie='aliment' AND af.bande_id=? AND {} IN ('ps','croissance','finition')",
         gte_periode::STADE_EFFECTIF
@@ -155,6 +155,14 @@ pub(super) async fn page(
         let Some((libelle, decimales)) = objective_definition(cle) else { continue };
         let valeurs: Vec<Option<f64>> = bandes.iter().map(|b| nombre(&b[cle])).collect();
         if valeurs.iter().all(Option::is_none) {
+            continue;
+        }
+        // Dans une bande, chaque porcelet adopté par une truie a été retiré à
+        // une autre : les deux totaux sont égaux, la seconde ligne n'apprend
+        // rien. On ne la garde que si elle diffère (échanges entre bandes).
+        if cle == "cs_retires"
+            && bandes.iter().all(|b| nombre(&b["cs_retires"]) == nombre(&b["cs_adoptes"]))
+        {
             continue;
         }
         let presentes: Vec<f64> = valeurs.iter().flatten().copied().collect();
