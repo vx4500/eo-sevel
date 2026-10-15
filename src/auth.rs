@@ -8,6 +8,10 @@ use rand::{rngs::OsRng, RngCore};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+/// Une session sans aucune requête pendant 30 jours est fermée : un cookie
+/// volé ou un téléphone perdu ne reste pas valable indéfiniment.
+pub const INACTIVITE_MAX_S: i64 = 30 * 24 * 3600;
+
 const SALARIE_DEFAUT: &[&str] = &["planning", "bandes", "truies", "charcutiers", "sanitaire"];
 
 pub const ACCESS_PAGES: &[(&str, &str)] = &[
@@ -210,7 +214,11 @@ fn path_has_prefix(path: &str, prefix: &str) -> bool {
 
 fn section_for_path(path: &str) -> Option<&'static str> {
     match path.trim_start_matches('/').split('/').next().unwrap_or("") {
-        "planning" | "conduite" => Some("planning"),
+        "planning" | "conduite" | "imprimer" => Some("planning"),
+        "rapport" | "rapport-hebdomadaire.pdf" => Some("productivite"),
+        "effectifs" | "etat-donnees" | "marquages" => Some("bandes"),
+        "departs" => Some("charcutiers"),
+        "automatique" => Some("ambiance"),
         "flux" => Some("bandes"),
         "analyse-bandes" => Some("productivite"),
         "bandes" | "bande" | "maternite" | "soin-portee" => Some("bandes"),
@@ -306,6 +314,16 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
         return Redirect::to("/login").into_response();
     }
 
+    if let (Some(_), Some(sid)) = (session.as_ref(), session_id.as_ref()) {
+        let maintenant = chrono::Utc::now().timestamp();
+        let derniere = state.sessions_vues.insert(sid.clone(), maintenant);
+        if derniere.is_some_and(|vue| maintenant - vue > INACTIVITE_MAX_S) {
+            state.sessions.remove(sid);
+            state.sessions_vues.remove(sid);
+            return Redirect::to("/login").into_response();
+        }
+    }
+
     if let Some(session) = session {
         if crate::demo_portal::enabled() {
             if !crate::demo_portal::valid(&state.pool, session.uid, chrono::Utc::now().timestamp())
@@ -351,7 +369,18 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
         {
             return Redirect::to("/").into_response();
         }
-        if session.role == "salarie" && !salarie_path_allowed(&path, &effective_pages(&session)) {
+        // L'assistant lit toute la base (économie, ventes…) : réservé à
+        // l'admin et aux éleveurs sans restriction de pages.
+        if path_has_prefix(&path, "/assistant")
+            && !(session.est_admin() || (session.role == "eleveur" && session.sections.is_empty()))
+        {
+            return Redirect::to("/").into_response();
+        }
+        // Un prestataire extérieur à qui l'on a coché des pages est limité
+        // comme un salarié : rien en dehors de ces pages.
+        if matches!(session.role.as_str(), "salarie" | "engraisseur")
+            && !salarie_path_allowed(&path, &effective_pages(&session))
+        {
             return Redirect::to("/").into_response();
         }
         if session.role != "admin" && !page_allowed(&session, &path) {
@@ -361,7 +390,9 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
             return Redirect::to("/").into_response();
         }
         if !session.module_equipements
-            && (path_has_prefix(&path, "/equipements") || path_has_prefix(&path, "/ambiance"))
+            && (path_has_prefix(&path, "/equipements")
+                || path_has_prefix(&path, "/ambiance")
+                || path_has_prefix(&path, "/automatique"))
         {
             return Redirect::to("/").into_response();
         }
@@ -420,6 +451,17 @@ mod tests {
             salarie_path_allowed("/entretien", &[])
         );
         assert!(salarie_path_allowed("/taches", &["entretien".to_string()]));
+    }
+
+    #[test]
+    fn les_pages_sans_section_suivent_les_droits() {
+        let mut user = session_avec_type("naisseur_engraisseur");
+        user.sections = vec!["planning".into()];
+        assert!(!page_allowed(&user, "/automatique"));
+        assert!(!page_allowed(&user, "/departs"));
+        assert!(!page_allowed(&user, "/rapport"));
+        assert!(page_allowed(&user, "/imprimer"));
+        assert!(!salarie_path_allowed("/assistant", &["planning".to_string()]));
     }
 
     #[test]

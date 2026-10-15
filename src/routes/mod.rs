@@ -113,6 +113,9 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub templates: Arc<Environment<'static>>,
     pub sessions: Arc<DashMap<String, SessionData>>,
+    /// Dernière activité de chaque session (horodatage Unix) : une session
+    /// inactive plus de `auth::INACTIVITE_MAX_S` est fermée.
+    pub sessions_vues: Arc<DashMap<String, i64>>,
 }
 
 impl AppState {
@@ -122,6 +125,7 @@ impl AppState {
             pool,
             templates: Arc::new(templates),
             sessions: Arc::new(DashMap::new()),
+            sessions_vues: Arc::new(DashMap::new()),
         }
     }
 }
@@ -6427,19 +6431,22 @@ async fn gttt_cycle_indicateurs(
         return Ok(());
     }
     let (idsr, reformes, presentes): (Option<f64>, i64, i64) = sqlx::query_as(
-        "SELECT (SELECT ROUND(AVG(j),1) FROM (SELECT julianday(t.date_reforme)-julianday((SELECT MAX(s.date) FROM evenement s WHERE s.truie_id=t.id AND s.type='sevrage' AND s.date<=t.date_reforme)) AS j FROM truie t WHERE t.reformee=1 AND t.date_reforme BETWEEN ?1 AND ?2) WHERE j>=0), \
-         (SELECT COUNT(*) FROM truie WHERE reformee=1 AND date_reforme BETWEEN ?1 AND ?2), \
-         (SELECT COUNT(*) FROM truie WHERE COALESCE(date_entree,'0000-01-01')<=?2 AND (reformee=0 OR date_reforme IS NULL OR date_reforme>=?1))",
+        "SELECT (SELECT ROUND(AVG(j),1) FROM (SELECT julianday(t.date_reforme)-julianday((SELECT MAX(s.date) FROM evenement s WHERE s.truie_id=t.id AND s.type='sevrage' AND s.date<=t.date_reforme)) AS j FROM truie t WHERE t.reformee=1 AND COALESCE(t.statut,'')<>'morte' AND t.date_reforme BETWEEN ?1 AND ?2) WHERE j>=0), \
+         (SELECT COUNT(*) FROM truie WHERE reformee=1 AND COALESCE(statut,'')<>'morte' AND date_reforme BETWEEN ?1 AND ?2), \
+         (SELECT CAST(COALESCE(SUM(MAX(0, julianday(MIN(?2, CASE WHEN reformee=1 AND date_reforme IS NOT NULL THEN date_reforme ELSE ?2 END)) - julianday(MAX(?1, COALESCE(date_entree, ?1))) + 1)), 0) AS INTEGER) FROM truie)",
     )
     .bind(&debut)
     .bind(&fin)
     .fetch_one(pool)
     .await?;
-    let jours = (to - from).num_days() + 1;
     summary.idsr_moy = idsr;
     summary.reformes = Some(reformes);
-    summary.taux_reforme = (presentes > 0 && jours > 0)
-        .then(|| (reformes as f64 / presentes as f64 * 365.0 / jours as f64 * 1000.0).round() / 10.0);
+    // Réformes (truies mortes exclues) par truie-année réellement présente :
+    // `presentes` est la somme des jours de présence de chaque truie sur la
+    // période. Compter toutes les truies passées par l'élevage sous-estimait
+    // le taux, et une moyenne début/fin le faussait quand le cheptel démarre.
+    summary.taux_reforme = (presentes > 0)
+        .then(|| (reformes as f64 / (presentes as f64 / 365.0) * 1000.0).round() / 10.0);
     Ok(())
 }
 
@@ -6621,9 +6628,17 @@ fn gttt_summary(litters: &[GtttLitter]) -> GtttSummary {
         } else {
             None
         },
-        sevres_truie_an: if sow_count > 0 {
+        // Portées/truie/an × sevrés par portée **sevrée** : les portées encore
+        // sous la mère comptent dans la période mais n'ont pas de sevrés, et
+        // les diviser d'office tirait le résultat vers le bas (−5 % en 10/2026).
+        sevres_truie_an: if sow_count > 0 && !with_weaning.is_empty() {
+            let sevres_par_portee = with_weaning
+                .iter()
+                .map(|litter| litter.weaned.unwrap_or(0.0))
+                .sum::<f64>()
+                / with_weaning.len() as f64;
             annual_factor
-                .map(|factor| total_weaned / sow_count as f64 * factor)
+                .map(|factor| valid.len() as f64 / sow_count as f64 * factor * sevres_par_portee)
                 .map(|value| (value * 10.0).round() / 10.0)
         } else {
             None
@@ -8744,6 +8759,10 @@ async fn present_bands(pool: &SqlitePool, site: Option<&str>, day: &str) -> AppR
     else {
         return Ok(vec![]);
     };
+    // Fenêtre de présence d'une bande : de l'IA (gestation avant la
+    // mise-bas) au départ, selon les réglages de conduite.
+    let gestation = reglage_i64(pool, "gestation", 115).await?;
+    let depart = reglage_i64(pool, "depart", 225).await?;
     let rows = generic_rows(
         pool,
         "SELECT b.code,b.date_mb,COALESCE((SELECT s.code FROM site s WHERE lower(trim(b.site)) IN (lower(trim(s.code)),lower(trim(COALESCE(s.nom,'')))) LIMIT 1),b.site) AS site FROM bande b WHERE date_mb IS NOT NULL",
@@ -8765,8 +8784,8 @@ async fn present_bands(pool: &SqlitePool, site: Option<&str>, day: &str) -> AppR
             if site.is_some() && site != row_site {
                 continue;
             }
-            if day >= mb - Duration::days(115)
-                && day <= mb + Duration::days(225)
+            if day >= mb - Duration::days(gestation)
+                && day <= mb + Duration::days(depart)
                 && !code.is_empty()
             {
                 out.push(code.to_string());
@@ -13622,7 +13641,12 @@ async fn aliment_previsions(
                     *niveau_actuel,
                     jours,
                 );
-                let rupture = conso.and_then(|c| jours_avant_rupture(*niveau_actuel, c));
+                // Compté à partir d'aujourd'hui, pas du jour du relevé : un
+                // relevé vieux de 5 jours annonçait la rupture 5 jours trop tard.
+                let depuis_releve = (Local::now().date_naive() - actuel).num_days().max(0) as f64;
+                let rupture = conso
+                    .and_then(|c| jours_avant_rupture(*niveau_actuel, c))
+                    .map(|j| (j - depuis_releve).max(0.0));
                 if let Some(object) = entry.as_object_mut() {
                     object.insert("niveau_actuel".into(), json!(niveau_actuel));
                     object.insert(
@@ -14663,6 +14687,7 @@ async fn compatibility_fallback(
         return Redirect::to("/login").into_response();
     }
     tracing::warn!(%path, methode = %request.method(), "route inconnue");
+    let path = parity::escape_html(&path);
     (StatusCode::NOT_IMPLEMENTED,Html(format!("<!doctype html><meta charset='utf-8'><main style='font-family:sans-serif;max-width:760px;margin:60px auto'><h1>Fonction non encore portée</h1><p>La route <code>{path}</code> n’est pas encore reliée à une action Rust. Aucune donnée n’a été modifiée.</p><p><a href='/'>Retour à l’accueil</a></p></main>"))).into_response()
 }
 
@@ -14868,6 +14893,20 @@ mod gttt_tests {
         assert_eq!(summary.truies_productives, 2);
         assert_eq!(summary.periode_jours, Some(362));
         assert_eq!(summary.portees_truie_an, Some(2.02));
+        assert_eq!(summary.sevres_truie_an, Some(22.2));
+    }
+
+    #[test]
+    fn une_portee_pas_encore_sevree_ne_fait_pas_baisser_les_sevres_truie_an() {
+        let first_sow = litter(13.0, 1.0, None, 11.0, 0.0, 0.0);
+        let mut second_sow = first_sow.clone();
+        second_sow.sow_number = "T2".into();
+        let mut first_sow_next = first_sow.clone();
+        first_sow_next.farrowing_date = NaiveDate::from_ymd_opt(2026, 7, 1);
+        let mut second_sow_next = second_sow.clone();
+        second_sow_next.farrowing_date = first_sow_next.farrowing_date;
+        second_sow_next.weaned = None;
+        let summary = gttt_summary(&[first_sow, second_sow, first_sow_next, second_sow_next]);
         assert_eq!(summary.sevres_truie_an, Some(22.2));
     }
 
