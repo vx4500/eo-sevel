@@ -46,7 +46,7 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: eo-sevel-2.66.5-linux-x86_64-musl
+          name: eo-sevel-2.66.4-linux-x86_64-musl
           path: |
             target/x86_64-unknown-linux-musl/release/eo-sevel
             target/x86_64-unknown-linux-musl/release/eo-regul
@@ -69,7 +69,7 @@ jobs:
           cp -r static EO_Sevel/static
       - uses: actions/upload-artifact@v4
         with:
-          name: eo-sevel-2.66.5-windows-x86_64
+          name: eo-sevel-2.66.4-windows-x86_64
           path: |
             EO_Sevel
           if-no-files-found: error

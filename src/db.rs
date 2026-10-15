@@ -536,8 +536,6 @@ pub async fn auto_assign_economic_invoices(pool: &SqlitePool) -> anyhow::Result<
 
     changed += crate::affectation::refresh(pool, "aliment", "livraisonaliment").await?;
     changed += crate::affectation::refresh(pool, "veto", "achatveto").await?;
-    sqlx::query("INSERT OR IGNORE INTO reglage(cle,valeur,libelle) VALUES('portees_carriere',5,'Portées par truie sur sa carrière (amortissement des cochettes)')").execute(pool).await?;
-    changed += crate::affectation::amortir_cochettes(pool).await?;
     sqlx::query("UPDATE livraisonaliment SET bande_id=(SELECT a.bande_id FROM affectationfacturebande a WHERE a.categorie='aliment' AND a.facture_id=livraisonaliment.id ORDER BY a.id LIMIT 1),bandes=(SELECT GROUP_CONCAT(a.bande_id) FROM affectationfacturebande a WHERE a.categorie='aliment' AND a.facture_id=livraisonaliment.id)").execute(pool).await?;
     sqlx::query("UPDATE achatveto SET bande_id=(SELECT a.bande_id FROM affectationfacturebande a WHERE a.categorie='veto' AND a.facture_id=achatveto.id ORDER BY a.id LIMIT 1),bandes=(SELECT GROUP_CONCAT(a.bande_id) FROM affectationfacturebande a WHERE a.categorie='veto' AND a.facture_id=achatveto.id)").execute(pool).await?;
     sqlx::query("UPDATE achatsemence SET bande_id=(SELECT a.bande_id FROM affectationfacturebande a WHERE a.categorie='semence' AND a.facture_id=achatsemence.id ORDER BY a.id LIMIT 1)").execute(pool).await?;
