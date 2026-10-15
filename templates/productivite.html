@@ -31,8 +31,8 @@
 
 </details><details class="card"><summary><b>Résultats techniques d’abattage par bande</b></summary>
 <p>Les moyennes TMP, muscle et plus-value sont pondérées par le nombre de porcs. Frais = retenues groupement, équarrissage, CVEE et cotisations imputées aux apports de la bande.</p>
-<div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Porcs</th><th>Poids moyen</th><th>TMP</th><th>Muscle lot</th><th>Plus-value</th><th>Prix HT/kg</th><th>Montant HT</th><th>Frais (groupement, équarrissage…)</th><th>Montant net</th></tr></thead><tbody>
-{% for t in technique %}<tr><td><a href="/bande/{{ t.id }}"><b>{{ t.code }}</b></a></td><td>{{ t.porcs }}</td><td>{{ t.poids_moyen or '—' }}{% if t.poids_moyen is not none %} kg{% endif %}</td><td>{{ t.tmp or '—' }}</td><td>{{ t.muscle_lot or '—' }}</td><td>{{ t.plus_value or '—' }}</td><td>{{ t.prix_ht_kg or '—' }}{% if t.prix_ht_kg is not none %} €/kg{% endif %}</td><td>{{ t.montant_ht|euro }}</td><td>{{ t.frais_retenues|euro }}</td><td>{{ t.montant_net_bande|euro }}</td></tr>
+<div class="rust-scroll"><table><thead><tr><th>Bande</th><th>Porcs</th><th>Poids moyen</th><th>TMP</th><th>Muscle lot</th><th>Plus-value</th><th>Prix HT/kg</th><th>Total bons HT (frais déduits)</th><th>dont frais (groupement, équarrissage…)</th></tr></thead><tbody>
+{% for t in technique %}<tr><td><a href="/bande/{{ t.id }}"><b>{{ t.code }}</b></a></td><td>{{ t.porcs }}</td><td>{{ t.poids_moyen or '—' }}{% if t.poids_moyen is not none %} kg{% endif %}</td><td>{{ t.tmp or '—' }}</td><td>{{ t.muscle_lot or '—' }}</td><td>{{ t.plus_value or '—' }}</td><td>{{ t.prix_ht_kg or '—' }}{% if t.prix_ht_kg is not none %} €/kg{% endif %}</td><td>{{ t.montant_ht|euro }}</td><td>{{ t.frais_retenues|euro }}</td></tr>
 {% else %}<tr><td colspan="10" class="rust-empty">Aucun apport relié à une bande sur cette période</td></tr>{% endfor %}
 </tbody></table></div>
 

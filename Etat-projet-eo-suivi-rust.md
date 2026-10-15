@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.3** — revue sécurité et calculs : droits d’accès, GTTT, IC par bande, répartitions au temps de présence.
+Version actuelle : **2.66.4** — dates à l’heure de Paris, plage horaire Automatique, retenues d’abattoir comptées une seule fois.
+
+Version Rust 2.66.4 : date('now')/julianday('now') SQLite passés en 'localtime' (entre 0 h et 2 h la date du jour était la veille ; préchauffage eo-regul 1 à 2 h en retard) ; Automatique : la fin de la plage horaire arrête la règle ; marge par bande : aliment avec affectationfacturebande.part, retenues plus soustraites (le « Total bon » Cooperl les inclut déjà en lignes négatives — vérifié sur l’apport 226081270686 : 103,89 + 99,85 = 203,74 €) ; graphique Économie, fiche bande et Productivité alignés.
 
 Version Rust 2.66.3 : Revue — pages sans section rattachées (Automatique→ambiance, Départs→charcutiers, Rapport→productivité, Effectifs/Marquages→bandes), /assistant réservé admin/éleveur sans restriction, prestataire limité comme un salarié et sans /api (sauf causes de perte), sessions fermées après 30 j d’inactivité ; GTTT sevrés/truie/an = portées × sevrés par portée sevrée, taux de réforme sans les mortes par truie-année ; silos : rupture depuis aujourd’hui ; tableau des bandes : aliment PS+engraissement et IC sevrage→vente ; aliment des factures partagées et coûts eau/électricité répartis au prorata des animaux présents (colonne affectationfacturebande.part).
 

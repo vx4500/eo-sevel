@@ -133,9 +133,10 @@ details.eco-pli>summary h2{margin:0;display:inline}
   if(!donnees) return;
   var D = JSON.parse(donnees.textContent), B = (D.bandes||[]).filter(function(b){ return b.porcs>0 || b.aliment>0; });
   var euro = function(v){ return (v<0?'−':'') + Math.round(Math.abs(v)).toLocaleString('fr-FR') + ' €'; };
-  var COUL = {aliment:'#d98b52', veto:'#7fa6c9', semence:'#c9b6d9', genetique:'#8fb3a0', retenues:'#b9b4a8'};
-  var NOMS = {aliment:'Aliment', veto:'Véto', semence:'Semence', genetique:'Génétique', retenues:'Retenues'};
-  function charges(b){ return (b.aliment||0)+(b.veto||0)+(b.semence||0)+(b.genetique||0)+(b.retenues||0); }
+  var COUL = {aliment:'#d98b52', veto:'#7fa6c9', semence:'#c9b6d9', genetique:'#8fb3a0'};
+  var NOMS = {aliment:'Aliment', veto:'Véto', semence:'Semence', genetique:'Génétique'};
+  // Les retenues d'abattoir sont déjà déduites du « Total bon » (recettes) : pas une charge de plus.
+  function charges(b){ return (b.aliment||0)+(b.veto||0)+(b.semence||0)+(b.genetique||0); }
 
   // 1. Barres : recettes (vert) contre charges empilées, marge à droite.
   var zb = document.getElementById('eco-barres');
