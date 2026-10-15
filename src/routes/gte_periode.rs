@@ -246,7 +246,7 @@ const VENTES_SQL: &str = "SELECT \
 /// nom de l'aliment (GESTA, LACTA, CROISSANCE, FINITION, ACTI/PREM'…). En
 /// octobre 2026 presque toutes les livraisons étaient en « auto » : la
 /// consommation des truies sortait à 106 kg/truie/an au lieu d'environ 1,2 t.
-const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto')<>'auto' THEN stade_aliment WHEN upper(produit) LIKE '%GESTA%' OR upper(produit) LIKE '%COCHETTE%' THEN 'gestation' WHEN upper(produit) LIKE '%LACTA%' THEN 'lactation' WHEN upper(produit) LIKE '%FINITION%' THEN 'finition' WHEN upper(produit) LIKE '%CROISSANCE%' THEN 'croissance' WHEN upper(produit) LIKE '%ACTI%' OR upper(produit) LIKE 'PREM''%' OR upper(produit) LIKE '%START%' OR upper(produit) LIKE '%BABY%' OR upper(produit) LIKE '%LAIT%' THEN 'ps' ELSE stade_aliment END)";
+pub(super) const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto')<>'auto' THEN stade_aliment WHEN upper(produit) LIKE '%GESTA%' OR upper(produit) LIKE '%COCHETTE%' THEN 'gestation' WHEN upper(produit) LIKE '%LACTA%' THEN 'lactation' WHEN upper(produit) LIKE '%FINITION%' THEN 'finition' WHEN upper(produit) LIKE '%CROISSANCE%' THEN 'croissance' WHEN upper(produit) LIKE '%ACTI%' OR upper(produit) LIKE 'PREM''%' OR upper(produit) LIKE '%START%' OR upper(produit) LIKE '%BABY%' OR upper(produit) LIKE '%LAIT%' THEN 'ps' ELSE stade_aliment END)";
 
 /// Aliment livré sur la période, en kilos, réparti selon le stade de chaque
 /// livraison. Les livraisons « tous stades », « auto » non tranché ou de

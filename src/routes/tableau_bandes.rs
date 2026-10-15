@@ -48,6 +48,72 @@ fn ecart(valeur: Option<f64>, objectif: Option<f64>, sens: &str) -> &'static str
     }
 }
 
+/// Aliment des porcs (post-sevrage + engraissement) affecté à la bande, en kg,
+/// et indice de consommation du sevrage à la vente. Les kilos produits
+/// comptent chaque porc jusqu'à sa sortie : vendus au poids vif d'abattoir,
+/// morts au poids estimé à leur âge le jour de la mort, restants au poids
+/// estimé aujourd'hui ; moins les kilos entrés au sevrage. `None` tant que
+/// la bande n'a rien vendu : l'IC d'une bande en croissance ne veut rien dire.
+async fn ic_bande(
+    pool: &SqlitePool,
+    id: i64,
+    code: &str,
+    date_mb: &str,
+    poids_sevrage: Option<f64>,
+) -> AppResult<(Option<f64>, Option<f64>)> {
+    let aliment: f64 = sqlx::query_scalar(&format!(
+        "SELECT CAST(COALESCE(SUM(tonnage*1000.0/(SELECT COUNT(*) FROM affectationfacturebande n \
+         WHERE n.categorie='aliment' AND n.facture_id=livraisonaliment.id)),0) AS REAL) \
+         FROM affectationfacturebande af JOIN livraisonaliment ON livraisonaliment.id=af.facture_id \
+         WHERE af.categorie='aliment' AND af.bande_id=? AND {} IN ('ps','croissance','finition')",
+        gte_periode::STADE_EFFECTIF
+    ))
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    let aliment = (aliment > 0.0).then_some(aliment);
+    let Ok(naissance) = NaiveDate::parse_from_str(date_mb.get(..10).unwrap_or(date_mb), "%Y-%m-%d") else {
+        return Ok((aliment, None));
+    };
+    let sevres: i64 = sqlx::query_scalar(
+        "SELECT CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage'",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    let (vendus, carcasse): (i64, f64) = sqlx::query_as(
+        "SELECT CAST(COALESCE(SUM(nb_porcs),0) AS INTEGER),CAST(COALESCE(SUM(poids_total),0) AS REAL) FROM venteapport WHERE bande_id=?",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+    if vendus == 0 || sevres == 0 {
+        return Ok((aliment, None));
+    }
+    let morts: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=?1 AND date IS NOT NULL \
+         UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM mouvementstock WHERE bande_code=?1 AND code_ifip IN('39','49') AND date IS NOT NULL",
+    )
+    .bind(code)
+    .fetch_all(pool)
+    .await?;
+    let age = |d: NaiveDate| (d - naissance).num_days() as f64;
+    // Morts plafonnés aux porcs jamais vendus (déclarations de « clôture »).
+    let mut reste = (sevres - vendus).max(0);
+    let mut kg_morts = 0.0;
+    for (date, n) in morts {
+        let Ok(d) = NaiveDate::parse_from_str(date.get(..10).unwrap_or(&date), "%Y-%m-%d") else { continue };
+        let n = n.clamp(0, reste);
+        reste -= n;
+        kg_morts += n as f64 * gte_periode::poids_a_lage(age(d));
+    }
+    let kg_restants = reste as f64 * gte_periode::poids_a_lage(age(Local::now().date_naive()));
+    let kg_vendus = gte_periode::poids_vif(carcasse, 76.5).unwrap_or(0.0);
+    let kg_entres = sevres as f64 * poids_sevrage.filter(|p| *p > 0.0).unwrap_or(8.0);
+    let produits = kg_vendus + kg_morts + kg_restants - kg_entres;
+    Ok((aliment, aliment.and_then(|a| (produits > 0.0).then(|| a / produits))))
+}
+
 pub(super) async fn page(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -74,6 +140,11 @@ pub(super) async fn page(
         let id = b["id"].as_i64().unwrap_or_default();
         let vendus: i64 = sqlx::query_scalar(conduite::VENDUS_BANDE).bind(id).fetch_one(pool).await?;
         b["vendus"] = json!((vendus > 0).then_some(vendus));
+        let code = b["code"].as_str().unwrap_or_default().to_string();
+        let date_mb = b["date_mb"].as_str().unwrap_or_default().to_string();
+        let (aliment, ic) = ic_bande(pool, id, &code, &date_mb, nombre(&b["cs_poids_sevrage"])).await?;
+        b["aliment_porcs_t"] = json!(aliment.map(|kg| kg / 1000.0));
+        b["ic"] = json!(ic);
     }
 
     let objectifs = generic_rows(pool, "SELECT cle,valeur,sens FROM objectif WHERE actif=1").await?;
@@ -115,6 +186,12 @@ pub(super) async fn page(
                 ("Porcs vendus (abattoir)", 0, vendus),
                 ("Vendus / truie mise bas", 1, ratio("vendus", "cs_truies_mb", 1.0)),
                 ("Vendus / sevrés (%)", 1, ratio("vendus", "cs_total_sevres", 100.0)),
+                (
+                    "Aliment post-sevrage + engraissement (t)",
+                    1,
+                    bandes.iter().map(|b| nombre(&b["aliment_porcs_t"])).collect(),
+                ),
+                ("IC sevrage → vente", 2, bandes.iter().map(|b| nombre(&b["ic"])).collect()),
             ] {
                 let v: Vec<f64> = valeurs.iter().flatten().copied().collect();
                 let moy = (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64);

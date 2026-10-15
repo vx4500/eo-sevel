@@ -376,6 +376,14 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
         {
             return Redirect::to("/").into_response();
         }
+        // Les API de saisie listent toutes les truies, cases et bandes : un
+        // prestataire extérieur n'en a besoin que des causes de perte.
+        if session.role == "engraisseur"
+            && path_has_prefix(&path, "/api")
+            && path != "/api/causes-perte"
+        {
+            return (axum::http::StatusCode::FORBIDDEN, "accès refusé").into_response();
+        }
         // Un prestataire extérieur à qui l'on a coché des pages est limité
         // comme un salarié : rien en dehors de ces pages.
         if matches!(session.role.as_str(), "salarie" | "engraisseur")

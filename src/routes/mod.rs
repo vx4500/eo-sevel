@@ -1901,6 +1901,27 @@ mod energie_tests {
     }
 
     #[test]
+    fn repartir_cout_suit_le_temps_de_presence() {
+        let d = |j: u32| NaiveDate::from_ymd_opt(2026, 9, j).unwrap();
+        let bande = PresenceBande {
+            debut_truies: d(1),
+            mise_bas: d(5),
+            sevrage: d(10),
+            truies: 2,
+            nes_vifs: 20,
+            sevres: 18,
+            sorties: vec![(d(12), 8)],
+        };
+        assert_eq!(bande.effectif(d(1)), 2);
+        assert_eq!(bande.effectif(d(5)), 22);
+        assert_eq!(bande.effectif(d(10)), 18);
+        assert_eq!(bande.effectif(d(12)), 10);
+        assert_eq!(bande.animaux_jours(d(10), d(13)), 18.0 + 18.0 + 10.0);
+        let parts = repartir_cout_par_presence(100.0, &[("A".into(), 300.0), ("B".into(), 100.0), ("C".into(), 0.0)]);
+        assert_eq!(parts, vec![("A".to_string(), 75.0), ("B".to_string(), 25.0)]);
+    }
+
+    #[test]
     fn repartir_cout_par_bande_reste_vide_sans_bande_ou_sans_cout() {
         assert!(repartir_cout_par_bande(100.0, &[]).is_empty());
         assert!(repartir_cout_par_bande(0.0, &["B1.26".to_string()]).is_empty());
@@ -8627,6 +8648,8 @@ async fn energie(
         let mut readings = sqlx::query_as::<_,ReleveCompteur>("SELECT id,compteur_id,date_releve,valeur_index,bandes,note,remplacement_compteur,prix_unitaire FROM releve_compteur WHERE compteur_id=? ORDER BY date_releve,id")
             .bind(meter.id).fetch_all(&state.pool).await?;
         let mut previous: Option<f64> = None;
+        let mut derniere_date: Option<String> = None;
+        let mut dernieres_bandes: Vec<String> = Vec::new();
         let mut enriched = Vec::new();
         for reading in &readings {
             let consumption = if reading.remplacement_compteur {
@@ -8636,6 +8659,11 @@ async fn energie(
             };
             previous = Some(reading.valeur_index);
             let cost = cout_consommation(consumption, reading.prix_unitaire);
+            let previous_date = std::mem::replace(&mut derniere_date, Some(reading.date_releve.clone()));
+            let previous_bandes = std::mem::replace(
+                &mut dernieres_bandes,
+                reading.bandes.as_deref().unwrap_or("").split(',').map(str::trim).filter(|v| !v.is_empty()).map(str::to_string).collect::<Vec<_>>(),
+            );
             if let Some(cost) = cost {
                 let bandes: Vec<String> = reading
                     .bandes
@@ -8646,7 +8674,20 @@ async fn energie(
                     .filter(|value| !value.is_empty())
                     .map(str::to_string)
                     .collect();
-                for (bande, part) in repartir_cout_par_bande(cost, &bandes) {
+                // Répartition au temps de présence : animaux-jours de chaque
+                // bande entre le relevé précédent et celui-ci.
+                let parts = match previous_date.as_deref().and_then(parse_stored_date).zip(parse_stored_date(&reading.date_releve)) {
+                    Some((debut, fin)) if fin > debut => {
+                        let mut candidates = bandes.clone();
+                        candidates.extend(previous_bandes.iter().cloned());
+                        candidates.sort();
+                        candidates.dedup();
+                        let poids = animaux_jours_par_bande(&state.pool, &candidates, debut, fin).await?;
+                        repartir_cout_par_presence(cost, &poids)
+                    }
+                    _ => repartir_cout_par_bande(cost, &bandes),
+                };
+                for (bande, part) in parts {
                     *cout_bandes
                         .entry((bande, meter.r#type.clone()))
                         .or_insert(0.0) += part;
@@ -8815,6 +8856,117 @@ fn cout_consommation(consommation: Option<f64>, prix_unitaire: Option<f64>) -> O
 /// pour l'essentiel indépendamment du nombre de têtes par bande (lavage,
 /// ventilation, chauffage communs), contrairement à l'aliment qui, lui, se
 /// répartit déjà naturellement par les livraisons rattachées à une bande.
+/// Présence d'une bande, jour par jour : ses truies de l'IA au sevrage,
+/// ses porcelets de la mise-bas au sevrage, puis ses porcs sevrés jusqu'à
+/// leur sortie (vente ou mort).
+struct PresenceBande {
+    debut_truies: NaiveDate,
+    mise_bas: NaiveDate,
+    sevrage: NaiveDate,
+    truies: i64,
+    nes_vifs: i64,
+    sevres: i64,
+    sorties: Vec<(NaiveDate, i64)>,
+}
+
+impl PresenceBande {
+    fn effectif(&self, jour: NaiveDate) -> i64 {
+        let truies = if jour >= self.debut_truies && jour < self.sevrage { self.truies } else { 0 };
+        let porcs = if jour < self.mise_bas {
+            0
+        } else if jour < self.sevrage {
+            self.nes_vifs
+        } else {
+            let sortis: i64 = self.sorties.iter().filter(|(d, _)| *d <= jour).map(|(_, n)| *n).sum();
+            (self.sevres - sortis).max(0)
+        };
+        truies + porcs
+    }
+
+    fn animaux_jours(&self, debut: NaiveDate, fin: NaiveDate) -> f64 {
+        let mut jour = debut;
+        let mut total = 0;
+        while jour < fin {
+            total += self.effectif(jour);
+            jour += Duration::days(1);
+        }
+        total as f64
+    }
+}
+
+/// Animaux-jours de chaque bande sur [debut, fin).
+async fn animaux_jours_par_bande(
+    pool: &SqlitePool,
+    codes: &[String],
+    debut: NaiveDate,
+    fin: NaiveDate,
+) -> AppResult<Vec<(String, f64)>> {
+    let gestation = reglage_i64(pool, "gestation", 115).await?;
+    let sevrage_j = reglage_i64(pool, "sevrage", 28).await?;
+    let mut sortie = Vec::new();
+    for code in codes {
+        let bande: Option<(i64, Option<String>, Option<i64>)> =
+            sqlx::query_as("SELECT id,date_mb,COALESCE(cs_truies_mb,cs_truies_saillies) FROM bande WHERE code=?")
+                .bind(code)
+                .fetch_optional(pool)
+                .await?;
+        let Some((id, Some(date_mb), truies_cs)) = bande else { continue };
+        let Some(mise_bas) = parse_stored_date(&date_mb) else { continue };
+        let (truies_mb, nes_vifs): (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT truie_id),CAST(COALESCE(SUM(nes_vifs),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='mise_bas'",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        let (sevrage, sevres): (Option<String>, i64) = sqlx::query_as(
+            "SELECT MIN(date),CAST(COALESCE(SUM(nb_sevres),0) AS INTEGER) FROM evenement WHERE bande_id=? AND type='sevrage'",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        let mut sorties: Vec<(NaiveDate, i64)> = Vec::new();
+        let lignes: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT date,CAST(COALESCE(nb_porcs,0) AS INTEGER) FROM venteapport WHERE bande_id=?1 AND date IS NOT NULL \
+             UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM declarationmort WHERE bande_code=?2 AND date IS NOT NULL \
+             UNION ALL SELECT date,CAST(COALESCE(nombre,0) AS INTEGER) FROM mouvementstock WHERE bande_code=?2 AND code_ifip IN('39','49') AND date IS NOT NULL",
+        )
+        .bind(id)
+        .bind(code)
+        .fetch_all(pool)
+        .await?;
+        sorties.extend(lignes.iter().filter_map(|(d, n)| parse_stored_date(d).map(|d| (d, *n))));
+        let presence = PresenceBande {
+            debut_truies: mise_bas - Duration::days(gestation),
+            mise_bas,
+            sevrage: sevrage
+                .as_deref()
+                .and_then(parse_stored_date)
+                .unwrap_or(mise_bas + Duration::days(sevrage_j)),
+            truies: if truies_mb > 0 { truies_mb } else { truies_cs.unwrap_or(0) },
+            nes_vifs,
+            sevres,
+            sorties,
+        };
+        sortie.push((code.clone(), presence.animaux_jours(debut, fin)));
+    }
+    Ok(sortie)
+}
+
+/// Coût réparti au prorata des animaux-jours ; à parts égales si aucune
+/// présence n'est connue (bandes sans effectif saisi).
+fn repartir_cout_par_presence(cout: f64, poids: &[(String, f64)]) -> Vec<(String, f64)> {
+    let total: f64 = poids.iter().map(|(_, p)| p).sum();
+    if total <= 0.0 {
+        let bandes: Vec<String> = poids.iter().map(|(b, _)| b.clone()).collect();
+        return repartir_cout_par_bande(cout, &bandes);
+    }
+    poids
+        .iter()
+        .filter(|(_, p)| *p > 0.0)
+        .map(|(b, p)| (b.clone(), (cout * p / total * 100.0).round() / 100.0))
+        .collect()
+}
+
 fn repartir_cout_par_bande(cout: f64, bandes: &[String]) -> Vec<(String, f64)> {
     if bandes.is_empty() || cout == 0.0 {
         return Vec::new();
