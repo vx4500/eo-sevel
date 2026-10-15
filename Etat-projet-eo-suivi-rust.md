@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.4** — dates à l’heure de Paris, plage horaire Automatique, retenues d’abattoir comptées une seule fois.
+Version actuelle : **2.66.6** — retour de la génétique sur les bandes choisies.
+
+Version Rust 2.66.6 : annulation de la 2.66.5 à la demande d’Emmanuel — les achats de cochettes restent sur les bandes affectées (cheptel de départ sur B1.52, B2.07, B3.14), pas d’amortissement sur la carrière.
 
 Version Rust 2.66.4 : date('now')/julianday('now') SQLite passés en 'localtime' (entre 0 h et 2 h la date du jour était la veille ; préchauffage eo-regul 1 à 2 h en retard) ; Automatique : la fin de la plage horaire arrête la règle ; marge par bande : aliment avec affectationfacturebande.part, retenues plus soustraites (le « Total bon » Cooperl les inclut déjà en lignes négatives — vérifié sur l’apport 226081270686 : 103,89 + 99,85 = 203,74 €) ; graphique Économie, fiche bande et Productivité alignés.
 

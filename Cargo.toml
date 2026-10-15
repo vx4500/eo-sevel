@@ -1,6 +1,6 @@
 [package]
 name = "eo-sevel"
-version = "2.66.4"
+version = "2.66.6"
 edition = "2021"
 description = "EO_Sevel - suivi d'élevage porcin et régulation d'ambiance, compatible avec les bases SQLite v1.65"
 license = "AGPL-3.0-or-later"
