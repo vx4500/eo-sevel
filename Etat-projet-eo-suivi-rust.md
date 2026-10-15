@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.2** — suivi maternité : seules les truies présentes en maternité.
+Version actuelle : **2.66.3** — revue sécurité et calculs : droits d’accès, GTTT, IC par bande, répartitions au temps de présence.
+
+Version Rust 2.66.3 : Revue — pages sans section rattachées (Automatique→ambiance, Départs→charcutiers, Rapport→productivité, Effectifs/Marquages→bandes), /assistant réservé admin/éleveur sans restriction, prestataire limité comme un salarié et sans /api (sauf causes de perte), sessions fermées après 30 j d’inactivité ; GTTT sevrés/truie/an = portées × sevrés par portée sevrée, taux de réforme sans les mortes par truie-année ; silos : rupture depuis aujourd’hui ; tableau des bandes : aliment PS+engraissement et IC sevrage→vente ; aliment des factures partagées et coûts eau/électricité répartis au prorata des animaux présents (colonne affectationfacturebande.part).
 
 Version Rust 2.66.2 : Suivi maternité — une truie de la bande qui n’est pas dans une salle de maternité (ex. restée en gestante) n’est plus listée, sauf portée déjà sevrée.
 
