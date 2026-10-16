@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.6** — retour de la génétique sur les bandes choisies.
+Version actuelle : **2.66.7** — GTE : truies de réforme hors porcs vendus.
+
+Version Rust 2.66.7 : VENTES_SQL exclut les apports lots_json "reforme":true (6 truies en 02 et 05/2026 comptées comme porcs vendus, poids et TMP) ; leur poids (REFORMES_SQL) reste dans les kilos produits de l’IC global.
 
 Version Rust 2.66.6 : annulation de la 2.66.5 à la demande d’Emmanuel — les achats de cochettes restent sur les bandes affectées (cheptel de départ sur B1.52, B2.07, B3.14), pas d’amortissement sur la carrière.
 

@@ -9611,6 +9611,7 @@ async fn gte(
                 truies_fin: donnees.truies_fin,
                 porcs_vendus: donnees.porcs_vendus,
                 poids_carcasse_kg: donnees.poids_carcasse_kg,
+                poids_carcasse_reformes_kg: donnees.poids_carcasse_reformes_kg,
                 tmp: donnees.tmp,
                 pct_gamme: donnees.pct_gamme,
                 aliment_truies_kg: donnees.aliment_truies_kg,

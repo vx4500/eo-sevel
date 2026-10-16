@@ -235,12 +235,19 @@ const TRUIES_PRESENTES_SQL: &str = "SELECT \
 /// pondérés par le nombre de porcs de chaque apport plutôt que par apport —
 /// sans quoi un apport de trois porcs pèserait autant qu'un apport de deux
 /// cents dans la moyenne.
+/// Les apports de truies de réforme (`lots_json` … `"reforme":true`) ne sont
+/// pas des porcs charcutiers : exclus des porcs vendus, du poids et du TMP,
+/// leurs kilos sont comptés à part (`REFORMES_SQL`) dans la production.
 const VENTES_SQL: &str = "SELECT \
     CAST(COALESCE(SUM(nb_porcs),0) AS INTEGER),\
     CAST(COALESCE(SUM(poids_total),0) AS REAL),\
-    (SELECT SUM(tmp*nb_porcs)/NULLIF(SUM(nb_porcs),0) FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND tmp IS NOT NULL),\
-    (SELECT SUM(tx_qualification*nb_porcs)/NULLIF(SUM(nb_porcs),0) FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND tx_qualification IS NOT NULL) \
-    FROM venteapport WHERE date BETWEEN ?1 AND ?2";
+    (SELECT SUM(tmp*nb_porcs)/NULLIF(SUM(nb_porcs),0) FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND tmp IS NOT NULL AND COALESCE(lots_json,'') NOT LIKE '%\"reforme\":true%'),\
+    (SELECT SUM(tx_qualification*nb_porcs)/NULLIF(SUM(nb_porcs),0) FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND tx_qualification IS NOT NULL AND COALESCE(lots_json,'') NOT LIKE '%\"reforme\":true%') \
+    FROM venteapport WHERE date BETWEEN ?1 AND ?2 AND COALESCE(lots_json,'') NOT LIKE '%\"reforme\":true%'";
+
+/// Poids carcasse des truies de réforme vendues sur la période.
+const REFORMES_SQL: &str = "SELECT CAST(COALESCE(SUM(poids_total),0) AS REAL) FROM venteapport \
+    WHERE date BETWEEN ?1 AND ?2 AND COALESCE(lots_json,'') LIKE '%\"reforme\":true%'";
 
 /// Stade d'une livraison : celui saisi, ou, laissé sur « auto », déduit du
 /// nom de l'aliment (GESTA, LACTA, CROISSANCE, FINITION, ACTI/PREM'…). En
@@ -292,6 +299,8 @@ pub(super) struct DonneesPeriode {
     pub truies_fin: i64,
     pub porcs_vendus: i64,
     pub poids_carcasse_kg: f64,
+    /// Poids carcasse des truies de réforme vendues (hors porcs vendus).
+    pub poids_carcasse_reformes_kg: f64,
     pub tmp: Option<f64>,
     pub pct_gamme: Option<f64>,
     pub aliment_truies_kg: f64,
@@ -350,6 +359,11 @@ pub(super) async fn charger(
             .bind(fin)
             .fetch_one(pool)
             .await?;
+    let poids_carcasse_reformes_kg: f64 = sqlx::query_scalar(REFORMES_SQL)
+        .bind(debut)
+        .bind(fin)
+        .fetch_one(pool)
+        .await?;
     let (
         aliment_truies_kg,
         aliment_ps_kg,
@@ -408,6 +422,7 @@ pub(super) async fn charger(
         truies_fin,
         porcs_vendus,
         poids_carcasse_kg,
+        poids_carcasse_reformes_kg,
         tmp,
         pct_gamme,
         aliment_truies_kg,
@@ -678,7 +693,7 @@ pub(super) fn tableau(
                 ),
                 ligne(
                     "Indice de consommation global",
-                    si_aliment(kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg + donnees.kg_morts_et_stock))),
+                    si_aliment(kg_vifs_vendus.and_then(|kg| indice_consommation(donnees.aliment_total_kg, kg + donnees.kg_morts_et_stock + poids_vif(donnees.poids_carcasse_reformes_kg, rendement_pct).unwrap_or(0.0)))),
                     2,
                     reference_de(orientation, "ic_global"),
                     trou.or(Some(RAISON_IC_TOUS_PORCS)),
@@ -872,6 +887,7 @@ mod tests {
             truies_fin: 220,
             porcs_vendus: 5000,
             poids_carcasse_kg: 470_000.0,
+            poids_carcasse_reformes_kg: 0.0,
             tmp: Some(60.8),
             pct_gamme: Some(82.4),
             aliment_truies_kg: 260_000.0,
@@ -969,6 +985,7 @@ mod tests {
             truies_fin: 220,
             porcs_vendus: 5000,
             poids_carcasse_kg: 470_000.0,
+            poids_carcasse_reformes_kg: 0.0,
             aliment_truies_kg: 260_000.0,
             aliment_ps_kg: 210_000.0,
             aliment_engr_kg: 1_150_000.0,
@@ -1074,6 +1091,7 @@ mod tests {
              ('2024-06-15',1,100,9500,61.0,83.0),\
              ('2024-08-20',1,50,4800,62.0,85.0),\
              ('2025-02-01',1,999,99999,10.0,10.0);\
+             INSERT INTO venteapport(date,nb_porcs,poids_total,tmp,lots_json) VALUES('2024-07-01',3,380,40.0,'[{\"reforme\":true}]');\
              INSERT INTO livraisonaliment(date,tonnage,stade_aliment) VALUES\
              ('2024-02-01',20,'gestation'),\
              ('2024-03-01',10,'lactation'),\
@@ -1106,7 +1124,9 @@ mod tests {
         assert_eq!(d.truies_presentes(), 2.0);
 
         // L'apport de 2025 est hors période.
+        // Les 3 truies de réforme du 01/07 ne sont pas des porcs vendus.
         assert_eq!(d.porcs_vendus, 150);
+        assert_eq!(d.poids_carcasse_reformes_kg, 380.0);
         assert_eq!(d.poids_carcasse_kg, 14300.0);
         // TMP pondéré par l'effectif : (61×100 + 62×50) / 150.
         let tmp = d.tmp.expect("TMP présent");
