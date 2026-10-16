@@ -272,7 +272,7 @@ pub(super) async fn truie_sortie(
             "Sélectionnez un motif de sortie proposé".into(),
         ));
     }
-    sqlx::query("UPDATE truie SET reformee=1,statut='sortie',date_reforme=?,motif_sortie=?,prix_sortie=?,num_apport_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    sqlx::query("UPDATE truie SET reformee=1,case_id=NULL,salle_id=NULL,statut='sortie',date_reforme=?,motif_sortie=?,prix_sortie=?,num_apport_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
         .bind(date).bind(reason).bind(form_f64(&form,"prix_sortie")).bind(form_text(&form,"num_apport_sortie")).bind(id).execute(&state.pool).await?;
     Ok(Redirect::to(&format!("/truie/{id}")).into_response())
 }
@@ -295,7 +295,7 @@ pub(super) async fn truie_reclasser_verrat(
     };
     let mut tx = state.pool.begin().await?;
     sqlx::query("INSERT INTO verrat(code,race,note,actif) SELECT ?,?,?,1 WHERE NOT EXISTS(SELECT 1 FROM verrat WHERE lower(code)=lower(?))").bind(&code).bind(race).bind(note).bind(&code).execute(&mut *tx).await?;
-    sqlx::query("UPDATE truie SET reformee=1,statut='reclasse_verrat',date_reforme=?,motif_sortie='Reclassé verrat',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(form_date(&form,"date")?).bind(id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE truie SET reformee=1,case_id=NULL,salle_id=NULL,statut='reclasse_verrat',date_reforme=?,motif_sortie='Reclassé verrat',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(form_date(&form,"date")?).bind(id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Redirect::to("/truies").into_response())
 }
@@ -1494,7 +1494,7 @@ pub(super) async fn saisie_rapide(
                     "Sélectionnez un motif de sortie proposé".into(),
                 ));
             }
-            sqlx::query("UPDATE truie SET reformee=1,statut='sortie',date_reforme=?,motif_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(date).bind(reason).bind(sow_id).execute(&state.pool).await?;
+            sqlx::query("UPDATE truie SET reformee=1,case_id=NULL,salle_id=NULL,statut='sortie',date_reforme=?,motif_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(date).bind(reason).bind(sow_id).execute(&state.pool).await?;
         }
         "eld" => {
             let sow_id = form_i64(&form, "truie_id")

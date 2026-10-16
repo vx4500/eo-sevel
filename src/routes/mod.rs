@@ -1602,6 +1602,25 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
     }
     let steriles = improductives::a_signaler(pool).await?;
     push_farm_alert(&mut alerts, steriles, "Truies improductives depuis plus de 2 mois : à déclarer stériles", "/truies/improductives", "attention");
+    // Truie déclarée pleine (ou sans écho) dont la dernière IA date de plus
+    // de 120 jours, sans mise-bas ni nouvelle IA depuis : une mise-bas, un
+    // avortement ou une réforme n'a pas été saisi.
+    let pleines_sans_mise_bas: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM truie t WHERE t.reformee=0 AND EXISTS(SELECT 1 FROM evenement i WHERE i.truie_id=t.id AND i.type='ia' \
+         AND i.date=(SELECT MAX(x.date) FROM evenement x WHERE x.truie_id=t.id AND x.type='ia') \
+         AND julianday('now','localtime')-julianday(i.date)>120 \
+         AND NOT EXISTS(SELECT 1 FROM evenement m WHERE m.truie_id=t.id AND m.type='mise_bas' AND m.date>i.date) \
+         AND COALESCE((SELECT lower(e.resultat) FROM evenement e WHERE e.truie_id=t.id AND e.type IN('echo','echographie') AND e.date>i.date ORDER BY e.date DESC,e.id DESC LIMIT 1),'pleine') NOT IN('vide','negative','négative','negatif','non'))",
+    )
+    .fetch_one(pool)
+    .await?;
+    push_farm_alert(
+        &mut alerts,
+        pleines_sans_mise_bas,
+        "Truies pleines sans mise-bas plus de 120 jours après l’IA : mise-bas, avortement ou réforme à saisir",
+        "/truies",
+        "attention",
+    );
     let schedule = load_band_schedule(pool).await?;
     let missing_weaning: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM bande b WHERE b.active=1 AND b.date_mb IS NOT NULL AND date(b.date_mb,printf('+%d day',?))<date('now','localtime') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.bande_id=b.id AND e.type='sevrage')",
@@ -4295,7 +4314,7 @@ async fn truie_reformer(
             "Sélectionnez un motif de sortie proposé".into(),
         ));
     }
-    sqlx::query("UPDATE truie SET reformee=1,statut='reformee',date_reforme=?,motif_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(date).bind(reason).bind(id).execute(&state.pool).await?;
+    sqlx::query("UPDATE truie SET reformee=1,case_id=NULL,salle_id=NULL,statut='reformee',date_reforme=?,motif_sortie=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(date).bind(reason).bind(id).execute(&state.pool).await?;
     Ok(Redirect::to("/truies").into_response())
 }
 

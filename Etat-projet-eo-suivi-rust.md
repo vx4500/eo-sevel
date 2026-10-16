@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.7** — GTE : truies de réforme hors porcs vendus.
+Version actuelle : **2.66.8** — une truie réformée quitte sa case ; alerte truies pleines sans mise-bas.
+
+Version Rust 2.66.8 : les 5 UPDATE de réforme/sortie (mod.rs, parity.rs ×3, import_historique.rs) remettent case_id et salle_id à NULL ; farm_alerts signale les truies dont la dernière IA a plus de 120 j sans mise-bas ni écho vide. Données 16/10 : historiques des truies 500711 (id 80, B3.40) et 0500711 (id 13, B2.33) séparés (import « Historique exporté en juillet 2026 » avait tout mis sur 500711), 2 doublons supprimés ; 500368 et 500371 sorties de leur case.
 
 Version Rust 2.66.7 : VENTES_SQL exclut les apports lots_json "reforme":true (6 truies en 02 et 05/2026 comptées comme porcs vendus, poids et TMP) ; leur poids (REFORMES_SQL) reste dans les kilos produits de l’IC global.
 

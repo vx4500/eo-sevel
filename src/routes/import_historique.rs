@@ -881,7 +881,7 @@ async fn apply_row(
                 )
             });
             sqlx::query(
-                    "UPDATE truie SET reformee=1,statut='sortie',date_reforme=?,motif_sortie=?,note=NULLIF(TRIM(COALESCE(NULLIF(note,'')||' / ','')||COALESCE(?,'')),''),updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    "UPDATE truie SET reformee=1,case_id=NULL,salle_id=NULL,statut='sortie',date_reforme=?,motif_sortie=?,note=NULLIF(TRIM(COALESCE(NULLIF(note,'')||' / ','')||COALESCE(?,'')),''),updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 )
                 .bind(date_reforme)
                 .bind(motif)
