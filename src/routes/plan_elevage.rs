@@ -11,7 +11,8 @@
 
 use super::*;
 
-const TYPES: [&str; 9] = [
+const TYPES: [&str; 10] = [
+    "case",
     "zigbee",
     "relais",
     "salle",
@@ -63,7 +64,14 @@ pub(super) async fn page(
          WHERE categorie IN ('sonde','variateur','interrupteur') ORDER BY nom",
     )
     .await?;
+    let cases = generic_rows(
+        &state.pool,
+        "SELECT c.id, c.salle_id, s.nom AS salle, c.nom, c.num_vanne FROM casesalle c \
+         JOIN salle s ON s.id=c.salle_id ORDER BY s.nom, c.id",
+    )
+    .await?;
     let mut contexte = context(&session);
+    contexte.insert("cases".into(), Value::Array(cases));
     contexte.insert("zigbee".into(), Value::Array(zigbee));
     contexte.insert("relais".into(), Value::Array(relais));
     contexte.insert("image".into(), json!(image > 0));
@@ -141,7 +149,41 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
         objet.insert(cle, valeur.unwrap_or(Value::Null));
         cle_mesure_age(objet, instant - ts);
     }
+    // Cases posées sur le plan : nombre de porcs (inventaire + mouvements),
+    // truies présentes et, en maternité, porcelets de la portée en cours.
+    let case_ids: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, nom, num_vanne FROM casesalle \
+         WHERE id IN (SELECT ref_id FROM plan_repere WHERE type='case')",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut cases = serde_json::Map::new();
+    for (case_id, nom, vanne) in case_ids {
+        let truies: Vec<(String, Option<i64>)> = sqlx::query_as(
+            "SELECT t.num_travail, \
+                    (SELECT p.presents FROM portee_effectif p WHERE p.truie_id=t.id \
+                       AND p.cloturee=0 AND p.date<=date('now','localtime') \
+                     ORDER BY p.date DESC, p.id DESC LIMIT 1) \
+             FROM truie t WHERE t.reformee=0 AND t.case_id=? ORDER BY t.num_travail",
+        )
+        .bind(case_id)
+        .fetch_all(&state.pool)
+        .await?;
+        cases.insert(
+            case_id.to_string(),
+            json!({
+                "nom": nom,
+                "vanne": vanne,
+                "porcs": case_pig_count(&state.pool, case_id).await?.max(0),
+                "truies": truies.into_iter().map(|(num, porcelets)| json!({
+                    "num": num,
+                    "porcelets": porcelets,
+                })).collect::<Vec<_>>(),
+            }),
+        );
+    }
     Ok(axum::Json(json!({
+        "cases": cases,
         "zigbee": zigbee,
         "relais": relais,
         "demon": super::ambiance::etat_demon(&state.pool).await,
@@ -269,7 +311,9 @@ pub(super) async fn repere(
         }
         if !matches!(type_repere.as_str(), "texte" | "zigbee") && ref_id.is_none() {
             return Err(AppError::Invalid(
-                if type_repere == "eclairage" {
+                if type_repere == "case" {
+                    "Choisissez la case"
+                } else if type_repere == "eclairage" {
                     "Choisissez le programme d'éclairage"
                 } else if type_repere == "relais" {
                     "Choisissez le relais"
@@ -290,6 +334,44 @@ pub(super) async fn repere(
             .last_insert_rowid()
     };
     Ok(axum::Json(json!({ "id": id })).into_response())
+}
+
+/// Pose d'un coup toutes les cases d'une salle, en grille autour du point
+/// donné ; les cases déjà sur le plan ne sont pas reposées.
+pub(super) async fn cases_salle(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let salle_id = form_i64(&form, "salle_id")
+        .ok_or_else(|| AppError::Invalid("Choisissez la salle".into()))?;
+    let ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM casesalle WHERE salle_id=? \
+           AND id NOT IN (SELECT ref_id FROM plan_repere WHERE type='case' AND ref_id IS NOT NULL) \
+         ORDER BY CAST(num_vanne AS INTEGER), num_vanne, id",
+    )
+    .bind(salle_id)
+    .fetch_all(&state.pool)
+    .await?;
+    if ids.is_empty() {
+        return Err(AppError::Invalid(
+            "Aucune case à ajouter : la salle n'en a pas, ou elles sont déjà sur le plan".into(),
+        ));
+    }
+    let colonnes = (ids.len() as f64).sqrt().ceil().max(1.0) as usize;
+    for (rang, id) in ids.iter().enumerate() {
+        let x = 25.0 + (rang % colonnes) as f64 * 11.0;
+        let y = 15.0 + (rang / colonnes) as f64 * 9.0;
+        sqlx::query("INSERT INTO plan_repere(type,ref_id,x,y) VALUES('case',?,?,?)")
+            .bind(id)
+            .bind(x.min(98.0))
+            .bind(y.min(98.0))
+            .execute(&state.pool)
+            .await?;
+    }
+    Ok(axum::Json(json!({ "ajoutees": ids.len() })).into_response())
 }
 
 pub(super) async fn repere_supprimer(
@@ -378,6 +460,7 @@ mod tests {
                 programmes => Vec::<i32>::new(),
                 relais => Vec::<i32>::new(),
                 zigbee => Vec::<i32>::new(),
+                cases => Vec::<i32>::new(),
             })
             .unwrap();
         assert!(rendu.contains("Mater 1"));

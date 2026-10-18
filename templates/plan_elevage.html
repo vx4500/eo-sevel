@@ -20,6 +20,9 @@
 .rep.neutre{border-color:#64748b}
 .rep.lampe-on{border-color:#ca8a04;background:#fef9c3}
 .rep.texte{border-style:dashed;border-color:#64748b;background:rgba(255,255,255,.85)}
+.rep-case{padding:1px 5px;font-size:.78rem;text-align:center;line-height:1.15}
+.rep-case .v{font-weight:700;color:#1e3a8a}
+.rep-case.vide{opacity:.6}
 .rep-salle{min-width:110px;text-align:left;padding:4px 8px}
 .rep-salle .nom{font-weight:700;display:block;border-bottom:1px solid #e2e8f0;margin-bottom:2px}
 .rep-salle .ligne{display:flex;gap:8px;justify-content:space-between}
@@ -84,6 +87,8 @@
     <option value="humidite">💧 Hygrométrie</option>
     <option value="ventil">🌀 % de ventilation</option>
     <option value="mode">⚙️ Mode de ventilation</option>
+    <option value="case">🔢 Case (vanne, animaux, truie et porcelets)</option>
+    <option value="cases_salle">🔢 Toutes les cases d'une salle</option>
     <option value="zigbee">📡 Appareil Zigbee (sonde, variateur…)</option>
     <option value="relais">🔌 Relais / lampe (automate)</option>
     <option value="eclairage">💡 Programme d'éclairage</option>
@@ -92,6 +97,7 @@
   <label id="plan-choix-salle">Salle<select id="plan-salle">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
   <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
   <label id="plan-choix-relais" hidden>Relais<select id="plan-relais">{% for p in relais %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun relais autorisé à la commande</option>{% endfor %}</select></label>
+  <label id="plan-choix-case" hidden>Case<select id="plan-case">{% for c in cases %}<option value="{{ c.id }}">{{ c.salle }} — {{ c.nom }}{% if c.num_vanne %} (vanne {{ c.num_vanne }}){% endif %}</option>{% endfor %}</select></label>
   <label id="plan-choix-zigbee" hidden>Appareil<select id="plan-zigbee">{% for z in zigbee %}<option value="{{ z.ieee }}">{{ z.nom }}{% if z.categorie != 'sonde' %} ({{ z.categorie }}){% endif %}</option>{% endfor %}</select></label>
   <label id="plan-choix-texte" hidden>Texte<input id="plan-texte" maxlength="60" placeholder="Fosse, quai, silo…"></label>
   <button type="button" id="plan-ajouter">Ajouter au centre</button>
@@ -119,6 +125,16 @@
   function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function nb(v, d){ return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d).replace('.', ','); }
   function salle(id){ return etat.salles.find(function(s){ return s.id == id; }); }
+  function casep(id){ return etat.cases && etat.cases[id]; }
+  function caseTexte(c){
+    var h = '<span class="v">' + esc(c.vanne ? 'V' + c.vanne : c.nom) + '</span>';
+    if (c.truies && c.truies.length) {
+      c.truies.forEach(function(t){ h += '<br>' + esc(t.num) + (t.porcelets != null ? ' · 🐷 <b>' + t.porcelets + '</b>' : ''); });
+    } else {
+      h += ' 🐖 <b>' + (c.porcs || 0) + '</b>';
+    }
+    return h;
+  }
   function zig(ieee){ return etat.zigbee && etat.zigbee[ieee]; }
   function zigTexte(z){
     var p = [];
@@ -183,6 +199,9 @@
       case 'humidite': return s ? '💧 <b>' + nb(s.h, 0) + '</b> %' : '?';
       case 'ventil': return s ? '🌀 <b>' + nb(s.ventil, 0) + '</b> %' : '?';
       case 'mode': m = mode(s); return '<span title="' + esc(m[1]) + '">' + m[0] + '</span>';
+      case 'case':
+        var cc = casep(r.ref_id);
+        return cc ? caseTexte(cc) : 'Case supprimée';
       case 'zigbee':
         var z = zig(r.libelle);
         return z ? '<span class="petit">' + esc(z.nom) + '</span> ' + zigTexte(z) : '📡 sans valeur';
@@ -201,7 +220,9 @@
       var e = document.createElement('div');
       var cl = 'rep';
       if (r.type == 'salle') cl += ' rep-salle';
+      if (r.type == 'case') { var cc = casep(r.ref_id); cl += ' rep-case neutre' + (cc && !cc.porcs && !(cc.truies || []).length ? ' vide' : ''); }
       if (r.type == 'texte') cl += ' texte';
+      else if (r.type == 'case') {}
       else if (r.type == 'zigbee') { var z = zig(r.libelle); cl += !z || z.age_s > 3600 ? ' agee' : ''; }
       else if (r.type == 'relais') { var q = relais(r.ref_id); cl += q && q.valeur > 0 ? ' lampe-on' : ' neutre'; }
       else if (r.type == 'eclairage') { var p = programme(r.ref_id); cl += p && p.allume ? ' lampe-on' : ' neutre'; }
@@ -229,6 +250,13 @@
     if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
     ouvert = r; var h = '';
     if (r.type == 'texte') { fermer(); return; }
+    if (r.type == 'case') {
+      var cc = casep(r.ref_id); if (!cc) { fermer(); return; }
+      h = '<h2>Case ' + esc(cc.nom) + (cc.vanne ? ' — vanne ' + esc(cc.vanne) : '') + '</h2>';
+      if (cc.truies.length) cc.truies.forEach(function(t){ h += '<p>Truie <b>' + esc(t.num) + '</b>' + (t.porcelets != null ? ' — ' + t.porcelets + ' porcelet(s) présent(s)' : '') + '</p>'; });
+      else h += '<p><b>' + cc.porcs + '</b> porc(s) dans la case</p>';
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+    }
     if (r.type == 'zigbee') {
       var z = zig(r.libelle); if (!z) { fermer(); return; }
       h = '<h2>📡 ' + esc(z.nom) + '</h2><p>' + zigTexte(z) + '</p><p class="muted">Dernière valeur il y a ' + Math.round((z.age_s || 0) / 60) + ' min</p><p><a href="/ambiance/zigbee">Réseau Zigbee</a></p>';
@@ -335,7 +363,8 @@
     var type = document.getElementById('plan-type');
     function choix(){
       document.getElementById('plan-choix-zigbee').hidden = type.value != 'zigbee';
-      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee'].indexOf(type.value) >= 0;
+      document.getElementById('plan-choix-case').hidden = type.value != 'case';
+      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee','case'].indexOf(type.value) >= 0;
       document.getElementById('plan-choix-relais').hidden = type.value != 'relais';
       document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
       document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
@@ -346,7 +375,12 @@
     });
     document.getElementById('plan-ajouter').addEventListener('click', function(){
       var d = {type: type.value, x: 50, y: 50};
-      if (type.value == 'zigbee') d.libelle = document.getElementById('plan-zigbee').value;
+      if (type.value == 'cases_salle') {
+        poster('/ambiance/plan/cases-salle', {salle_id: document.getElementById('plan-salle').value}).then(charger).catch(function(x){ alert(x.message); });
+        return;
+      }
+      if (type.value == 'case') d.ref_id = document.getElementById('plan-case').value;
+      else if (type.value == 'zigbee') d.libelle = document.getElementById('plan-zigbee').value;
       else if (type.value == 'relais') d.ref_id = document.getElementById('plan-relais').value;
       else if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
       else if (type.value == 'texte') d.libelle = document.getElementById('plan-texte').value;

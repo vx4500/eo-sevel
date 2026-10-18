@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.2** — plan : rotation, taille écran, Zigbee et relais.
+Version actuelle : **2.67.3** — cases sur le plan.
+
+Version Rust 2.67.3 : repère case (ref_id=casesalle.id) : vanne, porcs (case_pig_count) ou truies + porcelets présents (portee_effectif non clôturée) ; POST /ambiance/plan/cases-salle pose toutes les cases d'une salle en grille.
 
 Version Rust 2.67.2 : plan_reglage.rotation (quarts de tour, repères tournés (x,y)→(100−y,x)), plan ajusté à la hauteur de l'écran, onglets de rubrique masqués ; repères zigbee (ieee dans libelle, zigbee_valeur) et relais (ipx_point pilotable, ambiance::valeur_directe, commande via /ambiance/ipx/point/{id}/commander). ambiance::salles : configuree/ts lus en Option (un NULL de jointure donnait 0 °C) + champ a_mesure.
 

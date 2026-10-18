@@ -182,6 +182,7 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(6 * 1024 * 1024)),
         )
         .route("/ambiance/plan/pivoter", post(plan_elevage::pivoter))
+        .route("/ambiance/plan/cases-salle", post(plan_elevage::cases_salle))
         .route("/ambiance/plan/repere", post(plan_elevage::repere))
         .route("/ambiance/plan/repere/{id}/supprimer", post(plan_elevage::repere_supprimer))
         .route("/ambiance/plan/salle/{id}/reglage", post(plan_elevage::salle_reglage))
