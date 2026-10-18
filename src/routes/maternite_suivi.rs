@@ -127,7 +127,8 @@ pub(super) async fn enregistrer_perte(
         )));
     }
     sqlx::query(
-        "INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date) VALUES(?,?,?,?,?,?)",
+        // La perte est rattachée à la mise-bas de la truie (pertes par portée).
+        "INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date,evenement_id) VALUES(?1,?2,?3,?4,?5,?6,(SELECT m.id FROM evenement m WHERE m.truie_id=?1 AND m.type='mise_bas' AND m.date<=?6 AND julianday(?6)-julianday(m.date)<=40 ORDER BY m.date DESC,m.id DESC LIMIT 1))",
     )
     .bind(sow)
     .bind(band_id)
@@ -300,6 +301,10 @@ mod tests {
                 .fetch_all(&state.pool)
                 .await?;
         assert_eq!(rows, vec![(Some(1), 2), (Some(1), 1)]);
+        let orphelines: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM perteporcelet WHERE evenement_id IS NULL")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(orphelines, 0, "chaque perte doit être rattachée à sa mise-bas");
         assert!(truie_perte(
             State(state.clone()),
             Extension(session()),

@@ -1413,7 +1413,7 @@ pub(super) async fn saisie_rapide(
                 .and_then(parse_stored_date)
                 .and_then(|start| parse_stored_date(&date).map(|end| (end - start).num_days()))
                 .filter(|value| *value >= 0);
-            sqlx::query("INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date) VALUES(?,?,?,?,?,?)").bind(sow_id).bind(band_id).bind(age).bind(number).bind(cause).bind(&date).execute(&state.pool).await?;
+            sqlx::query("INSERT INTO perteporcelet(truie_id,bande_id,age_j,nb,cause,date,evenement_id) VALUES(?1,?2,?3,?4,?5,?6,(SELECT m.id FROM evenement m WHERE m.truie_id=?1 AND m.type='mise_bas' AND m.date<=?6 AND julianday(?6)-julianday(m.date)<=40 ORDER BY m.date DESC,m.id DESC LIMIT 1))").bind(sow_id).bind(band_id).bind(age).bind(number).bind(cause).bind(&date).execute(&state.pool).await?;
         }
         // Porcs sortis de maternité : la perte se rattache à la bande seule,
         // sans truie ni case obligatoire (repris de la version du 21/09).

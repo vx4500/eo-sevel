@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.8** — une truie réformée quitte sa case ; alerte truies pleines sans mise-bas.
+Version actuelle : **2.66.9** — pertes sous la mère rattachées à leur mise-bas.
+
+Version Rust 2.66.9 : maternite_suivi::truie_perte et parity (perte truie) renseignent perteporcelet.evenement_id (mise-bas de la truie dans les 40 j). Données 18/10 : 78 pertes orphelines (B2.12, B3.19, B1.25) rattachées, dont 3 saisies avant la mise-bas (500696, 500371).
 
 Version Rust 2.66.8 : les 5 UPDATE de réforme/sortie (mod.rs, parity.rs ×3, import_historique.rs) remettent case_id et salle_id à NULL ; farm_alerts signale les truies dont la dernière IA a plus de 120 j sans mise-bas ni écho vide. Données 16/10 : historiques des truies 500711 (id 80, B3.40) et 0500711 (id 13, B2.33) séparés (import « Historique exporté en juillet 2026 » avait tout mis sur 500711), 2 doublons supprimés ; 500368 et 500371 sorties de leur case.
 
