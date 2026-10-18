@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.4** — plan pleine page, marges coupées.
+Version actuelle : **2.67.5** — plan en plein écran.
+
+Version Rust 2.67.5 : bouton ⛶ Plein écran (Fullscreen API sur #plan-zone, panneau de détail déplacé dedans). Emmanuel ne veut pas que son plan soit découpé/recomposé : garder le dessin entier.
 
 Version Rust 2.67.4 : plan sans cadre ni fond (fond du logiciel), zone sur toute la largeur de la fenêtre ; à l'envoi le navigateur coupe les bords transparents/blancs (canvas) et envoie crop_*/orig_* : plan_elevage::recadrer recale les repères (rotation comprise). Bouton « Retirer les marges » pour l'image déjà en place.
 

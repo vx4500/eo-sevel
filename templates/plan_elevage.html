@@ -11,6 +11,8 @@
 .plan-outils select,.plan-outils input{width:auto;min-width:150px}
 .plan-cadre{position:relative;width:100%;margin:0 auto;overflow:visible;background:transparent;touch-action:pan-y}
 .plan-zone{position:relative}
+#plan-zone:fullscreen{background:var(--bg,#ecf0ec);display:flex;align-items:center;justify-content:center;margin:0!important;width:100%!important}
+#plan-zone:fullscreen .plan-panneau{position:fixed}
 .plan-cadre img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
 .plan-cadre.vide{border:1px dashed var(--line,#cbd5e1);border-radius:8px;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
@@ -55,6 +57,7 @@
 <div class="plan-barre">
   <h1>Plan de l'élevage</h1>
   <span id="plan-demon" class="plan-demon">…</span>
+  <button type="button" class="ghost" id="plan-plein" title="Plan en plein écran (Échap pour revenir)">⛶ Plein écran</button>
   {% if session.peut_modifier %}
   <button type="button" class="ghost" id="plan-pivoter" hidden title="Faire pivoter le plan d'un quart de tour (les capteurs tournent avec)">↻ Pivoter</button>
   <button type="button" class="plan-travaux" id="plan-bouton-edition" title="Passer en travaux : envoyer le plan et placer les capteurs" aria-label="Passer en travaux">🚧</button>
@@ -164,6 +167,12 @@
     var ratio = w / h;
     // Toute la largeur de la fenêtre, au-delà de la colonne de contenu.
     var zone = document.getElementById('plan-zone'), page = document.documentElement.clientWidth;
+    if (document.fullscreenElement === zone) {
+      var Lp = Math.min(window.innerWidth, window.innerHeight * ratio), Hp = Lp / ratio;
+      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px';
+      if (img) { img.style.width = (tourne ? Hp : Lp) + 'px'; img.style.height = (tourne ? Lp : Hp) + 'px'; img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)'; }
+      return;
+    }
     zone.style.marginLeft = '0'; zone.style.width = '';
     var gauche = zone.getBoundingClientRect().left;
     zone.style.marginLeft = (12 - gauche) + 'px'; zone.style.width = (page - 24) + 'px';
@@ -446,6 +455,16 @@
       fetch('/ambiance/plan/image', {credentials:'same-origin'}).then(function(r){ return r.blob(); }).then(recadrerEtEnvoyer);
     });
   }
+  /* Plein écran : le panneau de détail suit le plan pour rester visible. */
+  document.getElementById('plan-plein').addEventListener('click', function(){
+    var zone = document.getElementById('plan-zone');
+    if (zone.requestFullscreen) zone.requestFullscreen().catch(function(){});
+  });
+  document.addEventListener('fullscreenchange', function(){
+    var zone = document.getElementById('plan-zone');
+    if (document.fullscreenElement === zone) zone.appendChild(panneau); else document.body.appendChild(panneau);
+    setTimeout(ajuster, 50);
+  });
   charger(); setInterval(charger, 30000);
 })();
 </script>
