@@ -1,0 +1,296 @@
+{% extends "base.html" %}{% block title %}Plan de l'élevage — EO_Sevel{% endblock %}{% block content %}
+<style>
+.plan-barre{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.plan-barre h1{margin:0 auto 0 0;font-size:1.35rem}
+.plan-demon{font-size:.85rem;padding:3px 10px;border-radius:999px;background:#dcfce7;color:#14532d}
+.plan-demon.arret{background:#fee2e2;color:#7f1d1d}
+.plan-outils{display:none;flex-wrap:wrap;gap:8px;align-items:end;margin:0 0 10px;padding:10px;border:1px dashed var(--line,#cbd5e1);border-radius:8px}
+.plan-edition .plan-outils{display:flex}
+.plan-outils label{margin:0}
+.plan-outils select,.plan-outils input{width:auto;min-width:150px}
+.plan-cadre{position:relative;width:100%;border-radius:8px;overflow:hidden;background:#f1f5f9;border:1px solid var(--line,#cbd5e1);touch-action:pan-y}
+.plan-cadre img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.plan-cadre.vide{aspect-ratio:16/9;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
+.plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
+.rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
+.rep b{font-size:1rem}
+.rep.alerte{border-color:#dc2626;background:#fef2f2}
+.rep.agee{border-color:#94a3b8;color:#64748b}
+.rep.neutre{border-color:#64748b}
+.rep.lampe-on{border-color:#ca8a04;background:#fef9c3}
+.rep.texte{border-style:dashed;border-color:#64748b;background:rgba(255,255,255,.85)}
+.rep-salle{min-width:110px;text-align:left;padding:4px 8px}
+.rep-salle .nom{font-weight:700;display:block;border-bottom:1px solid #e2e8f0;margin-bottom:2px}
+.rep-salle .ligne{display:flex;gap:8px;justify-content:space-between}
+.rep .petit{font-size:.75rem;color:#475569}
+.plan-edition .rep{cursor:grab;outline:2px dashed #2563eb;outline-offset:2px}
+.rep .suppr{display:none;position:absolute;top:-10px;right:-10px;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;border:0;font-size:12px;line-height:20px;padding:0;cursor:pointer}
+.plan-edition .rep .suppr{display:block}
+.plan-panneau{position:fixed;right:12px;bottom:12px;width:min(360px,calc(100vw - 24px));max-height:80vh;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#cbd5e1);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.3);padding:12px 14px;z-index:50;display:none}
+.plan-panneau.ouvert{display:block}
+.plan-panneau h2{margin:0 0 6px;font-size:1.1rem;padding-right:28px}
+.plan-panneau .fermer{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.3rem;cursor:pointer;color:inherit}
+.plan-mesures{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 10px;text-align:center}
+.plan-mesures div{background:rgba(100,116,139,.12);border-radius:6px;padding:4px}
+.plan-mesures b{display:block;font-size:1.2rem}
+.plan-panneau .grille{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.plan-panneau .grille input{width:100%;box-sizing:border-box}
+.plan-panneau .boutons{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.plan-message{margin-top:6px;font-size:.88rem}
+.plan-message.erreur{color:#dc2626}
+.plan-image-form{display:none;margin:0 0 10px}
+.plan-edition .plan-image-form{display:block}
+.plan-travaux{font-size:1.4rem;padding:2px 10px;line-height:1.3}
+.plan-edition .plan-travaux{background:#facc15;color:#111}
+.plan-bandeau{display:none;background:repeating-linear-gradient(45deg,#facc15 0 14px,#111 14px 28px);height:8px;border-radius:4px;margin:0 0 8px}
+.plan-edition .plan-bandeau{display:block}
+</style>
+
+<div id="plan" data-csrf="{{ session.csrf }}" data-modifier="{% if session.peut_modifier %}1{% endif %}">
+<div class="plan-barre">
+  <h1>Plan de l'élevage</h1>
+  <span id="plan-demon" class="plan-demon">…</span>
+  {% if session.peut_modifier %}
+  <button type="button" class="plan-travaux" id="plan-bouton-edition" title="Passer en travaux : envoyer le plan et placer les capteurs" aria-label="Passer en travaux">🚧</button>
+  {% endif %}
+</div>
+
+{% if session.peut_modifier %}
+<div class="plan-bandeau"></div>
+<div class="card plan-image-form" id="plan-image-form">
+  <h2>🚧 En travaux</h2>
+  <p><b>1.</b> Envoyez le plan · <b>2.</b> ajoutez les capteurs et faites-les glisser à leur place · <b>3.</b> touchez 🚧 pour terminer.</p>
+  <form method="post" action="/ambiance/plan/image" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <label>Photo ou dessin du plan (JPEG, PNG ou WebP, 5 Mo maxi)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
+    <button>Envoyer l'image</button>
+  </form>
+  {% if image %}
+  <form method="post" action="/ambiance/plan/image" enctype="multipart/form-data" onsubmit="return confirm('Retirer l\'image du plan ? Les repères restent en place.')">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <input type="hidden" name="supprimer" value="1">
+    <button class="ghost">Retirer l'image</button>
+  </form>
+  {% endif %}
+  <p class="muted">Les repères sont placés en proportion de l'image : en changeant d'image, gardez le même cadrage.</p>
+</div>
+
+<div class="plan-outils" id="plan-outils">
+  <label>Repère<select id="plan-type">
+    <option value="salle">Carte de salle (tout)</option>
+    <option value="temperature">🌡️ Température</option>
+    <option value="humidite">💧 Hygrométrie</option>
+    <option value="ventil">🌀 % de ventilation</option>
+    <option value="mode">⚙️ Mode de ventilation</option>
+    <option value="eclairage">💡 Éclairage</option>
+    <option value="texte">🔤 Texte libre</option>
+  </select></label>
+  <label id="plan-choix-salle">Salle<select id="plan-salle">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
+  <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
+  <label id="plan-choix-texte" hidden>Texte<input id="plan-texte" maxlength="60" placeholder="Fosse, quai, silo…"></label>
+  <button type="button" id="plan-ajouter">Ajouter au centre</button>
+  <span class="muted">Faites glisser les repères à leur place ; ✕ pour en retirer un.</span>
+</div>
+{% endif %}
+
+<div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre">
+  {% if image %}<img src="/ambiance/plan/image" alt="Plan de l'élevage" id="plan-img">{% else %}<div class="plan-vide-texte">{% if session.peut_modifier %}Touchez 🚧 pour passer en travaux, envoyez le plan puis placez les capteurs.{% else %}Aucune image de plan pour l'instant.{% endif %}</div>{% endif %}
+</div>
+<p class="muted" style="margin-top:6px">Mise à jour toutes les 30 secondes. Touchez un repère pour voir le détail et modifier les réglages. <a href="/ambiance">Tous les réglages d'ambiance</a> · <a href="/ambiance/eclairage">Éclairage</a></p>
+</div>
+
+<div class="plan-panneau" id="plan-panneau" role="dialog" aria-modal="false"><button type="button" class="fermer" aria-label="Fermer">×</button><div id="plan-panneau-corps"></div></div>
+
+<script>
+(function(){
+  var racine = document.getElementById('plan');
+  var csrf = racine.dataset.csrf, modifier = !!racine.dataset.modifier;
+  var cadre = document.getElementById('plan-cadre');
+  var panneau = document.getElementById('plan-panneau'), corps = document.getElementById('plan-panneau-corps');
+  var etat = {salles:[], programmes:[], reperes:[]}, edition = false, ouvert = null, dernierMessage = null;
+  var MODES = {auto:['🔄','Automatique'], securite:['⚠️','Repli de sécurité'], arret:['⏹️','Arrêt'], vide:['⭕','Salle vide'], simulation:['🧪','Simulation (aucune commande envoyée)']};
+
+  function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function nb(v, d){ return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d).replace('.', ','); }
+  function salle(id){ return etat.salles.find(function(s){ return s.id == id; }); }
+  function programme(id){ return etat.programmes.find(function(p){ return p.id == id; }); }
+  function mode(s){ return MODES[s && s.mode] || ['·', s && s.mode ? s.mode : 'Non régulée']; }
+  function classe(s){
+    if (!s) return 'neutre';
+    if (s.alertes && s.alertes.length) return 'alerte';
+    if (!s.configuree || s.t == null) return 'neutre';
+    return s.mesure_agee ? 'agee' : '';
+  }
+  function poster(url, donnees){
+    var p = new URLSearchParams(); p.set('csrf_token', csrf);
+    Object.keys(donnees || {}).forEach(function(k){ if (donnees[k] != null) p.set(k, donnees[k]); });
+    return fetch(url, {method:'POST', body:p, headers:{'Content-Type':'application/x-www-form-urlencoded'}, credentials:'same-origin'})
+      .then(function(r){
+        if (r.ok) return r.headers.get('content-type') && r.headers.get('content-type').indexOf('json') >= 0 ? r.json() : {};
+        return r.text().then(function(t){
+          var d = document.createElement('div'); d.innerHTML = t;
+          var m = d.querySelector('main .card, main p, .card p'); throw new Error((m ? m.textContent : d.textContent).trim().slice(0, 200) || ('Erreur ' + r.status));
+        });
+      });
+  }
+
+  function contenu(r){
+    var s = salle(r.ref_id), m;
+    switch (r.type) {
+      case 'salle':
+        if (!s) return '<span class="petit">Salle supprimée</span>';
+        m = mode(s);
+        return '<span class="nom">' + esc(s.nom) + '</span>' +
+          '<span class="ligne"><span>🌡️ <b>' + nb(s.t, 1) + '</b>°</span><span>💧 ' + nb(s.h, 0) + ' %</span></span>' +
+          '<span class="ligne"><span>🌀 <b>' + nb(s.ventil, 0) + '</b> %</span><span title="' + esc(m[1]) + '">' + m[0] + '</span></span>' +
+          (s.bande ? '<span class="petit">' + esc(s.bande) + (s.jour_bande != null ? ' · J' + s.jour_bande : '') + '</span>' : '');
+      case 'temperature': return s ? '🌡️ <b>' + nb(s.t, 1) + '</b> °C' : '?';
+      case 'humidite': return s ? '💧 <b>' + nb(s.h, 0) + '</b> %' : '?';
+      case 'ventil': return s ? '🌀 <b>' + nb(s.ventil, 0) + '</b> %' : '?';
+      case 'mode': m = mode(s); return '<span title="' + esc(m[1]) + '">' + m[0] + '</span>';
+      case 'eclairage':
+        var p = programme(r.ref_id);
+        return p ? (p.allume ? '💡' : '⚫') + ' ' + esc(p.nom) : 'Programme supprimé';
+      default: return esc(r.libelle);
+    }
+  }
+  function dessiner(){
+    cadre.querySelectorAll('.rep').forEach(function(e){ e.remove(); });
+    etat.reperes.forEach(function(r){
+      var e = document.createElement('div');
+      var cl = 'rep';
+      if (r.type == 'salle') cl += ' rep-salle';
+      if (r.type == 'texte') cl += ' texte';
+      else if (r.type == 'eclairage') { var p = programme(r.ref_id); cl += p && p.allume ? ' lampe-on' : ' neutre'; }
+      else { var c = classe(salle(r.ref_id)); if (c) cl += ' ' + c; }
+      e.className = cl; e.style.left = r.x + '%'; e.style.top = r.y + '%';
+      e.innerHTML = contenu(r) + (modifier ? '<button type="button" class="suppr" title="Retirer ce repère">✕</button>' : '');
+      e.dataset.id = r.id;
+      cadre.appendChild(e);
+    });
+    if (ouvert) ouvrir(ouvert, true);
+  }
+  function charger(){
+    return fetch('/ambiance/plan/etat.json', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){
+      etat = j;
+      var d = document.getElementById('plan-demon');
+      d.textContent = j.demon && j.demon.actif ? '● Régulation active' : '● Régulation à l\'arrêt';
+      d.title = j.demon ? j.demon.texte : ''; d.className = 'plan-demon' + (j.demon && j.demon.actif ? '' : ' arret');
+      if (!edition || !glisse) dessiner();
+    }).catch(function(){});
+  }
+
+  /* Panneau de détail et de réglage */
+  function ouvrir(r, rafraichir){
+    var actif = document.activeElement;
+    if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
+    ouvert = r; var h = '';
+    if (r.type == 'texte') { fermer(); return; }
+    if (r.type == 'eclairage') {
+      var p = programme(r.ref_id); if (!p) { fermer(); return; }
+      h = '<h2>💡 ' + esc(p.nom) + '</h2><p>' + (p.allume ? 'Allumé' : 'Éteint') +
+        (p.forcage ? ' — forcé ' + (p.forcage.allume ? 'allumé' : 'éteint') + ' encore ' + p.forcage.reste_min + ' min' : (p.actif ? ' — suit son programme' : ' — programme en pause')) + '</p>';
+      if (modifier) h += '<div class="boutons"><button type="button" data-ecl="allumer">Allumer 1 h</button><button type="button" data-ecl="eteindre">Éteindre 1 h</button>' +
+        (p.forcage ? '<button type="button" class="ghost" data-ecl="reprendre">Reprendre le programme</button>' : '') + '</div>';
+      h += '<p><a href="/ambiance/eclairage#programme-' + p.id + '">Régler le programme</a></p>';
+    } else {
+      var s = salle(r.ref_id); if (!s) { fermer(); return; }
+      var m = mode(s);
+      h = '<h2>' + esc(s.nom) + '</h2>';
+      if (s.bande) h += '<p class="muted">Bande ' + esc(s.bande) + (s.jour_bande != null ? ', jour ' + s.jour_bande : '') + '</p>';
+      h += '<div class="plan-mesures"><div>Temp.<b>' + nb(s.t, 1) + '°</b></div><div>Hygro<b>' + nb(s.h, 0) + ' %</b></div><div>Ventil.<b>' + nb(s.ventil, 0) + ' %</b></div></div>';
+      h += '<p>' + m[0] + ' ' + esc(m[1]) + (s.consigne != null ? ' — consigne appliquée ' + nb(s.consigne, 1) + ' °C' : '') +
+        (s.mesure_age_texte ? ' <span class="muted">(mesure ' + esc(s.mesure_age_texte) + ')</span>' : '') + '</p>';
+      (s.alertes || []).forEach(function(a){ h += '<p class="plan-message erreur">⚠️ ' + esc(a.message) + '</p>'; });
+      if (!s.configuree) {
+        h += '<p class="muted">Salle pas encore raccordée à la régulation.</p>';
+      } else if (modifier) {
+        h += '<form id="plan-reglage" class="grille" onsubmit="return false">' +
+          '<label>Consigne °C<input name="t_cible_fixe" inputmode="decimal" value="' + nb(s.t_cible_fixe, 1) + '"' + (s.courbe_id ? ' disabled' : '') + '></label>' +
+          '<label>Plage °C<input name="plage" inputmode="decimal" value="' + nb(s.plage, 1) + '"></label>' +
+          '<label>Ventil. mini %<input name="ventil_min" inputmode="decimal" value="' + nb(s.ventil_min, 0) + '"></label>' +
+          '<label>Ventil. maxi %<input name="ventil_max" inputmode="decimal" value="' + nb(s.ventil_max, 0) + '"></label>' +
+          '</form>' + (s.courbe_id ? '<p class="muted">La consigne suit la courbe « ' + esc(s.courbe_nom) + ' » (' + nb(s.consigne_theorique, 1) + ' °C aujourd\'hui).</p>' : '') +
+          '<div class="boutons"><button type="button" id="plan-enregistrer">Enregistrer</button></div>';
+      }
+      h += '<p><a href="/ambiance#salle-' + s.id + '">Tous les réglages</a> · <a href="/ambiance/salle/' + s.id + '/historique">Historique</a></p>';
+    }
+    corps.innerHTML = h + '<div class="plan-message" id="plan-message"></div>';
+    if (rafraichir && dernierMessage) message(dernierMessage[0], dernierMessage[1]); else dernierMessage = null;
+    panneau.classList.add('ouvert');
+  }
+  function fermer(){ ouvert = null; dernierMessage = null; panneau.classList.remove('ouvert'); }
+  function message(t, erreur){ dernierMessage = [t, erreur]; var m = document.getElementById('plan-message'); if (m) { m.textContent = t; m.className = 'plan-message' + (erreur ? ' erreur' : ''); } }
+  panneau.querySelector('.fermer').addEventListener('click', fermer);
+  panneau.addEventListener('click', function(ev){
+    var b = ev.target.closest('button'); if (!b || !ouvert) return;
+    if (b.dataset.ecl) {
+      b.disabled = true;
+      poster('/ambiance/eclairage/' + ouvert.ref_id + '/forcer', {etat: b.dataset.ecl, duree_min: 60})
+        .then(function(){ message('Envoyé — appliqué dans les 30 secondes'); setTimeout(charger, 1500); })
+        .catch(function(e){ message(e.message, true); }).finally(function(){ b.disabled = false; });
+    } else if (b.id == 'plan-enregistrer') {
+      var f = document.getElementById('plan-reglage'), d = {};
+      Array.prototype.forEach.call(f.elements, function(i){ if (!i.disabled && i.value.trim() !== '') d[i.name] = i.value.trim().replace(',', '.'); });
+      b.disabled = true;
+      poster('/ambiance/plan/salle/' + ouvert.ref_id + '/reglage', d)
+        .then(function(){ message('Réglages enregistrés — pris en compte au prochain cycle'); document.activeElement.blur(); return charger(); })
+        .catch(function(e){ message(e.message, true); }).finally(function(){ b.disabled = false; });
+    }
+  });
+
+  /* Clic et glisser des repères */
+  var glisse = null;
+  cadre.addEventListener('pointerdown', function(ev){
+    var e = ev.target.closest('.rep'); if (!e) return;
+    var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+    if (ev.target.classList.contains('suppr')) {
+      if (confirm('Retirer ce repère du plan ?')) poster('/ambiance/plan/repere/' + r.id + '/supprimer').then(charger).catch(function(x){ alert(x.message); });
+      return;
+    }
+    if (!edition) { ouvrir(r); return; }
+    ev.preventDefault(); e.setPointerCapture(ev.pointerId);
+    glisse = {e: e, r: r, bouge: false};
+  });
+  cadre.addEventListener('pointermove', function(ev){
+    if (!glisse) return;
+    var b = cadre.getBoundingClientRect();
+    var x = Math.max(0, Math.min(100, (ev.clientX - b.left) / b.width * 100));
+    var y = Math.max(0, Math.min(100, (ev.clientY - b.top) / b.height * 100));
+    glisse.e.style.left = x + '%'; glisse.e.style.top = y + '%'; glisse.x = x; glisse.y = y; glisse.bouge = true;
+  });
+  function lacher(){
+    if (!glisse) return; var g = glisse; glisse = null;
+    if (!g.bouge) return;
+    g.r.x = g.x; g.r.y = g.y;
+    poster('/ambiance/plan/repere', {id: g.r.id, x: g.x.toFixed(2), y: g.y.toFixed(2)}).catch(function(x){ alert(x.message); charger(); });
+  }
+  cadre.addEventListener('pointerup', lacher); cadre.addEventListener('pointercancel', lacher);
+
+  if (modifier) {
+    var bEd = document.getElementById('plan-bouton-edition');
+    bEd.addEventListener('click', function(){
+      edition = !edition; racine.classList.toggle('plan-edition', edition); fermer();
+      cadre.style.touchAction = edition ? 'none' : '';
+      bEd.textContent = edition ? '✔️' : '🚧'; bEd.title = edition ? 'Terminer les travaux' : 'Passer en travaux';
+    });
+    var type = document.getElementById('plan-type');
+    function choix(){
+      document.getElementById('plan-choix-salle').hidden = type.value == 'eclairage' || type.value == 'texte';
+      document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
+      document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
+    }
+    type.addEventListener('change', choix); choix();
+    document.getElementById('plan-ajouter').addEventListener('click', function(){
+      var d = {type: type.value, x: 50, y: 50};
+      if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
+      else if (type.value == 'texte') d.libelle = document.getElementById('plan-texte').value;
+      else d.ref_id = document.getElementById('plan-salle').value;
+      poster('/ambiance/plan/repere', d).then(charger).catch(function(x){ alert(x.message); });
+    });
+  }
+  if (modifier && /[?&]travaux=1/.test(location.search)) document.getElementById('plan-bouton-edition').click();
+  charger(); setInterval(charger, 30000);
+})();
+</script>
+{% endblock %}

@@ -306,6 +306,7 @@
     {% if 'structure' in session.pages or 'ambiance' in session.pages %}<div class="rust-sub-groupe menu-tel"><h3>Salles et ambiance</h3>
       {% if 'structure' in session.pages %}<a href="/salles"><b>Mes salles</b><small>Bande, animaux, température, éclairage</small></a>{% endif %}
       {% if 'ambiance' in session.pages %}<a href="/ambiance"><b>Températures et ventilation</b><small>Ambiance de toutes les salles</small></a>
+      <a href="/ambiance/plan"><b>Plan de l'élevage</b><small>Tout l'élevage en un coup d'œil</small></a>
       <a href="/ambiance/eclairage"><b>Éclairage</b><small>Lampes et programmes par salle</small></a>
       {% if session.module_equipements %}<a href="/equipements"><b>Mes équipements</b><small>Automate, Zigbee, soupe, caméras, serveur</small></a>{% endif %}{% endif %}
     </div>{% endif %}

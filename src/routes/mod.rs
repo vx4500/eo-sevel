@@ -48,6 +48,7 @@ mod import_historique;
 mod maternite_suivi;
 mod parity;
 mod plans_aliment;
+mod plan_elevage;
 mod prestataire;
 mod rapport;
 mod salles;
@@ -172,6 +173,17 @@ pub fn router(state: AppState) -> Router {
         .route("/equipements/acces-distance/relancer", post(acces::relancer))
         .route("/ambiance", get(ambiance::page))
         .route("/ambiance/etat.json", get(ambiance::etat_json))
+        .route("/ambiance/plan", get(plan_elevage::page))
+        .route("/ambiance/plan/etat.json", get(plan_elevage::etat_json))
+        .route(
+            "/ambiance/plan/image",
+            get(plan_elevage::image)
+                .post(plan_elevage::image_maj)
+                .layer(DefaultBodyLimit::max(6 * 1024 * 1024)),
+        )
+        .route("/ambiance/plan/repere", post(plan_elevage::repere))
+        .route("/ambiance/plan/repere/{id}/supprimer", post(plan_elevage::repere_supprimer))
+        .route("/ambiance/plan/salle/{id}/reglage", post(plan_elevage::salle_reglage))
         .route("/ambiance/eclairage", get(eclairage::page))
         .route("/ambiance/eclairage/etat.json", get(eclairage::etat_json))
         .route("/ambiance/eclairage/nouveau", get(eclairage::nouveau))

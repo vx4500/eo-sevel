@@ -110,7 +110,7 @@ async fn consigne_theorique(
 }
 
 /// Lignes de salles affichées, état compris.
-async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     let lignes = sqlx::query(
         "SELECT s.id, s.nom, s.type AS type_salle, si.nom AS site_nom, si.code AS site_code, \
                 a.actif, a.pilote, a.ipx_hote, a.entree_t, a.entree_h, a.entree_lux, \

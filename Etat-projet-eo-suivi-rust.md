@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.66.9** — pertes sous la mère rattachées à leur mise-bas.
+Version actuelle : **2.67.0** — plan de l'élevage en un coup d'œil.
+
+Version Rust 2.67.0 : routes::plan_elevage (/ambiance/plan) — image du plan (plan_reglage, 0015) et repères posés en % de l'image (plan_repere, migration 0029 : salle, température, hygrométrie, % ventil, mode, éclairage, texte). Mode travaux 🚧 : envoi du plan, ajout et glisser des repères. Clic sur un repère : consigne, plage, ventil mini/maxi (UPDATE partiel d'ambiance_salle) ou forçage 1 h d'un programme d'éclairage.
 
 Version Rust 2.66.9 : maternite_suivi::truie_perte et parity (perte truie) renseignent perteporcelet.evenement_id (mise-bas de la truie dans les 40 j). Données 18/10 : 78 pertes orphelines (B2.12, B3.19, B1.25) rattachées, dont 3 saisies avant la mise-bas (500696, 500371).
 

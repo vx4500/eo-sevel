@@ -91,7 +91,7 @@ fn duree_minutes(minutes: i64) -> String {
 
 /// Programmes lus en base, prêts pour la page : réglages, résumé en clair,
 /// frise de la semaine et état tenu par le démon.
-async fn charger_programmes(pool: &SqlitePool, seul: Option<i64>) -> AppResult<Vec<Value>> {
+pub(super) async fn charger_programmes(pool: &SqlitePool, seul: Option<i64>) -> AppResult<Vec<Value>> {
     let lignes = sqlx::query(
         "SELECT p.id, p.nom, p.actif, p.essai, p.lux_point_id, p.lux_allumer_sous, \
                 p.lux_eteindre_au_dessus, p.lux_temporisation_min, p.lux_si_muet, \
