@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}Plan de l'élevage — EO_Sevel{% endblock %}{% block content %}
 <style>
+#onglets-section{display:none!important}
 .plan-barre{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
 .plan-barre h1{margin:0 auto 0 0;font-size:1.35rem}
 .plan-demon{font-size:.85rem;padding:3px 10px;border-radius:999px;background:#dcfce7;color:#14532d}
@@ -8,9 +9,9 @@
 .plan-edition .plan-outils{display:flex}
 .plan-outils label{margin:0}
 .plan-outils select,.plan-outils input{width:auto;min-width:150px}
-.plan-cadre{position:relative;width:100%;border-radius:8px;overflow:hidden;background:#f1f5f9;border:1px solid var(--line,#cbd5e1);touch-action:pan-y}
-.plan-cadre img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;pointer-events:none}
-.plan-cadre.vide{aspect-ratio:16/9;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
+.plan-cadre{position:relative;width:100%;margin:0 auto;border-radius:8px;overflow:visible;background:#f1f5f9;border:1px solid var(--line,#cbd5e1);touch-action:pan-y}
+.plan-cadre img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.plan-cadre.vide{background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
 .rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
 .rep b{font-size:1rem}
@@ -51,6 +52,7 @@
   <h1>Plan de l'élevage</h1>
   <span id="plan-demon" class="plan-demon">…</span>
   {% if session.peut_modifier %}
+  <button type="button" class="ghost" id="plan-pivoter" hidden title="Faire pivoter le plan d'un quart de tour (les capteurs tournent avec)">↻ Pivoter</button>
   <button type="button" class="plan-travaux" id="plan-bouton-edition" title="Passer en travaux : envoyer le plan et placer les capteurs" aria-label="Passer en travaux">🚧</button>
   {% endif %}
 </div>
@@ -82,21 +84,25 @@
     <option value="humidite">💧 Hygrométrie</option>
     <option value="ventil">🌀 % de ventilation</option>
     <option value="mode">⚙️ Mode de ventilation</option>
-    <option value="eclairage">💡 Éclairage</option>
+    <option value="zigbee">📡 Appareil Zigbee (sonde, variateur…)</option>
+    <option value="relais">🔌 Relais / lampe (automate)</option>
+    <option value="eclairage">💡 Programme d'éclairage</option>
     <option value="texte">🔤 Texte libre</option>
   </select></label>
   <label id="plan-choix-salle">Salle<select id="plan-salle">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
   <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
+  <label id="plan-choix-relais" hidden>Relais<select id="plan-relais">{% for p in relais %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun relais autorisé à la commande</option>{% endfor %}</select></label>
+  <label id="plan-choix-zigbee" hidden>Appareil<select id="plan-zigbee">{% for z in zigbee %}<option value="{{ z.ieee }}">{{ z.nom }}{% if z.categorie != 'sonde' %} ({{ z.categorie }}){% endif %}</option>{% endfor %}</select></label>
   <label id="plan-choix-texte" hidden>Texte<input id="plan-texte" maxlength="60" placeholder="Fosse, quai, silo…"></label>
   <button type="button" id="plan-ajouter">Ajouter au centre</button>
   <span class="muted">Faites glisser les repères à leur place ; ✕ pour en retirer un.</span>
 </div>
 {% endif %}
 
-<div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre">
+<div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre" data-rotation="{{ rotation }}">
   {% if image %}<img src="/ambiance/plan/image" alt="Plan de l'élevage" id="plan-img">{% else %}<div class="plan-vide-texte">{% if session.peut_modifier %}Touchez 🚧 pour passer en travaux, envoyez le plan puis placez les capteurs.{% else %}Aucune image de plan pour l'instant.{% endif %}</div>{% endif %}
 </div>
-<p class="muted" style="margin-top:6px">Mise à jour toutes les 30 secondes. Touchez un repère pour voir le détail et modifier les réglages. <a href="/ambiance">Tous les réglages d'ambiance</a> · <a href="/ambiance/eclairage">Éclairage</a></p>
+<p class="muted" style="margin:4px 0 0">Mise à jour toutes les 30 secondes. Touchez un repère pour voir le détail et modifier les réglages. <a href="/ambiance">Tous les réglages d'ambiance</a> · <a href="/ambiance/eclairage">Éclairage</a></p>
 </div>
 
 <div class="plan-panneau" id="plan-panneau" role="dialog" aria-modal="false"><button type="button" class="fermer" aria-label="Fermer">×</button><div id="plan-panneau-corps"></div></div>
@@ -107,12 +113,22 @@
   var csrf = racine.dataset.csrf, modifier = !!racine.dataset.modifier;
   var cadre = document.getElementById('plan-cadre');
   var panneau = document.getElementById('plan-panneau'), corps = document.getElementById('plan-panneau-corps');
-  var etat = {salles:[], programmes:[], reperes:[]}, edition = false, ouvert = null, dernierMessage = null;
+  var etat = {salles:[], programmes:[], reperes:[], relais:[]}, edition = false, ouvert = null, dernierMessage = null;
   var MODES = {auto:['🔄','Automatique'], securite:['⚠️','Repli de sécurité'], arret:['⏹️','Arrêt'], vide:['⭕','Salle vide'], simulation:['🧪','Simulation (aucune commande envoyée)']};
 
   function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function nb(v, d){ return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d).replace('.', ','); }
   function salle(id){ return etat.salles.find(function(s){ return s.id == id; }); }
+  function zig(ieee){ return etat.zigbee && etat.zigbee[ieee]; }
+  function zigTexte(z){
+    var p = [];
+    if (z.temperature != null) p.push('🌡️ <b>' + nb(z.temperature, 1) + '</b>°');
+    if (z.humidity != null) p.push('💧 ' + nb(z.humidity, 0) + ' %');
+    if (z.brightness != null) p.push('🌀 <b>' + (z.state === false ? 0 : nb(z.brightness, 0)) + '</b> %');
+    else if (z.state != null) p.push(z.state ? '💡' : '⚫');
+    return p.join(' ') || '—';
+  }
+  function relais(id){ return (etat.relais || []).find(function(p){ return p.id == id; }); }
   function programme(id){ return etat.programmes.find(function(p){ return p.id == id; }); }
   function mode(s){ return MODES[s && s.mode] || ['·', s && s.mode ? s.mode : 'Non régulée']; }
   function classe(s){
@@ -121,6 +137,25 @@
     if (!s.configuree || s.t == null) return 'neutre';
     return s.mesure_agee ? 'agee' : '';
   }
+  /* Le plan tient en entier dans l'écran, pivoté ou non */
+  var img = document.getElementById('plan-img');
+  function ajuster(){
+    var rot = Number(cadre.dataset.rotation) || 0, tourne = rot % 180 != 0;
+    var w = img && img.naturalWidth ? img.naturalWidth : 16, h = img && img.naturalHeight ? img.naturalHeight : 9;
+    if (tourne) { var z = w; w = h; h = z; }
+    var ratio = w / h;
+    var dispoL = cadre.parentElement.clientWidth;
+    var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
+    var L = Math.min(dispoL, dispoH * ratio), H = L / ratio;
+    cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
+    if (img) {
+      img.style.width = (tourne ? H : L) + 'px'; img.style.height = (tourne ? L : H) + 'px';
+      img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
+    }
+  }
+  if (img) { if (img.complete) ajuster(); else img.addEventListener('load', ajuster); }
+  ajuster(); window.addEventListener('resize', ajuster);
+
   function poster(url, donnees){
     var p = new URLSearchParams(); p.set('csrf_token', csrf);
     Object.keys(donnees || {}).forEach(function(k){ if (donnees[k] != null) p.set(k, donnees[k]); });
@@ -148,6 +183,12 @@
       case 'humidite': return s ? '💧 <b>' + nb(s.h, 0) + '</b> %' : '?';
       case 'ventil': return s ? '🌀 <b>' + nb(s.ventil, 0) + '</b> %' : '?';
       case 'mode': m = mode(s); return '<span title="' + esc(m[1]) + '">' + m[0] + '</span>';
+      case 'zigbee':
+        var z = zig(r.libelle);
+        return z ? '<span class="petit">' + esc(z.nom) + '</span> ' + zigTexte(z) : '📡 sans valeur';
+      case 'relais':
+        var q = relais(r.ref_id);
+        return q ? (q.valeur == null ? '❔' : q.valeur > 0 ? '💡' : '⚫') + ' ' + esc(q.nom) : 'Relais supprimé';
       case 'eclairage':
         var p = programme(r.ref_id);
         return p ? (p.allume ? '💡' : '⚫') + ' ' + esc(p.nom) : 'Programme supprimé';
@@ -161,6 +202,8 @@
       var cl = 'rep';
       if (r.type == 'salle') cl += ' rep-salle';
       if (r.type == 'texte') cl += ' texte';
+      else if (r.type == 'zigbee') { var z = zig(r.libelle); cl += !z || z.age_s > 3600 ? ' agee' : ''; }
+      else if (r.type == 'relais') { var q = relais(r.ref_id); cl += q && q.valeur > 0 ? ' lampe-on' : ' neutre'; }
       else if (r.type == 'eclairage') { var p = programme(r.ref_id); cl += p && p.allume ? ' lampe-on' : ' neutre'; }
       else { var c = classe(salle(r.ref_id)); if (c) cl += ' ' + c; }
       e.className = cl; e.style.left = r.x + '%'; e.style.top = r.y + '%';
@@ -186,7 +229,16 @@
     if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
     ouvert = r; var h = '';
     if (r.type == 'texte') { fermer(); return; }
-    if (r.type == 'eclairage') {
+    if (r.type == 'zigbee') {
+      var z = zig(r.libelle); if (!z) { fermer(); return; }
+      h = '<h2>📡 ' + esc(z.nom) + '</h2><p>' + zigTexte(z) + '</p><p class="muted">Dernière valeur il y a ' + Math.round((z.age_s || 0) / 60) + ' min</p><p><a href="/ambiance/zigbee">Réseau Zigbee</a></p>';
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+    }
+    if (r.type == 'relais') {
+      var q = relais(r.ref_id); if (!q) { fermer(); return; }
+      h = '<h2>🔌 ' + esc(q.nom) + '</h2><p>' + (q.valeur == null ? 'État inconnu (automate injoignable)' : q.valeur > 0 ? 'Allumé' : 'Éteint') + '</p>';
+      if (modifier) h += '<div class="boutons"><button type="button" data-relais="1">Allumer</button><button type="button" data-relais="0">Éteindre</button></div>';
+    } else if (r.type == 'eclairage') {
       var p = programme(r.ref_id); if (!p) { fermer(); return; }
       h = '<h2>💡 ' + esc(p.nom) + '</h2><p>' + (p.allume ? 'Allumé' : 'Éteint') +
         (p.forcage ? ' — forcé ' + (p.forcage.allume ? 'allumé' : 'éteint') + ' encore ' + p.forcage.reste_min + ' min' : (p.actif ? ' — suit son programme' : ' — programme en pause')) + '</p>';
@@ -224,7 +276,12 @@
   panneau.querySelector('.fermer').addEventListener('click', fermer);
   panneau.addEventListener('click', function(ev){
     var b = ev.target.closest('button'); if (!b || !ouvert) return;
-    if (b.dataset.ecl) {
+    if (b.dataset.relais) {
+      b.disabled = true;
+      poster('/ambiance/ipx/point/' + ouvert.ref_id + '/commander', {valeur: b.dataset.relais, retour: '/ambiance/plan'})
+        .then(function(){ message('Commande envoyée'); setTimeout(charger, 1000); })
+        .catch(function(e){ message(e.message, true); }).finally(function(){ b.disabled = false; });
+    } else if (b.dataset.ecl) {
       b.disabled = true;
       poster('/ambiance/eclairage/' + ouvert.ref_id + '/forcer', {etat: b.dataset.ecl, duree_min: 60})
         .then(function(){ message('Envoyé — appliqué dans les 30 secondes'); setTimeout(charger, 1500); })
@@ -272,18 +329,26 @@
     bEd.addEventListener('click', function(){
       edition = !edition; racine.classList.toggle('plan-edition', edition); fermer();
       cadre.style.touchAction = edition ? 'none' : '';
+      document.getElementById('plan-pivoter').hidden = !edition; ajuster();
       bEd.textContent = edition ? '✔️' : '🚧'; bEd.title = edition ? 'Terminer les travaux' : 'Passer en travaux';
     });
     var type = document.getElementById('plan-type');
     function choix(){
-      document.getElementById('plan-choix-salle').hidden = type.value == 'eclairage' || type.value == 'texte';
+      document.getElementById('plan-choix-zigbee').hidden = type.value != 'zigbee';
+      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee'].indexOf(type.value) >= 0;
+      document.getElementById('plan-choix-relais').hidden = type.value != 'relais';
       document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
       document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
     }
     type.addEventListener('change', choix); choix();
+    document.getElementById('plan-pivoter').addEventListener('click', function(){
+      poster('/ambiance/plan/pivoter').then(function(j){ cadre.dataset.rotation = j.rotation; ajuster(); return charger(); }).catch(function(x){ alert(x.message); });
+    });
     document.getElementById('plan-ajouter').addEventListener('click', function(){
       var d = {type: type.value, x: 50, y: 50};
-      if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
+      if (type.value == 'zigbee') d.libelle = document.getElementById('plan-zigbee').value;
+      else if (type.value == 'relais') d.ref_id = document.getElementById('plan-relais').value;
+      else if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
       else if (type.value == 'texte') d.libelle = document.getElementById('plan-texte').value;
       else d.ref_id = document.getElementById('plan-salle').value;
       poster('/ambiance/plan/repere', d).then(charger).catch(function(x){ alert(x.message); });

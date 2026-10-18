@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.1** — lien Plan de l'élevage dans le menu Mes équipements.
+Version actuelle : **2.67.2** — plan : rotation, taille écran, Zigbee et relais.
+
+Version Rust 2.67.2 : plan_reglage.rotation (quarts de tour, repères tournés (x,y)→(100−y,x)), plan ajusté à la hauteur de l'écran, onglets de rubrique masqués ; repères zigbee (ieee dans libelle, zigbee_valeur) et relais (ipx_point pilotable, ambiance::valeur_directe, commande via /ambiance/ipx/point/{id}/commander). ambiance::salles : configuree/ts lus en Option (un NULL de jointure donnait 0 °C) + champ a_mesure.
 
 Version Rust 2.67.1 : le lien /ambiance/plan n'était que dans le menu téléphone ; ajouté sous Mes équipements et sur /equipements.
 

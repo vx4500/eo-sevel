@@ -11,7 +11,9 @@
 
 use super::*;
 
-const TYPES: [&str; 7] = [
+const TYPES: [&str; 9] = [
+    "zigbee",
+    "relais",
     "salle",
     "temperature",
     "humidite",
@@ -33,8 +35,8 @@ pub(super) async fn page(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
 ) -> AppResult<Html<String>> {
-    let image: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM plan_reglage WHERE id=1 AND image_data IS NOT NULL",
+    let (image, rotation): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(image_data), COALESCE(MAX(rotation),0) FROM plan_reglage WHERE id=1",
     )
     .fetch_one(&state.pool)
     .await?;
@@ -49,8 +51,23 @@ pub(super) async fn page(
         "SELECT id, nom FROM eclairage_programme ORDER BY nom",
     )
     .await?;
+    let relais = generic_rows(
+        &state.pool,
+        "SELECT id, nom FROM ipx_point \
+         WHERE pilotable=1 AND chemin_ecriture IS NOT NULL ORDER BY nom",
+    )
+    .await?;
+    let zigbee = generic_rows(
+        &state.pool,
+        "SELECT ieee, nom, categorie FROM zigbee_appareil \
+         WHERE categorie IN ('sonde','variateur','interrupteur') ORDER BY nom",
+    )
+    .await?;
     let mut contexte = context(&session);
+    contexte.insert("zigbee".into(), Value::Array(zigbee));
+    contexte.insert("relais".into(), Value::Array(relais));
     contexte.insert("image".into(), json!(image > 0));
+    contexte.insert("rotation".into(), json!(rotation));
     contexte.insert("salles".into(), Value::Array(salles));
     contexte.insert("programmes".into(), Value::Array(programmes));
     render(&state, "plan_elevage.html", Value::Object(contexte))
@@ -76,13 +93,75 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
             })
         })
         .collect();
+    // Une salle sans mesure n'affiche rien plutôt que des zéros.
+    let mut salles = super::ambiance::salles(&state.pool).await?;
+    for salle in &mut salles {
+        if salle.get("a_mesure") != Some(&json!(true)) {
+            if let Some(objet) = salle.as_object_mut() {
+                for champ in ["t", "h", "lux", "ventil", "consigne", "mode", "mesure_age_texte"] {
+                    objet.insert(champ.into(), Value::Null);
+                }
+            }
+        }
+    }
+    // Relais posés sur le plan : état lu sur l'automate (ou Zigbee).
+    let points: Vec<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT p.id, p.nom, p.hote, p.chemin FROM ipx_point p \
+         WHERE p.id IN (SELECT ref_id FROM plan_repere WHERE type='relais')",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut relais = Vec::with_capacity(points.len());
+    for (id, nom, hote, chemin) in points {
+        let valeur = super::ambiance::valeur_directe(&state.pool, &hote, &chemin).await;
+        relais.push(json!({ "id": id, "nom": nom, "valeur": valeur }));
+    }
+    // Appareils Zigbee posés sur le plan (ieee dans `libelle`) : dernières
+    // valeurs reçues de Zigbee2MQTT.
+    let lignes: Vec<(String, String, String, Option<f64>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT a.ieee, a.nom, v.cle, v.valeur, v.texte, v.ts FROM zigbee_appareil a \
+         JOIN zigbee_valeur v ON v.ieee=a.ieee \
+         WHERE a.ieee IN (SELECT libelle FROM plan_repere WHERE type='zigbee') \
+           AND v.cle IN ('temperature','humidity','brightness','state')",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let instant = chrono::Utc::now().timestamp();
+    let mut zigbee = serde_json::Map::new();
+    for (ieee, nom, cle, valeur, texte, ts) in lignes {
+        let entree = zigbee
+            .entry(ieee)
+            .or_insert_with(|| json!({ "nom": nom, "age_s": Value::Null }));
+        let Some(objet) = entree.as_object_mut() else { continue };
+        let valeur = match cle.as_str() {
+            "brightness" => valeur.map(|b| json!((b / 254.0 * 100.0).round())),
+            "state" => Some(json!(texte.as_deref() == Some("ON"))),
+            _ => valeur.map(|v| json!(v)),
+        };
+        objet.insert(cle, valeur.unwrap_or(Value::Null));
+        cle_mesure_age(objet, instant - ts);
+    }
     Ok(axum::Json(json!({
+        "zigbee": zigbee,
+        "relais": relais,
         "demon": super::ambiance::etat_demon(&state.pool).await,
-        "salles": super::ambiance::salles(&state.pool).await?,
+        "salles": salles,
         "programmes": programmes,
         "reperes": reperes(&state.pool).await?,
     }))
     .into_response())
+}
+
+/// Garde l'âge de la valeur la plus récente d'un appareil Zigbee.
+fn cle_mesure_age(objet: &mut serde_json::Map<String, Value>, age: i64) -> bool {
+    let plus_recent = objet
+        .get("age_s")
+        .and_then(Value::as_i64)
+        .map_or(true, |actuel| age < actuel);
+    if plus_recent {
+        objet.insert("age_s".into(), json!(age));
+    }
+    plus_recent
 }
 
 pub(super) async fn image(State(state): State<AppState>) -> AppResult<Response> {
@@ -131,6 +210,33 @@ pub(super) async fn image_maj(
     Ok(Redirect::to("/ambiance/plan?travaux=1").into_response())
 }
 
+/// Fait pivoter le plan d'un quart de tour dans le sens des aiguilles d'une
+/// montre. Les repères tournent avec : (x, y) devient (100 − y, x).
+pub(super) async fn pivoter(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("INSERT OR IGNORE INTO plan_reglage(id) VALUES(1)")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE plan_reglage SET rotation=(rotation+90)%360 WHERE id=1")
+        .execute(&mut *tx)
+        .await?;
+    // SQLite évalue les deux membres avec les anciennes valeurs de la ligne.
+    sqlx::query("UPDATE plan_repere SET x=100-y, y=x")
+        .execute(&mut *tx)
+        .await?;
+    let rotation: i64 = sqlx::query_scalar("SELECT rotation FROM plan_reglage WHERE id=1")
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(axum::Json(json!({ "rotation": rotation })).into_response())
+}
+
 /// Crée un repère (sans `id`) ou le déplace (avec `id`). Répond le repère.
 pub(super) async fn repere(
     State(state): State<AppState>,
@@ -155,13 +261,18 @@ pub(super) async fn repere(
             .ok_or_else(|| AppError::Invalid("Type de repère inconnu".into()))?;
         let ref_id = form_i64(&form, "ref_id");
         let libelle = form_text(&form, "libelle");
+        if type_repere == "zigbee" && libelle.is_none() {
+            return Err(AppError::Invalid("Choisissez l'appareil Zigbee".into()));
+        }
         if type_repere == "texte" && libelle.is_none() {
             return Err(AppError::Invalid("Écrivez le texte du repère".into()));
         }
-        if type_repere != "texte" && ref_id.is_none() {
+        if !matches!(type_repere.as_str(), "texte" | "zigbee") && ref_id.is_none() {
             return Err(AppError::Invalid(
                 if type_repere == "eclairage" {
                     "Choisissez le programme d'éclairage"
+                } else if type_repere == "relais" {
+                    "Choisissez le relais"
                 } else {
                     "Choisissez la salle"
                 }
@@ -262,8 +373,11 @@ mod tests {
             .render(minijinja::context! {
                 session => minijinja::context! { peut_modifier => true, csrf => "x" },
                 image => false,
+                rotation => 90,
                 salles => vec![minijinja::context! { id => 1, nom => "Mater 1" }],
                 programmes => Vec::<i32>::new(),
+                relais => Vec::<i32>::new(),
+                zigbee => Vec::<i32>::new(),
             })
             .unwrap();
         assert!(rendu.contains("Mater 1"));

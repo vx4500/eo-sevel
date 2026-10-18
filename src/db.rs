@@ -401,6 +401,8 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         .await?;
     // Ventilation d'une salle vide (économie) : NULL = réglage désactivé.
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
+    // Plan de l'élevage pivoté par quarts de tour (voir routes::plan_elevage).
+    ensure_column(pool, "plan_reglage", "rotation", "INTEGER NOT NULL DEFAULT 0").await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))

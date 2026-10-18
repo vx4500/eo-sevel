@@ -138,7 +138,7 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
         let courbe_id: Option<i64> = ligne.try_get("courbe_id").ok();
         let jour_bande: Option<i64> = ligne.try_get("jour_bande").ok();
         let t_cible_fixe: f64 = ligne.try_get("t_cible_fixe").unwrap_or(22.0);
-        let ts: Option<i64> = ligne.try_get("ts").ok();
+        let ts: Option<i64> = ligne.try_get::<Option<i64>, _>("ts").ok().flatten();
         let age = ts.map(|ts| instant - ts);
         let alertes = sqlx::query_as::<_, (String, String, String, String)>(
             "SELECT type,gravite,debut,message FROM ambiance_alerte \
@@ -165,7 +165,10 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
             "type": ligne.try_get::<String, _>("type_salle").ok(),
             "site": ligne.try_get::<String, _>("site_nom").ok()
                 .or_else(|| ligne.try_get::<String, _>("site_code").ok()),
-            "configuree": ligne.try_get::<i64, _>("actif").is_ok(),
+            // SQLx lit un NULL de jointure comme 0 : sans ces Option, une salle
+            // jamais raccordée ni mesurée paraît « configurée, 0 °C ».
+            "configuree": ligne.try_get::<Option<i64>, _>("actif").ok().flatten().is_some(),
+            "a_mesure": ts.is_some_and(|ts| ts > 0),
             "actif": ligne.try_get::<i64, _>("actif").unwrap_or(0) != 0,
             "pilote": ligne.try_get::<i64, _>("pilote").unwrap_or(0) != 0,
             "ipx_hote": ligne.try_get::<String, _>("ipx_hote").ok(),
@@ -1131,6 +1134,20 @@ async fn points(pool: &SqlitePool) -> AppResult<Vec<Value>> {
             })
         })
         .collect())
+}
+
+/// Valeur brute actuelle d'un point (automate ou Zigbee), pour le plan de
+/// l'élevage. None si l'appareil ne répond pas.
+pub(super) async fn valeur_directe(pool: &SqlitePool, hote: &str, chemin: &str) -> Option<f64> {
+    if hote == super::zigbee::HOTE {
+        return super::zigbee::valeur_point(pool, chemin).await;
+    }
+    let acces = acces_lecture(pool).await;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()?;
+    lire_valeur(&client, &acces, hote, chemin).await
 }
 
 /// Valeurs en direct de tous les points enregistrés d'un automate.
