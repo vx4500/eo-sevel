@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.0** — plan de l'élevage en un coup d'œil.
+Version actuelle : **2.67.1** — lien Plan de l'élevage dans le menu Mes équipements.
+
+Version Rust 2.67.1 : le lien /ambiance/plan n'était que dans le menu téléphone ; ajouté sous Mes équipements et sur /equipements.
 
 Version Rust 2.67.0 : routes::plan_elevage (/ambiance/plan) — image du plan (plan_reglage, 0015) et repères posés en % de l'image (plan_repere, migration 0029 : salle, température, hygrométrie, % ventil, mode, éclairage, texte). Mode travaux 🚧 : envoi du plan, ajout et glisser des repères. Clic sur un repère : consigne, plage, ventil mini/maxi (UPDATE partiel d'ambiance_salle) ou forçage 1 h d'un programme d'éclairage.
 
