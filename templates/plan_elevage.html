@@ -9,9 +9,10 @@
 .plan-edition .plan-outils{display:flex}
 .plan-outils label{margin:0}
 .plan-outils select,.plan-outils input{width:auto;min-width:150px}
-.plan-cadre{position:relative;width:100%;margin:0 auto;border-radius:8px;overflow:visible;background:#f1f5f9;border:1px solid var(--line,#cbd5e1);touch-action:pan-y}
+.plan-cadre{position:relative;width:100%;margin:0 auto;overflow:visible;background:transparent;touch-action:pan-y}
+.plan-zone{position:relative}
 .plan-cadre img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
-.plan-cadre.vide{background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
+.plan-cadre.vide{border:1px dashed var(--line,#cbd5e1);border-radius:8px;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
 .rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
 .rep b{font-size:1rem}
@@ -65,11 +66,12 @@
 <div class="card plan-image-form" id="plan-image-form">
   <h2>🚧 En travaux</h2>
   <p><b>1.</b> Envoyez le plan · <b>2.</b> ajoutez les capteurs et faites-les glisser à leur place · <b>3.</b> touchez 🚧 pour terminer.</p>
-  <form method="post" action="/ambiance/plan/image" enctype="multipart/form-data">
-    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
-    <label>Photo ou dessin du plan (JPEG, PNG ou WebP, 5 Mo maxi)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
-    <button>Envoyer l'image</button>
-  </form>
+  <div class="plan-envoi">
+    <label>Photo ou dessin du plan (JPEG, PNG ou WebP, 5 Mo maxi)<input type="file" id="plan-fichier" accept="image/jpeg,image/png,image/webp"></label>
+    <button type="button" id="plan-envoyer">Envoyer l'image</button>
+    {% if image %}<button type="button" class="ghost" id="plan-recadrer" title="Coupe les bords vides (transparents ou blancs) pour que le plan remplisse l'écran">✂️ Retirer les marges</button>{% endif %}
+    <span id="plan-envoi-message" class="muted"></span>
+  </div>
   {% if image %}
   <form method="post" action="/ambiance/plan/image" enctype="multipart/form-data" onsubmit="return confirm('Retirer l\'image du plan ? Les repères restent en place.')">
     <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
@@ -105,9 +107,9 @@
 </div>
 {% endif %}
 
-<div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre" data-rotation="{{ rotation }}">
+<div class="plan-zone" id="plan-zone"><div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre" data-rotation="{{ rotation }}">
   {% if image %}<img src="/ambiance/plan/image" alt="Plan de l'élevage" id="plan-img">{% else %}<div class="plan-vide-texte">{% if session.peut_modifier %}Touchez 🚧 pour passer en travaux, envoyez le plan puis placez les capteurs.{% else %}Aucune image de plan pour l'instant.{% endif %}</div>{% endif %}
-</div>
+</div></div>
 <p class="muted" style="margin:4px 0 0">Mise à jour toutes les 30 secondes. Touchez un repère pour voir le détail et modifier les réglages. <a href="/ambiance">Tous les réglages d'ambiance</a> · <a href="/ambiance/eclairage">Éclairage</a></p>
 </div>
 
@@ -160,7 +162,12 @@
     var w = img && img.naturalWidth ? img.naturalWidth : 16, h = img && img.naturalHeight ? img.naturalHeight : 9;
     if (tourne) { var z = w; w = h; h = z; }
     var ratio = w / h;
-    var dispoL = cadre.parentElement.clientWidth;
+    // Toute la largeur de la fenêtre, au-delà de la colonne de contenu.
+    var zone = document.getElementById('plan-zone'), page = document.documentElement.clientWidth;
+    zone.style.marginLeft = '0'; zone.style.width = '';
+    var gauche = zone.getBoundingClientRect().left;
+    zone.style.marginLeft = (12 - gauche) + 'px'; zone.style.width = (page - 24) + 'px';
+    var dispoL = page - 24;
     var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
     var L = Math.min(dispoL, dispoH * ratio), H = L / ratio;
     cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
@@ -389,6 +396,56 @@
     });
   }
   if (modifier && /[?&]travaux=1/.test(location.search)) document.getElementById('plan-bouton-edition').click();
+  /* Envoi du plan : les bords vides (transparents ou blancs) sont coupés pour
+     que le dessin remplisse l'écran ; le serveur recale les repères. */
+  function recadrerEtEnvoyer(source){
+    var msg = document.getElementById('plan-envoi-message');
+    msg.textContent = 'Préparation…';
+    var url = URL.createObjectURL(source), im = new Image();
+    im.onload = function(){
+      var W = im.naturalWidth, H = im.naturalHeight, c = document.createElement('canvas');
+      c.width = W; c.height = H; var g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      var d = g.getImageData(0, 0, W, H).data, x0 = W, y0 = H, x1 = -1, y1 = -1;
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var i = (y * W + x) * 4;
+        if (d[i + 3] > 16 && !(d[i] > 240 && d[i + 1] > 240 && d[i + 2] > 240)) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      }
+      if (x1 < 0) { x0 = 0; y0 = 0; x1 = W - 1; y1 = H - 1; }
+      var m = Math.round(Math.max(W, H) * 0.01);
+      x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W - 1, x1 + m); y1 = Math.min(H - 1, y1 + m);
+      var w = x1 - x0 + 1, h = y1 - y0 + 1, s = document.createElement('canvas');
+      s.width = w; s.height = h; s.getContext('2d').drawImage(c, x0, y0, w, h, 0, 0, w, h);
+      var type = source.type == 'image/png' || source.type == 'image/webp' ? 'image/png' : 'image/jpeg';
+      s.toBlob(function(blob){
+        var f = new FormData();
+        f.append('csrf_token', csrf);
+        f.append('crop_x', x0); f.append('crop_y', y0); f.append('crop_w', w); f.append('crop_h', h);
+        f.append('orig_w', W); f.append('orig_h', H);
+        f.append('image', blob, type == 'image/png' ? 'plan.png' : 'plan.jpg');
+        msg.textContent = 'Envoi…';
+        fetch('/ambiance/plan/image', {method:'POST', body:f, credentials:'same-origin'}).then(function(r){
+          if (!r.ok) return r.text().then(function(t){ var e = document.createElement('div'); e.innerHTML = t; throw new Error(e.textContent.trim().slice(0, 200)); });
+          location.href = '/ambiance/plan?travaux=1';
+        }).catch(function(e){ msg.textContent = e.message; });
+      }, type, 0.9);
+      URL.revokeObjectURL(url);
+    };
+    im.onerror = function(){ msg.textContent = 'Image illisible'; };
+    im.src = url;
+  }
+  if (modifier) {
+    document.getElementById('plan-envoyer').addEventListener('click', function(){
+      var f = document.getElementById('plan-fichier').files[0];
+      if (!f) { document.getElementById('plan-envoi-message').textContent = 'Choisissez d\'abord un fichier'; return; }
+      recadrerEtEnvoyer(f);
+    });
+    var bR = document.getElementById('plan-recadrer');
+    if (bR) bR.addEventListener('click', function(){
+      fetch('/ambiance/plan/image', {credentials:'same-origin'}).then(function(r){ return r.blob(); }).then(recadrerEtEnvoyer);
+    });
+  }
   charger(); setInterval(charger, 30000);
 })();
 </script>

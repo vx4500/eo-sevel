@@ -243,13 +243,57 @@ pub(super) async fn image_maj(
     } else {
         let bytes = file.ok_or_else(|| AppError::Invalid("Image du plan obligatoire".into()))?;
         let mime = detect_image_mime(&bytes)?;
+        let mut tx = state.pool.begin().await?;
         sqlx::query("UPDATE plan_reglage SET image_data=?,image_mime=? WHERE id=1")
             .bind(bytes)
             .bind(mime)
-            .execute(&state.pool)
+            .execute(&mut *tx)
             .await?;
+        // Image recadrée dans le navigateur : les repères gardent leur place
+        // sur le dessin.
+        let cadre = ["crop_x", "crop_y", "crop_w", "crop_h", "orig_w", "orig_h"]
+            .map(|cle| form_f64(&form, cle));
+        if let [Some(cx), Some(cy), Some(cw), Some(ch), Some(ow), Some(oh)] = cadre {
+            if cw > 0.0 && ch > 0.0 && ow > 0.0 && oh > 0.0 && (cw < ow || ch < oh) {
+                let rotation: i64 =
+                    sqlx::query_scalar("SELECT rotation FROM plan_reglage WHERE id=1")
+                        .fetch_one(&mut *tx)
+                        .await?;
+                let reperes: Vec<(i64, f64, f64)> =
+                    sqlx::query_as("SELECT id,x,y FROM plan_repere")
+                        .fetch_all(&mut *tx)
+                        .await?;
+                for (id, x, y) in reperes {
+                    let (x, y) = recadrer(x, y, rotation, [cx, cy, cw, ch, ow, oh]);
+                    sqlx::query("UPDATE plan_repere SET x=?,y=? WHERE id=?")
+                        .bind(x)
+                        .bind(y)
+                        .bind(id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+            }
+        }
+        tx.commit().await?;
     }
     Ok(Redirect::to("/ambiance/plan?travaux=1").into_response())
+}
+
+/// Position d'un repère (en % du plan affiché, pivoté de `rotation`) après
+/// recadrage de l'image d'origine sur [x, y, largeur, hauteur] en pixels.
+fn recadrer(x: f64, y: f64, rotation: i64, [cx, cy, cw, ch, ow, oh]: [f64; 6]) -> (f64, f64) {
+    let quarts = rotation.rem_euclid(360) / 90;
+    // Retour dans le repère de l'image non pivotée : inverse de (x,y)→(100−y,x).
+    let (mut u, mut v) = (x, y);
+    for _ in 0..quarts {
+        (u, v) = (v, 100.0 - u);
+    }
+    u = ((u / 100.0 * ow - cx) / cw * 100.0).clamp(0.0, 100.0);
+    v = ((v / 100.0 * oh - cy) / ch * 100.0).clamp(0.0, 100.0);
+    for _ in 0..quarts {
+        (u, v) = (100.0 - v, u);
+    }
+    (u, v)
 }
 
 /// Fait pivoter le plan d'un quart de tour dans le sens des aiguilles d'une
@@ -440,6 +484,17 @@ pub(super) async fn salle_reglage(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_recadrage_garde_les_reperes_sur_le_dessin() {
+        // Image 1000×500, dessin de 250 à 750 en x et 100 à 400 en y.
+        let cadre = [250.0, 100.0, 500.0, 300.0, 1000.0, 500.0];
+        assert_eq!(super::recadrer(50.0, 50.0, 0, cadre), (50.0, 50.0));
+        assert_eq!(super::recadrer(25.0, 20.0, 0, cadre), (0.0, 0.0));
+        // Pivoté d'un quart de tour : le coin haut-gauche du dessin est en
+        // haut à droite de l'affichage.
+        assert_eq!(super::recadrer(80.0, 25.0, 90, cadre), (100.0, 0.0));
+    }
+
     #[test]
     fn le_gabarit_se_compile() {
         let mut env = minijinja::Environment::new();

@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.3** — cases sur le plan.
+Version actuelle : **2.67.4** — plan pleine page, marges coupées.
+
+Version Rust 2.67.4 : plan sans cadre ni fond (fond du logiciel), zone sur toute la largeur de la fenêtre ; à l'envoi le navigateur coupe les bords transparents/blancs (canvas) et envoie crop_*/orig_* : plan_elevage::recadrer recale les repères (rotation comprise). Bouton « Retirer les marges » pour l'image déjà en place.
 
 Version Rust 2.67.3 : repère case (ref_id=casesalle.id) : vanne, porcs (case_pig_count) ou truies + porcelets présents (portee_effectif non clôturée) ; POST /ambiance/plan/cases-salle pose toutes les cases d'une salle en grille.
 
