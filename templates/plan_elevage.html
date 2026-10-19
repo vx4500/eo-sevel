@@ -20,11 +20,11 @@
 .plan-cadre img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
 .plan-cadre.vide{border:1px dashed var(--line,#cbd5e1);border-radius:8px;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
-.rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
+.rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:.15em .5em;font-size:var(--plan-fs,.85rem);line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
 .rep b{font-size:1.15em}
-.rep.dim{white-space:normal;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;padding:1px 2px;min-width:0;min-height:0}
+.rep.dim{white-space:normal;overflow:hidden;display:flex;flex-direction:column;justify-content:safe center;align-items:safe center;text-align:center;box-sizing:border-box;padding:1px 2px;min-width:0;min-height:0}
 .rep.dim[data-resume="2"]{padding:0;border-width:1px;border-radius:4px}
-.rep.dim .ligne{flex-wrap:wrap;justify-content:center;gap:0 .6em}
+.rep.dim .ligne{flex-wrap:wrap;justify-content:safe center;gap:0 .6em}
 .rep.dim.rep-salle .nom{border:0;margin:0}
 .rep .taille{display:none;position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;border-radius:3px;background:#2563eb;cursor:nwse-resize;touch-action:none}
 .plan-edition .rep .taille{display:block}
@@ -50,6 +50,7 @@
 .plan-edition .rep .suppr{display:block}
 .plan-panneau{position:fixed;right:12px;bottom:12px;width:min(360px,calc(100vw - 24px));max-height:80vh;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#cbd5e1);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.3);padding:12px 14px;z-index:50;display:none}
 .plan-panneau.ouvert{display:block}
+@media(max-width:850px){.plan-panneau{left:8px;right:8px;width:auto;bottom:calc(96px + env(safe-area-inset-bottom));max-height:55vh;z-index:160}}
 .plan-panneau h2{margin:0 0 6px;font-size:1.1rem;padding-right:28px}
 .plan-panneau .fermer{position:absolute;top:8px;right:8px;background:none;border:0;font-size:1.3rem;cursor:pointer;color:inherit}
 .plan-mesures{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 10px;text-align:center}
@@ -225,7 +226,7 @@
     var zone = document.getElementById('plan-zone'), page = document.documentElement.clientWidth;
     if (document.fullscreenElement === zone) {
       var Lp = Math.min(window.innerWidth, window.innerHeight * ratio), Hp = Lp / ratio;
-      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px'; setTimeout(function(){ if (etat.reperes.length) dessiner(); }, 0);
+      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px'; cadre.style.setProperty('--plan-fs', Math.max(6, Math.min(14, Lp / 81)) + 'px'); setTimeout(function(){ if (etat.reperes.length) dessiner(); }, 0);
       if (img) { img.style.width = (tourne ? Hp : Lp) + 'px'; img.style.height = (tourne ? Lp : Hp) + 'px'; img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)'; }
       return;
     }
@@ -236,6 +237,8 @@
     var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
     var L = taille ? taille * dispoL : Math.min(dispoL, dispoH * ratio), H = L / ratio;
     cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
+    // Repères non étirés : texte proportionnel au plan (≈13,6 px pour 1 100 px de large).
+    cadre.style.setProperty('--plan-fs', Math.max(6, Math.min(14, L / 81)) + 'px');
     // Taille du plan changée : on redessine pour repasser du résumé au détail si la place le permet.
     setTimeout(function(){ if (etat.reperes.length) dessiner(); }, 0);
     if (img) {
