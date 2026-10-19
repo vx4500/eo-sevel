@@ -29,6 +29,11 @@
 .rep .taille{display:none;position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;border-radius:3px;background:#2563eb;cursor:nwse-resize;touch-action:none}
 .plan-edition .rep .taille{display:block}
 .rep.alerte{border-color:#dc2626;background:#fef2f2}
+.rep.alerte-orange{border-color:#ea580c;background:#fff7ed;animation:plan-orange 1.2s ease-in-out infinite}
+.rep.alerte-rouge{border-color:#dc2626;background:#fef2f2;animation:plan-rouge .8s ease-in-out infinite}
+@keyframes plan-orange{50%{background:#fb923c;box-shadow:0 0 0 4px rgba(234,88,12,.45)}}
+@keyframes plan-rouge{50%{background:#ef4444;color:#fff;box-shadow:0 0 0 5px rgba(220,38,38,.5)}}
+@media (prefers-reduced-motion:reduce){.rep.alerte-orange,.rep.alerte-rouge{animation:none;border-width:3px}}
 .rep.agee{border-color:#94a3b8;color:#64748b}
 .rep.neutre{border-color:#64748b}
 .rep.lampe-on{border-color:#ca8a04;background:#fef9c3}
@@ -184,9 +189,19 @@
   function relais(id){ return (etat.relais || []).find(function(p){ return p.id == id; }); }
   function programme(id){ return etat.programmes.find(function(p){ return p.id == id; }); }
   function mode(s){ return MODES[s && s.mode] || ['·', s && s.mode ? s.mode : 'Non régulée']; }
+  // « critique » → rouge clignotant, sinon orange clignotant.
+  function niveauAlerte(alertes){
+    return alertes.some(function(a){ return a.gravite == 'critique'; }) ? 'alerte alerte-rouge' : 'alerte alerte-orange';
+  }
+  // Alertes ouvertes qui concernent un appareil Zigbee (type « zigbee_…:ieee »).
+  function alertesZigbee(ieee){
+    var l = [];
+    etat.salles.forEach(function(s){ (s.alertes || []).forEach(function(a){ if (a.type && a.type.indexOf(':' + ieee) > 0) l.push(a); }); });
+    return l;
+  }
   function classe(s){
     if (!s) return 'neutre';
-    if (s.alertes && s.alertes.length) return 'alerte';
+    if (s.alertes && s.alertes.length) return niveauAlerte(s.alertes);
     if (s.t == null && s.ventil == null) return 'neutre';
     return s.mesure_agee ? 'agee' : '';
   }
@@ -291,7 +306,10 @@
       if (r.type == 'texte') cl += ' texte';
       else if (r.type == 'case' || r.type == 'camera') {}
       else if (r.type == 'compteur') { var k = compteur(r.libelle); cl += !k || k.age_s == null || k.age_s > 900 ? ' agee' : ''; }
-      else if (r.type == 'zigbee') { var z = zig(r.libelle); cl += !z || z.age_s > 3600 ? ' agee' : ''; }
+      else if (r.type == 'zigbee') {
+        var z = zig(r.libelle), az = alertesZigbee(r.libelle);
+        cl += az.length ? ' ' + niveauAlerte(az) : (!z || z.age_s > 3600 ? ' agee' : '');
+      }
       else if (r.type == 'relais') { var q = relais(r.ref_id); cl += q && q.valeur > 0 ? ' lampe-on' : ' neutre'; }
       else if (r.type == 'eclairage') { var p = programme(r.ref_id); cl += p && p.allume ? ' lampe-on' : ' neutre'; }
       else { var c = classe(salle(r.ref_id)); if (c) cl += ' ' + c; }
