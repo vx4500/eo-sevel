@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.11** — plan : encarts clignotants selon l'alerte.
+Version actuelle : **2.67.12** — plan : rendu sur téléphone.
+
+Version Rust 2.67.12 : .rep.dim centré en « safe center » (sinon le débordement centré n'apparaît pas dans scrollWidth et le texte ne rétrécit pas), repères non étirés en var(--plan-fs) = largeur du plan/81 (6–14 px), panneau au-dessus de .nav-pouce sous 850 px.
 
 Version Rust 2.67.11 : encart de salle (et sonde Zigbee visée par une alerte zigbee_*:ieee) clignote orange si ambiance_alerte gravite « alerte », rouge si « critique ».
 
