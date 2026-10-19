@@ -291,6 +291,98 @@ fn cle_mesure_age(objet: &mut serde_json::Map<String, Value>, age: i64) -> bool 
     plus_recent
 }
 
+/// Historique d'un repère pour le graphique de l'encart : séries
+/// moyennées sur au plus ~300 points, `jours` = 1, 7 ou 30.
+pub(super) async fn historique_json(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> AppResult<Response> {
+    let jours: i64 = params
+        .get("jours")
+        .and_then(|j| j.parse().ok())
+        .filter(|j| [1, 7, 30].contains(j))
+        .unwrap_or(1);
+    let depuis = chrono::Utc::now().timestamp() - jours * 86400;
+    let pas = (jours * 86400 / 300).max(60);
+    let type_repere = params.get("type").map(String::as_str).unwrap_or("");
+    let id: Option<i64> = params.get("id").and_then(|v| v.parse().ok());
+    let ieee = params.get("ieee").cloned().unwrap_or_default();
+
+    let mut series: Vec<Value> = Vec::new();
+    fn ajouter(series: &mut Vec<Value>, libelle: &str, unite: &str, points: Vec<(i64, f64)>) {
+        if !points.is_empty() {
+            series.push(json!({ "nom": libelle, "unite": unite, "points": points }));
+        }
+    }
+    let zigbee = |ieee: String, cle: &'static str| {
+        let pool = state.pool.clone();
+        async move {
+            sqlx::query_as::<_, (i64, f64)>(
+                "SELECT (ts/?)*? AS t, AVG(valeur) FROM zigbee_mesure \
+                 WHERE ieee=? AND cle=? AND ts>=? GROUP BY t ORDER BY t",
+            )
+            .bind(pas)
+            .bind(pas)
+            .bind(ieee)
+            .bind(cle)
+            .bind(depuis)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
+        }
+    };
+    match type_repere {
+        "zigbee" => {
+            ajouter(&mut series, "Température", "°C", zigbee(ieee.clone(), "temperature").await);
+            ajouter(&mut series, "Hygrométrie", "%", zigbee(ieee.clone(), "humidity").await);
+        }
+        "compteur" => {
+            ajouter(&mut series, "Puissance", "W", zigbee(ieee.clone(), "power").await);
+        }
+        _ => {
+            let salle_id = id.ok_or(AppError::NotFound)?;
+            for (grandeur, libelle, unite) in [
+                ("t", "Température", "°C"),
+                ("consigne", "Consigne", "°C"),
+                ("h", "Hygrométrie", "%"),
+                ("ventil", "Ventilation", "%"),
+            ] {
+                let points: Vec<(i64, f64)> = sqlx::query_as(
+                    "SELECT (ts/?)*? AS t, AVG(valeur)/10.0 FROM ambiance_mesure \
+                     WHERE salle_id=? AND grandeur=? AND ts>=? GROUP BY t ORDER BY t",
+                )
+                .bind(pas)
+                .bind(pas)
+                .bind(salle_id)
+                .bind(grandeur)
+                .bind(depuis)
+                .fetch_all(&state.pool)
+                .await?;
+                ajouter(&mut series, libelle, unite, points);
+            }
+            // Salle hors régulation : sondes Zigbee rattachées à la salle.
+            if series.is_empty() {
+                let sondes: Vec<(String, String)> = sqlx::query_as(
+                    "SELECT chemin, role FROM ipx_point WHERE hote='zigbee' AND salle_id=? \
+                     AND role IN ('temperature','humidite')",
+                )
+                .bind(salle_id)
+                .fetch_all(&state.pool)
+                .await?;
+                for (chemin, role) in sondes {
+                    let Some((ieee, _)) = chemin.split_once('/') else { continue };
+                    if role == "temperature" {
+                        ajouter(&mut series, "Température", "°C", zigbee(ieee.to_string(), "temperature").await);
+                    } else {
+                        ajouter(&mut series, "Hygrométrie", "%", zigbee(ieee.to_string(), "humidity").await);
+                    }
+                }
+            }
+        }
+    }
+    Ok(axum::Json(json!({ "jours": jours, "series": series })).into_response())
+}
+
 pub(super) async fn image(State(state): State<AppState>) -> AppResult<Response> {
     let image: Option<(Vec<u8>, String)> = sqlx::query_as(
         "SELECT image_data,image_mime FROM plan_reglage \

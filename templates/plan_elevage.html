@@ -56,6 +56,14 @@
 .rep-camera.dim img{width:100%;height:100%;object-fit:cover;display:block}
 .rep-camera.dim span{position:absolute;left:3px;top:2px;font-size:12px;text-shadow:0 0 3px #000}
 .plan-camera-img{width:100%;border-radius:6px;background:#000;min-height:120px}
+.plan-histo h3{margin:10px 0 4px;font-size:.95rem}
+.plan-histo .boutons{margin:0 0 6px}
+.plan-histo button.actif{background:#16a34a;color:#fff;border-color:#16a34a}
+.plan-courbe{margin:6px 0 10px}
+.plan-courbe .tete{display:flex;justify-content:space-between;gap:6px;font-size:.8rem;flex-wrap:wrap}
+.plan-courbe .tete span{color:#64748b}
+.plan-courbe svg{width:100%;height:70px;color:#2563eb;background:rgba(100,116,139,.08);border-radius:4px}
+.plan-courbe .pied{display:flex;justify-content:space-between;font-size:.72rem;color:#64748b}
 .plan-jours div{display:grid;grid-template-columns:42px 1fr 48px;gap:6px;align-items:center;font-size:.82rem;margin:2px 0}
 .plan-jours i{display:block;height:10px;border-radius:3px;background:#ca8a04}
 .plan-jours b{text-align:right}
@@ -316,6 +324,7 @@
 
   /* Panneau de détail et de réglage */
   function ouvrir(r, rafraichir){
+    var ancienHisto = rafraichir ? document.getElementById('plan-histo') : null;
     var actif = document.activeElement;
     if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
     ouvert = r; var h = '';
@@ -340,7 +349,7 @@
       h += '<div class="plan-jours">' + k.jours.map(function(j){
         return '<div><span>' + j.jour.slice(8, 10) + '/' + j.jour.slice(5, 7) + '</span><i style="width:' + Math.round(j.kwh / max * 100) + '%"></i><b>' + nb(j.kwh, 0) + '</b></div>';
       }).join('') + '</div><p><a href="/electricite">Détail électricité</a></p>';
-      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; histo(r, ancienHisto); return;
     }
     if (r.type == 'case') {
       var cc = casep(r.ref_id); if (!cc) { fermer(); return; }
@@ -352,7 +361,7 @@
     if (r.type == 'zigbee') {
       var z = zig(r.libelle); if (!z) { fermer(); return; }
       h = '<h2>📡 ' + esc(z.nom) + '</h2><p>' + zigTexte(z) + '</p><p class="muted">Dernière valeur il y a ' + Math.round((z.age_s || 0) / 60) + ' min</p><p><a href="/ambiance/zigbee">Réseau Zigbee</a></p>';
-      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; histo(r, ancienHisto); return;
     }
     if (r.type == 'relais') {
       var q = relais(r.ref_id); if (!q) { fermer(); return; }
@@ -389,7 +398,47 @@
     }
     corps.innerHTML = h + '<div class="plan-message" id="plan-message"></div>';
     if (rafraichir && dernierMessage) message(dernierMessage[0], dernierMessage[1]); else dernierMessage = null;
+    histo(r, ancienHisto);
     panneau.classList.add('ouvert');
+  }
+  /* Historique des capteurs dans l'encart */
+  var TYPES_HISTO = ['salle','temperature','humidite','ventil','mode','zigbee','compteur'];
+  function histo(r, ancien){
+    if (TYPES_HISTO.indexOf(r.type) < 0) return;
+    if (ancien) { corps.appendChild(ancien); return; }
+    var d = document.createElement('div'); d.className = 'plan-histo'; d.id = 'plan-histo';
+    d.innerHTML = '<h3>Historique</h3><div class="boutons"><button type="button" class="ghost actif" data-jours="1">24 h</button><button type="button" class="ghost" data-jours="7">7 jours</button><button type="button" class="ghost" data-jours="30">30 jours</button></div><div class="plan-histo-graph">Chargement…</div>';
+    corps.appendChild(d);
+    d.addEventListener('click', function(ev){
+      var b = ev.target.closest('button[data-jours]'); if (!b) return;
+      ev.stopPropagation();
+      d.querySelectorAll('button[data-jours]').forEach(function(x){ x.classList.toggle('actif', x === b); });
+      chargerHisto(r, d, Number(b.dataset.jours));
+    });
+    chargerHisto(r, d, 1);
+  }
+  function chargerHisto(r, d, jours){
+    var g = d.querySelector('.plan-histo-graph'); g.textContent = 'Chargement…';
+    var q = 'type=' + encodeURIComponent(r.type) + '&jours=' + jours + (r.type == 'zigbee' || r.type == 'compteur' ? '&ieee=' + encodeURIComponent(r.libelle) : '&id=' + r.ref_id);
+    fetch('/ambiance/plan/historique.json?' + q, {credentials:'same-origin'}).then(function(x){ return x.json(); }).then(function(j){
+      if (!j.series.length) { g.innerHTML = '<p class="muted">Pas d\'historique enregistré pour ce capteur.</p>'; return; }
+      g.innerHTML = j.series.map(function(s){ return courbe(s, jours); }).join('');
+    }).catch(function(){ g.textContent = 'Historique indisponible'; });
+  }
+  function courbe(s, jours){
+    var pts = s.points, W = 320, H = 70;
+    var t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+    var vals = pts.map(function(p){ return p[1]; });
+    var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+    if (mx - mn < 0.5) { mx += 0.5; mn -= 0.5; }
+    var poly = pts.map(function(p){
+      return ((p[0] - t0) / Math.max(1, t1 - t0) * W).toFixed(1) + ',' + (H - 4 - (p[1] - mn) / (mx - mn) * (H - 8)).toFixed(1);
+    }).join(' ');
+    var dec = s.unite == 'W' ? 0 : 1;
+    function date(ts){ var x = new Date(ts * 1000); return jours == 1 ? x.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : x.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}); }
+    return '<div class="plan-courbe"><div class="tete"><b>' + esc(s.nom) + '</b><span>actuel ' + nb(vals[vals.length - 1], dec) + ' ' + s.unite + ' · min ' + nb(Math.min.apply(null, vals), dec) + ' · max ' + nb(Math.max.apply(null, vals), dec) + '</span></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none"><polyline points="' + poly + '" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>' +
+      '<div class="pied"><span>' + date(t0) + '</span><span>' + date(t1) + '</span></div></div>';
   }
   function fermer(){ ouvert = null; dernierMessage = null; panneau.classList.remove('ouvert'); }
   function message(t, erreur){ dernierMessage = [t, erreur]; var m = document.getElementById('plan-message'); if (m) { m.textContent = t; m.className = 'plan-message' + (erreur ? ' erreur' : ''); } }
