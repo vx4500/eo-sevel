@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.10** — plan : texte des cases homogène, résumé court.
+Version actuelle : **2.67.11** — plan : encarts clignotants selon l'alerte.
+
+Version Rust 2.67.11 : encart de salle (et sonde Zigbee visée par une alerte zigbee_*:ieee) clignote orange si ambiance_alerte gravite « alerte », rouge si « critique ».
 
 Version Rust 2.67.10 : cases d'une salle à la même taille de texte (et résumées ensemble), plafond de police = largeur du plan/55, résumé court (data-resume=2 : température seule, vanne seule) sous 7 px, encart minimum 0,5 %.
 
