@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.6** — taille du plan à la demande.
+Version actuelle : **2.67.7** — plan : Zigbee par salle, lampes au toucher, compteurs.
+
+Version Rust 2.67.7 : salles hors régulation alimentées par les ipx_point zigbee de la salle (temperature/humidite/ventilation, brightness→%), mode "zigbee" ; toucher un repère relais bascule la lampe directement ; repère compteur (ieee dans libelle) : zigbee_valeur power + elec_jour 10 derniers jours. Ventil Ps-1/2/3 (TS0601) ne remontent pas leur vitesse.
 
 Version Rust 2.67.6 : boutons − / + / ⤢ Ajuster et poignée ↘ sur le plan ; taille = part de la largeur disponible, localStorage eo-plan-taille (par appareil). setPointerCapture protégé par try (échouait sur événements simulés).
 

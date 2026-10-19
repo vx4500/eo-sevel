@@ -11,7 +11,8 @@
 
 use super::*;
 
-const TYPES: [&str; 10] = [
+const TYPES: [&str; 11] = [
+    "compteur",
     "case",
     "zigbee",
     "relais",
@@ -64,6 +65,11 @@ pub(super) async fn page(
          WHERE categorie IN ('sonde','variateur','interrupteur') ORDER BY nom",
     )
     .await?;
+    let compteurs = generic_rows(
+        &state.pool,
+        "SELECT ieee, nom FROM zigbee_appareil WHERE categorie='compteur' ORDER BY nom",
+    )
+    .await?;
     let cases = generic_rows(
         &state.pool,
         "SELECT c.id, c.salle_id, s.nom AS salle, c.nom, c.num_vanne FROM casesalle c \
@@ -73,6 +79,7 @@ pub(super) async fn page(
     let mut contexte = context(&session);
     contexte.insert("cases".into(), Value::Array(cases));
     contexte.insert("zigbee".into(), Value::Array(zigbee));
+    contexte.insert("compteurs".into(), Value::Array(compteurs));
     contexte.insert("relais".into(), Value::Array(relais));
     contexte.insert("image".into(), json!(image > 0));
     contexte.insert("rotation".into(), json!(rotation));
@@ -102,14 +109,46 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
         })
         .collect();
     // Une salle sans mesure n'affiche rien plutôt que des zéros.
+    // Salles hors régulation : valeurs des sondes et variateurs Zigbee
+    // rattachés à la salle (ipx_point, hote 'zigbee').
+    let zigbee_salle: Vec<(i64, String, f64, Option<String>, i64)> = sqlx::query_as(
+        "SELECT p.salle_id, p.role, v.valeur, v.texte, v.ts FROM ipx_point p \
+         JOIN zigbee_valeur v ON v.ieee || '/' || v.cle = p.chemin \
+         WHERE p.hote='zigbee' AND p.actif=1 AND p.salle_id IS NOT NULL \
+           AND p.role IN ('temperature','humidite','ventilation') AND v.valeur IS NOT NULL",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let instant = chrono::Utc::now().timestamp();
     let mut salles = super::ambiance::salles(&state.pool).await?;
     for salle in &mut salles {
-        if salle.get("a_mesure") != Some(&json!(true)) {
-            if let Some(objet) = salle.as_object_mut() {
-                for champ in ["t", "h", "lux", "ventil", "consigne", "mode", "mesure_age_texte"] {
-                    objet.insert(champ.into(), Value::Null);
-                }
-            }
+        if salle.get("a_mesure") == Some(&json!(true)) {
+            continue;
+        }
+        let salle_id = salle.get("id").and_then(Value::as_i64);
+        let Some(objet) = salle.as_object_mut() else { continue };
+        for champ in ["t", "h", "lux", "ventil", "consigne", "mode", "mesure_age_texte"] {
+            objet.insert(champ.into(), Value::Null);
+        }
+        let mut plus_recent: Option<i64> = None;
+        for (_, role, valeur, _, ts) in zigbee_salle.iter().filter(|l| Some(l.0) == salle_id) {
+            let (champ, valeur) = match role.as_str() {
+                "temperature" => ("t", valeur.to_owned()),
+                "humidite" => ("h", valeur.to_owned()),
+                // Variateur : luminosité 0–254 → %.
+                _ => ("ventil", (valeur / 254.0 * 100.0).round()),
+            };
+            objet.insert(champ.into(), json!(valeur));
+            plus_recent = Some(plus_recent.map_or(*ts, |p| p.max(*ts)));
+        }
+        if let Some(ts) = plus_recent {
+            let age = instant - ts;
+            objet.insert("mode".into(), json!("zigbee"));
+            objet.insert("mesure_agee".into(), json!(age > 3600));
+            objet.insert(
+                "mesure_age_texte".into(),
+                json!(if age < 90 { "à l'instant".to_string() } else if age < 5400 { format!("il y a {} min", age / 60) } else if age < 172800 { format!("il y a {} h", age / 3600) } else { format!("il y a {} j", age / 86400) }),
+            );
         }
     }
     // Relais posés sur le plan : état lu sur l'automate (ou Zigbee).
@@ -182,7 +221,39 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
             }),
         );
     }
+    // Compteurs électriques Zigbee posés sur le plan (ieee dans `libelle`) :
+    // puissance instantanée et kWh des 10 derniers jours (elec_jour).
+    let compteurs_plan: Vec<(String, String, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT a.ieee, a.nom, v.valeur, v.ts FROM zigbee_appareil a \
+         LEFT JOIN zigbee_valeur v ON v.ieee=a.ieee AND v.cle='power' \
+         WHERE a.ieee IN (SELECT libelle FROM plan_repere WHERE type='compteur')",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let mut compteurs = serde_json::Map::new();
+    for (ieee, nom, puissance, ts) in compteurs_plan {
+        let jours: Vec<(String, f64)> = sqlx::query_as(
+            "SELECT jour, kwh FROM elec_jour WHERE ieee=? \
+               AND jour >= date('now','localtime','-10 day') \
+               AND jour < date('now','localtime') ORDER BY jour",
+        )
+        .bind(&ieee)
+        .fetch_all(&state.pool)
+        .await?;
+        let total: f64 = jours.iter().map(|(_, k)| k).sum();
+        compteurs.insert(
+            ieee,
+            json!({
+                "nom": nom,
+                "w": puissance,
+                "age_s": ts.map(|ts| instant - ts),
+                "total_10j": total,
+                "jours": jours.into_iter().map(|(jour, kwh)| json!({"jour": jour, "kwh": kwh})).collect::<Vec<_>>(),
+            }),
+        );
+    }
     Ok(axum::Json(json!({
+        "compteurs": compteurs,
         "cases": cases,
         "zigbee": zigbee,
         "relais": relais,
@@ -347,13 +418,16 @@ pub(super) async fn repere(
             .ok_or_else(|| AppError::Invalid("Type de repère inconnu".into()))?;
         let ref_id = form_i64(&form, "ref_id");
         let libelle = form_text(&form, "libelle");
+        if type_repere == "compteur" && libelle.is_none() {
+            return Err(AppError::Invalid("Choisissez le compteur".into()));
+        }
         if type_repere == "zigbee" && libelle.is_none() {
             return Err(AppError::Invalid("Choisissez l'appareil Zigbee".into()));
         }
         if type_repere == "texte" && libelle.is_none() {
             return Err(AppError::Invalid("Écrivez le texte du repère".into()));
         }
-        if !matches!(type_repere.as_str(), "texte" | "zigbee") && ref_id.is_none() {
+        if !matches!(type_repere.as_str(), "texte" | "zigbee" | "compteur") && ref_id.is_none() {
             return Err(AppError::Invalid(
                 if type_repere == "case" {
                     "Choisissez la case"
@@ -516,6 +590,7 @@ mod tests {
                 relais => Vec::<i32>::new(),
                 zigbee => Vec::<i32>::new(),
                 cases => Vec::<i32>::new(),
+                compteurs => Vec::<i32>::new(),
             })
             .unwrap();
         assert!(rendu.contains("Mater 1"));
