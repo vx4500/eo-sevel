@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.8** — plan : encarts redimensionnables, caméras, historiques.
+Version actuelle : **2.67.9** — plan : résumé des petits encarts, lampes Zigbee au toucher.
+
+Version Rust 2.67.9 : encart dimensionné dont le texte tomberait sous 9 px → affichage résumé (resume() côté page) ; repère zigbee d'un interrupteur avec ipx_point pilotable sur …/state → point_id, toucher = commander.
 
 Version Rust 2.67.8 : plan_repere.w/h (encart en % du plan, texte ajusté), repère camera (vignette si dimensionné, image 5 s dans l'encart), GET /ambiance/plan/historique.json (ambiance_mesure /10 ou zigbee_mesure, ≤300 points, 1/7/30 j), zigbee_pont historise brightness (variateurs). Correctif : bloc panneau compteur inséré dans dessiner() en 2.67.7.
 
