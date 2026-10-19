@@ -195,6 +195,20 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
         objet.insert(cle, valeur.unwrap_or(Value::Null));
         cle_mesure_age(objet, instant - ts);
     }
+    // Interrupteurs Zigbee commandables (point pilotable sur leur `state`) :
+    // toucher le repère allume ou éteint.
+    let commandes: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT substr(chemin, 1, instr(chemin, '/') - 1), id FROM ipx_point \
+         WHERE hote='zigbee' AND pilotable=1 AND chemin_ecriture IS NOT NULL \
+           AND chemin LIKE '%/state'",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    for (ieee, point_id) in commandes {
+        if let Some(objet) = zigbee.get_mut(&ieee).and_then(Value::as_object_mut) {
+            objet.insert("point_id".into(), json!(point_id));
+        }
+    }
     // Cases posées sur le plan : nombre de porcs (inventaire + mouvements),
     // truies présentes et, en maternité, porcelets de la portée en cours.
     let case_ids: Vec<(i64, String, Option<String>)> = sqlx::query_as(

@@ -209,7 +209,7 @@
     var zone = document.getElementById('plan-zone'), page = document.documentElement.clientWidth;
     if (document.fullscreenElement === zone) {
       var Lp = Math.min(window.innerWidth, window.innerHeight * ratio), Hp = Lp / ratio;
-      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px'; setTimeout(ajusterTextes, 0);
+      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px'; setTimeout(function(){ if (etat.reperes.length) dessiner(); }, 0);
       if (img) { img.style.width = (tourne ? Hp : Lp) + 'px'; img.style.height = (tourne ? Lp : Hp) + 'px'; img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)'; }
       return;
     }
@@ -220,7 +220,8 @@
     var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
     var L = taille ? taille * dispoL : Math.min(dispoL, dispoH * ratio), H = L / ratio;
     cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
-    if (typeof ajusterTextes == 'function') setTimeout(ajusterTextes, 0);
+    // Taille du plan changée : on redessine pour repasser du résumé au détail si la place le permet.
+    setTimeout(function(){ if (etat.reperes.length) dessiner(); }, 0);
     if (img) {
       img.style.width = (tourne ? H : L) + 'px'; img.style.height = (tourne ? L : H) + 'px';
       img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
@@ -303,7 +304,43 @@
     if (ouvert) ouvrir(ouvert, true);
   }
   /* Le texte d'un encart dimensionné prend la plus grande taille qui tient. */
+  /* Résumé d'un repère quand son encart est trop petit pour tout lire. */
+  function resume(r){
+    var s = salle(r.ref_id), m;
+    switch (r.type) {
+      case 'salle':
+        if (!s) return '?';
+        return '<b>' + esc(s.nom) + '</b> ' + nb(s.t, 1) + '° 🌀' + nb(s.ventil, 0) + '%';
+      case 'case':
+        var cc = casep(r.ref_id); if (!cc) return '?';
+        var v = esc(cc.vanne ? 'V' + cc.vanne : cc.nom);
+        if (cc.truies.length == 1 && cc.truies[0].porcelets != null) return '<b>' + v + '</b> 🐷' + cc.truies[0].porcelets;
+        if (cc.truies.length) return '<b>' + v + '</b> ' + cc.truies.length + ' 🐖';
+        return '<b>' + v + '</b> ' + (cc.porcs || 0);
+      case 'zigbee':
+        var z = zig(r.libelle); if (!z) return '📡';
+        if (z.temperature != null) return '<b>' + nb(z.temperature, 1) + '°</b>';
+        if (z.brightness != null) return '🌀<b>' + nb(z.brightness, 0) + '%</b>';
+        return (z.state ? '💡 ' : '⚫ ') + esc(z.nom);
+      case 'compteur':
+        var k = compteur(r.libelle); return '⚡<b>' + (k ? puissance(k.w) : '?') + '</b>';
+      case 'camera': return '📷';
+      default: return contenu(r);
+    }
+  }
   function ajusterTexte(e){
+    if (!e.dataset.resume) {
+      chercherTaille(e);
+      if (parseFloat(e.style.fontSize) >= 9) return;
+      var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+      if (!r || r.type == 'camera' && r.w) return;
+      var boutons = Array.prototype.slice.call(e.querySelectorAll('.suppr, .taille'));
+      e.innerHTML = resume(r); boutons.forEach(function(b){ e.appendChild(b); });
+      e.dataset.resume = '1'; e.title = e.title || '';
+    }
+    chercherTaille(e);
+  }
+  function chercherTaille(e){
     var bas = 5, haut = 60;
     while (haut - bas > 0.5) {
       var f = (bas + haut) / 2; e.style.fontSize = f + 'px';
@@ -502,6 +539,10 @@
       etire = {e: e, r: r}; return;
     }
     if (!edition && r.type == 'relais' && modifier) { basculerRelais(r, e); return; }
+    if (!edition && r.type == 'zigbee' && modifier) {
+      var zz = zig(r.libelle);
+      if (zz && zz.point_id) { basculerZigbee(zz, e); return; }
+    }
     if (!edition) { ouvrir(r); return; }
     ev.preventDefault(); try { e.setPointerCapture(ev.pointerId); } catch (x) {}
     glisse = {e: e, r: r, bouge: false};
@@ -521,6 +562,13 @@
     poster('/ambiance/ipx/point/' + r.ref_id + '/commander', {valeur: allumer ? 1 : 0})
       .then(function(){ q.valeur = allumer ? 1 : 0; dessiner(); setTimeout(charger, 2500); })
       .catch(function(x){ e.style.opacity = ''; alert(q.nom + ' : ' + x.message); });
+  }
+  function basculerZigbee(z, e){
+    var allumer = !z.state;
+    e.style.opacity = '.5';
+    poster('/ambiance/ipx/point/' + z.point_id + '/commander', {valeur: allumer ? 1 : 0})
+      .then(function(){ z.state = allumer; dessiner(); setTimeout(charger, 2500); })
+      .catch(function(x){ e.style.opacity = ''; alert(z.nom + ' : ' + x.message); });
   }
   function lacher(){
     if (!glisse) return; var g = glisse; glisse = null;
