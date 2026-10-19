@@ -11,7 +11,8 @@
 
 use super::*;
 
-const TYPES: [&str; 11] = [
+const TYPES: [&str; 12] = [
+    "camera",
     "compteur",
     "case",
     "zigbee",
@@ -28,7 +29,7 @@ const TYPES: [&str; 11] = [
 async fn reperes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     generic_rows(
         pool,
-        "SELECT id,type,ref_id,libelle,x,y FROM plan_repere ORDER BY id",
+        "SELECT id,type,ref_id,libelle,x,y,w,h FROM plan_repere ORDER BY id",
     )
     .await
 }
@@ -76,7 +77,13 @@ pub(super) async fn page(
          JOIN salle s ON s.id=c.salle_id ORDER BY s.nom, c.id",
     )
     .await?;
+    let cameras = generic_rows(
+        &state.pool,
+        "SELECT id, nom FROM camera WHERE actif=1 ORDER BY nom",
+    )
+    .await?;
     let mut contexte = context(&session);
+    contexte.insert("cameras".into(), Value::Array(cameras));
     contexte.insert("cases".into(), Value::Array(cases));
     contexte.insert("zigbee".into(), Value::Array(zigbee));
     contexte.insert("compteurs".into(), Value::Array(compteurs));
@@ -252,7 +259,14 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
             }),
         );
     }
+    let cameras: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, nom FROM camera WHERE actif=1")
+            .fetch_all(&state.pool)
+            .await?;
+    let cameras: serde_json::Map<String, Value> =
+        cameras.into_iter().map(|(id, nom)| (id.to_string(), json!(nom))).collect();
     Ok(axum::Json(json!({
+        "cameras": cameras,
         "compteurs": compteurs,
         "cases": cases,
         "zigbee": zigbee,
@@ -411,6 +425,17 @@ pub(super) async fn repere(
             .bind(id)
             .execute(&state.pool)
             .await?;
+        // Encart redimensionné (w et h vides = revenir à la taille du contenu).
+        if form.contains_key("w") {
+            let w = form_f64(&form, "w").map(|v| v.clamp(1.0, 100.0));
+            let h = form_f64(&form, "h").map(|v| v.clamp(1.0, 100.0));
+            sqlx::query("UPDATE plan_repere SET w=?,h=? WHERE id=?")
+                .bind(w)
+                .bind(h)
+                .bind(id)
+                .execute(&state.pool)
+                .await?;
+        }
         id
     } else {
         let type_repere = form_text(&form, "type")
@@ -429,7 +454,9 @@ pub(super) async fn repere(
         }
         if !matches!(type_repere.as_str(), "texte" | "zigbee" | "compteur") && ref_id.is_none() {
             return Err(AppError::Invalid(
-                if type_repere == "case" {
+                if type_repere == "camera" {
+                    "Choisissez la caméra"
+                } else if type_repere == "case" {
                     "Choisissez la case"
                 } else if type_repere == "eclairage" {
                     "Choisissez le programme d'éclairage"
@@ -591,6 +618,7 @@ mod tests {
                 zigbee => Vec::<i32>::new(),
                 cases => Vec::<i32>::new(),
                 compteurs => Vec::<i32>::new(),
+                cameras => Vec::<i32>::new(),
             })
             .unwrap();
         assert!(rendu.contains("Mater 1"));

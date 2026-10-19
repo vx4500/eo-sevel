@@ -21,7 +21,12 @@
 .plan-cadre.vide{border:1px dashed var(--line,#cbd5e1);border-radius:8px;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:5% 8.9%}
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
 .rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
-.rep b{font-size:1rem}
+.rep b{font-size:1.15em}
+.rep.dim{white-space:normal;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;padding:2px 4px}
+.rep.dim .ligne{flex-wrap:wrap;justify-content:center;gap:0 .6em}
+.rep.dim.rep-salle .nom{border:0;margin:0}
+.rep .taille{display:none;position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;border-radius:3px;background:#2563eb;cursor:nwse-resize;touch-action:none}
+.plan-edition .rep .taille{display:block}
 .rep.alerte{border-color:#dc2626;background:#fef2f2}
 .rep.agee{border-color:#94a3b8;color:#64748b}
 .rep.neutre{border-color:#64748b}
@@ -33,7 +38,7 @@
 .rep-salle{min-width:110px;text-align:left;padding:4px 8px}
 .rep-salle .nom{font-weight:700;display:block;border-bottom:1px solid #e2e8f0;margin-bottom:2px}
 .rep-salle .ligne{display:flex;gap:8px;justify-content:space-between}
-.rep .petit{font-size:.75rem;color:#475569}
+.rep .petit{font-size:.88em;color:#475569}
 .plan-edition .rep{cursor:grab;outline:2px dashed #2563eb;outline-offset:2px}
 .rep .suppr{display:none;position:absolute;top:-10px;right:-10px;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;border:0;font-size:12px;line-height:20px;padding:0;cursor:pointer}
 .plan-edition .rep .suppr{display:block}
@@ -47,6 +52,10 @@
 .plan-panneau .grille{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .plan-panneau .grille input{width:100%;box-sizing:border-box}
 .plan-panneau .boutons{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rep-camera.dim{padding:0;background:#000;color:#fff}
+.rep-camera.dim img{width:100%;height:100%;object-fit:cover;display:block}
+.rep-camera.dim span{position:absolute;left:3px;top:2px;font-size:12px;text-shadow:0 0 3px #000}
+.plan-camera-img{width:100%;border-radius:6px;background:#000;min-height:120px}
 .plan-jours div{display:grid;grid-template-columns:42px 1fr 48px;gap:6px;align-items:center;font-size:.82rem;margin:2px 0}
 .plan-jours i{display:block;height:10px;border-radius:3px;background:#ca8a04}
 .plan-jours b{text-align:right}
@@ -102,6 +111,7 @@
     <option value="mode">⚙️ Mode de ventilation</option>
     <option value="case">🔢 Case (vanne, animaux, truie et porcelets)</option>
     <option value="cases_salle">🔢 Toutes les cases d'une salle</option>
+    <option value="camera">📷 Caméra</option>
     <option value="compteur">⚡ Compteur électrique (instantané + 10 jours)</option>
     <option value="zigbee">📡 Appareil Zigbee (sonde, variateur…)</option>
     <option value="relais">🔌 Relais / lampe (automate)</option>
@@ -112,6 +122,7 @@
   <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
   <label id="plan-choix-relais" hidden>Relais<select id="plan-relais">{% for p in relais %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun relais autorisé à la commande</option>{% endfor %}</select></label>
   <label id="plan-choix-case" hidden>Case<select id="plan-case">{% for c in cases %}<option value="{{ c.id }}">{{ c.salle }} — {{ c.nom }}{% if c.num_vanne %} (vanne {{ c.num_vanne }}){% endif %}</option>{% endfor %}</select></label>
+  <label id="plan-choix-camera" hidden>Caméra<select id="plan-camera">{% for c in cameras %}<option value="{{ c.id }}">{{ c.nom }}</option>{% else %}<option value="">Aucune caméra</option>{% endfor %}</select></label>
   <label id="plan-choix-compteur" hidden>Compteur<select id="plan-compteur">{% for c in compteurs %}<option value="{{ c.ieee }}">{{ c.nom }}</option>{% else %}<option value="">Aucun compteur Zigbee</option>{% endfor %}</select></label>
   <label id="plan-choix-zigbee" hidden>Appareil<select id="plan-zigbee">{% for z in zigbee %}<option value="{{ z.ieee }}">{{ z.nom }}{% if z.categorie != 'sonde' %} ({{ z.categorie }}){% endif %}</option>{% endfor %}</select></label>
   <label id="plan-choix-texte" hidden>Texte<input id="plan-texte" maxlength="60" placeholder="Fosse, quai, silo…"></label>
@@ -190,7 +201,7 @@
     var zone = document.getElementById('plan-zone'), page = document.documentElement.clientWidth;
     if (document.fullscreenElement === zone) {
       var Lp = Math.min(window.innerWidth, window.innerHeight * ratio), Hp = Lp / ratio;
-      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px';
+      cadre.style.width = Lp + 'px'; cadre.style.height = Hp + 'px'; setTimeout(ajusterTextes, 0);
       if (img) { img.style.width = (tourne ? Hp : Lp) + 'px'; img.style.height = (tourne ? Lp : Hp) + 'px'; img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)'; }
       return;
     }
@@ -201,6 +212,7 @@
     var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
     var L = taille ? taille * dispoL : Math.min(dispoL, dispoH * ratio), H = L / ratio;
     cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
+    if (typeof ajusterTextes == 'function') setTimeout(ajusterTextes, 0);
     if (img) {
       img.style.width = (tourne ? H : L) + 'px'; img.style.height = (tourne ? L : H) + 'px';
       img.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
@@ -239,6 +251,10 @@
       case 'case':
         var cc = casep(r.ref_id);
         return cc ? caseTexte(cc) : 'Case supprimée';
+      case 'camera':
+        var nomCam = etat.cameras && etat.cameras[r.ref_id];
+        if (!nomCam) return '📷 caméra supprimée';
+        return r.w && r.h ? '<img src="/salles/camera/' + r.ref_id + '/image?t=' + Math.floor(Date.now() / 30000) + '" alt="" loading="lazy"><span>📷 ' + esc(nomCam) + '</span>' : '📷 ' + esc(nomCam);
       case 'compteur':
         var k = compteur(r.libelle);
         return k ? '⚡ <span class="petit">' + esc(k.nom) + '</span> <b>' + puissance(k.w) + '</b><br><span class="petit">10 j : ' + nb(k.total_10j, 0) + ' kWh</span>' : '⚡ ?';
@@ -260,30 +276,34 @@
       var e = document.createElement('div');
       var cl = 'rep';
       if (r.type == 'salle') cl += ' rep-salle';
-      if (r.type == 'compteur') {
-      var k = compteur(r.libelle); if (!k) { fermer(); return; }
-      var max = Math.max.apply(null, k.jours.map(function(j){ return j.kwh; }).concat([1]));
-      h = '<h2>⚡ ' + esc(k.nom) + '</h2><div class="plan-mesures"><div>En ce moment<b>' + puissance(k.w) + '</b></div><div>10 jours<b>' + nb(k.total_10j, 0) + ' kWh</b></div><div>Moyenne/jour<b>' + nb(k.jours.length ? k.total_10j / k.jours.length : null, 0) + ' kWh</b></div></div>';
-      h += '<div class="plan-jours">' + k.jours.map(function(j){
-        return '<div><span>' + j.jour.slice(8, 10) + '/' + j.jour.slice(5, 7) + '</span><i style="width:' + Math.round(j.kwh / max * 100) + '%"></i><b>' + nb(j.kwh, 0) + '</b></div>';
-      }).join('') + '</div><p><a href="/electricite">Détail électricité</a></p>';
-      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
-    }
-    if (r.type == 'case') { var cc = casep(r.ref_id); cl += ' rep-case neutre' + (cc && !cc.porcs && !(cc.truies || []).length ? ' vide' : ''); }
+      if (r.type == 'camera') cl += ' rep-camera neutre';
+      if (r.type == 'case') { var cc = casep(r.ref_id); cl += ' rep-case neutre' + (cc && !cc.porcs && !(cc.truies || []).length ? ' vide' : ''); }
       if (r.type == 'texte') cl += ' texte';
-      else if (r.type == 'case') {}
+      else if (r.type == 'case' || r.type == 'camera') {}
       else if (r.type == 'compteur') { var k = compteur(r.libelle); cl += !k || k.age_s == null || k.age_s > 900 ? ' agee' : ''; }
       else if (r.type == 'zigbee') { var z = zig(r.libelle); cl += !z || z.age_s > 3600 ? ' agee' : ''; }
       else if (r.type == 'relais') { var q = relais(r.ref_id); cl += q && q.valeur > 0 ? ' lampe-on' : ' neutre'; }
       else if (r.type == 'eclairage') { var p = programme(r.ref_id); cl += p && p.allume ? ' lampe-on' : ' neutre'; }
       else { var c = classe(salle(r.ref_id)); if (c) cl += ' ' + c; }
       e.className = cl; e.style.left = r.x + '%'; e.style.top = r.y + '%';
-      e.innerHTML = contenu(r) + (modifier ? '<button type="button" class="suppr" title="Retirer ce repère">✕</button>' : '');
+      e.innerHTML = contenu(r) + (modifier ? '<button type="button" class="suppr" title="Retirer ce repère">✕</button><span class="taille" title="Tirer pour adapter la taille de l\'encart (double-clic : taille normale)"></span>' : '');
+      if (r.w && r.h) { e.classList.add('dim'); e.style.width = r.w + '%'; e.style.height = r.h + '%'; }
       e.dataset.id = r.id;
       cadre.appendChild(e);
     });
+    ajusterTextes();
     if (ouvert) ouvrir(ouvert, true);
   }
+  /* Le texte d'un encart dimensionné prend la plus grande taille qui tient. */
+  function ajusterTexte(e){
+    var bas = 5, haut = 60;
+    while (haut - bas > 0.5) {
+      var f = (bas + haut) / 2; e.style.fontSize = f + 'px';
+      if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) haut = f; else bas = f;
+    }
+    e.style.fontSize = bas + 'px';
+  }
+  function ajusterTextes(){ cadre.querySelectorAll('.rep.dim').forEach(ajusterTexte); }
   function charger(){
     return fetch('/ambiance/plan/etat.json', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){
       etat = j;
@@ -300,6 +320,28 @@
     if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
     ouvert = r; var h = '';
     if (r.type == 'texte') { fermer(); return; }
+    if (r.type == 'camera') {
+      var nomCam = etat.cameras && etat.cameras[r.ref_id]; if (!nomCam) { fermer(); return; }
+      if (rafraichir && ouvert === r) return;
+      h = '<h2>📷 ' + esc(nomCam) + '</h2><img class="plan-camera-img" id="plan-camera-img" src="/salles/camera/' + r.ref_id + '/image?t=' + Date.now() + '" alt="Image de la caméra"><p><a href="/equipements/cameras">Toutes les caméras</a></p>';
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r;
+      clearInterval(window._planCam);
+      window._planCam = setInterval(function(){
+        var im = document.getElementById('plan-camera-img');
+        if (!im || !ouvert || ouvert.type != 'camera') { clearInterval(window._planCam); return; }
+        im.src = '/salles/camera/' + ouvert.ref_id + '/image?t=' + Date.now();
+      }, 5000);
+      return;
+    }
+    if (r.type == 'compteur') {
+      var k = compteur(r.libelle); if (!k) { fermer(); return; }
+      var max = Math.max.apply(null, k.jours.map(function(j){ return j.kwh; }).concat([1]));
+      h = '<h2>⚡ ' + esc(k.nom) + '</h2><div class="plan-mesures"><div>En ce moment<b>' + puissance(k.w) + '</b></div><div>10 jours<b>' + nb(k.total_10j, 0) + ' kWh</b></div><div>Moyenne/jour<b>' + nb(k.jours.length ? k.total_10j / k.jours.length : null, 0) + ' kWh</b></div></div>';
+      h += '<div class="plan-jours">' + k.jours.map(function(j){
+        return '<div><span>' + j.jour.slice(8, 10) + '/' + j.jour.slice(5, 7) + '</span><i style="width:' + Math.round(j.kwh / max * 100) + '%"></i><b>' + nb(j.kwh, 0) + '</b></div>';
+      }).join('') + '</div><p><a href="/electricite">Détail électricité</a></p>';
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+    }
     if (r.type == 'case') {
       var cc = casep(r.ref_id); if (!cc) { fermer(); return; }
       h = '<h2>Case ' + esc(cc.nom) + (cc.vanne ? ' — vanne ' + esc(cc.vanne) : '') + '</h2>';
@@ -375,13 +417,40 @@
   });
 
   /* Clic et glisser des repères */
-  var glisse = null;
+  var glisse = null, etire = null;
+  cadre.addEventListener('pointermove', function(ev){
+    if (!etire) return;
+    var b = cadre.getBoundingClientRect();
+    var cx = b.left + etire.r.x / 100 * b.width, cy = b.top + etire.r.y / 100 * b.height;
+    etire.w = Math.max(2, Math.min(100, Math.abs(ev.clientX - cx) * 2 / b.width * 100));
+    etire.h = Math.max(2, Math.min(100, Math.abs(ev.clientY - cy) * 2 / b.height * 100));
+    etire.e.classList.add('dim'); etire.e.style.width = etire.w + '%'; etire.e.style.height = etire.h + '%';
+    ajusterTexte(etire.e);
+  });
+  function lacherTaille(){
+    if (!etire) return; var t = etire; etire = null;
+    if (!t.w) return;
+    t.r.w = t.w; t.r.h = t.h;
+    dessiner();
+    poster('/ambiance/plan/repere', {id: t.r.id, x: t.r.x, y: t.r.y, w: t.w.toFixed(2), h: t.h.toFixed(2)}).catch(function(x){ alert(x.message); charger(); });
+  }
+  cadre.addEventListener('pointerup', lacherTaille); cadre.addEventListener('pointercancel', lacherTaille);
+  cadre.addEventListener('dblclick', function(ev){
+    if (!edition || !ev.target.classList.contains('taille')) return;
+    var e = ev.target.closest('.rep'), r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+    r.w = null; r.h = null;
+    poster('/ambiance/plan/repere', {id: r.id, x: r.x, y: r.y, w: '', h: ''}).then(charger);
+  });
   cadre.addEventListener('pointerdown', function(ev){
     var e = ev.target.closest('.rep'); if (!e) return;
     var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
     if (ev.target.classList.contains('suppr')) {
       if (confirm('Retirer ce repère du plan ?')) poster('/ambiance/plan/repere/' + r.id + '/supprimer').then(charger).catch(function(x){ alert(x.message); });
       return;
+    }
+    if (edition && ev.target.classList.contains('taille')) {
+      ev.preventDefault(); ev.stopPropagation(); try { ev.target.setPointerCapture(ev.pointerId); } catch (x) {}
+      etire = {e: e, r: r}; return;
     }
     if (!edition && r.type == 'relais' && modifier) { basculerRelais(r, e); return; }
     if (!edition) { ouvrir(r); return; }
@@ -424,8 +493,9 @@
     function choix(){
       document.getElementById('plan-choix-zigbee').hidden = type.value != 'zigbee';
       document.getElementById('plan-choix-compteur').hidden = type.value != 'compteur';
+      document.getElementById('plan-choix-camera').hidden = type.value != 'camera';
       document.getElementById('plan-choix-case').hidden = type.value != 'case';
-      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee','case','compteur'].indexOf(type.value) >= 0;
+      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee','case','compteur','camera'].indexOf(type.value) >= 0;
       document.getElementById('plan-choix-relais').hidden = type.value != 'relais';
       document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
       document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
@@ -440,7 +510,8 @@
         poster('/ambiance/plan/cases-salle', {salle_id: document.getElementById('plan-salle').value}).then(charger).catch(function(x){ alert(x.message); });
         return;
       }
-      if (type.value == 'compteur') d.libelle = document.getElementById('plan-compteur').value;
+      if (type.value == 'camera') d.ref_id = document.getElementById('plan-camera').value;
+      else if (type.value == 'compteur') d.libelle = document.getElementById('plan-compteur').value;
       else if (type.value == 'case') d.ref_id = document.getElementById('plan-case').value;
       else if (type.value == 'zigbee') d.libelle = document.getElementById('plan-zigbee').value;
       else if (type.value == 'relais') d.ref_id = document.getElementById('plan-relais').value;

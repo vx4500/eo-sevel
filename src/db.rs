@@ -403,6 +403,9 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
     // Plan de l'élevage pivoté par quarts de tour (voir routes::plan_elevage).
     ensure_column(pool, "plan_reglage", "rotation", "INTEGER NOT NULL DEFAULT 0").await?;
+    // Taille d'un encart du plan, en % du plan (NULL = taille du contenu).
+    ensure_column(pool, "plan_repere", "w", "REAL").await?;
+    ensure_column(pool, "plan_repere", "h", "REAL").await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))
