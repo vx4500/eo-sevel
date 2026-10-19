@@ -11,6 +11,10 @@
 .plan-outils select,.plan-outils input{width:auto;min-width:150px}
 .plan-cadre{position:relative;width:100%;margin:0 auto;overflow:visible;background:transparent;touch-action:pan-y}
 .plan-zone{position:relative}
+.plan-zoom{display:inline-flex;gap:2px}
+.plan-zoom button{min-width:34px}
+.plan-poignee{position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:4px;background:rgba(100,116,139,.55);color:#fff;font-size:14px;line-height:22px;text-align:center;cursor:nwse-resize;touch-action:none;z-index:5;user-select:none}
+#plan-zone:fullscreen .plan-poignee{display:none}
 #plan-zone:fullscreen{background:var(--bg,#ecf0ec);display:flex;align-items:center;justify-content:center;margin:0!important;width:100%!important}
 #plan-zone:fullscreen .plan-panneau{position:fixed}
 .plan-cadre img{position:absolute;left:50%;top:50%;max-width:none;user-select:none;-webkit-user-drag:none;pointer-events:none}
@@ -57,6 +61,7 @@
 <div class="plan-barre">
   <h1>Plan de l'élevage</h1>
   <span id="plan-demon" class="plan-demon">…</span>
+  <span class="plan-zoom"><button type="button" class="ghost" id="plan-moins" title="Plus petit">−</button><button type="button" class="ghost" id="plan-plus" title="Plus grand">+</button><button type="button" class="ghost" id="plan-ajuster" title="Revenir à la taille qui tient dans l'écran">⤢ Ajuster</button></span>
   <button type="button" class="ghost" id="plan-plein" title="Plan en plein écran (Échap pour revenir)">⛶ Plein écran</button>
   {% if session.peut_modifier %}
   <button type="button" class="ghost" id="plan-pivoter" hidden title="Faire pivoter le plan d'un quart de tour (les capteurs tournent avec)">↻ Pivoter</button>
@@ -110,7 +115,7 @@
 </div>
 {% endif %}
 
-<div class="plan-zone" id="plan-zone"><div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre" data-rotation="{{ rotation }}">
+<div class="plan-zone" id="plan-zone"><div class="plan-cadre{% if not image %} vide{% endif %}" id="plan-cadre" data-rotation="{{ rotation }}"><div class="plan-poignee" id="plan-poignee" title="Tirer pour agrandir ou réduire le plan">↘</div>
   {% if image %}<img src="/ambiance/plan/image" alt="Plan de l'élevage" id="plan-img">{% else %}<div class="plan-vide-texte">{% if session.peut_modifier %}Touchez 🚧 pour passer en travaux, envoyez le plan puis placez les capteurs.{% else %}Aucune image de plan pour l'instant.{% endif %}</div>{% endif %}
 </div></div>
 <p class="muted" style="margin:4px 0 0">Mise à jour toutes les 30 secondes. Touchez un repère pour voir le détail et modifier les réglages. <a href="/ambiance">Tous les réglages d'ambiance</a> · <a href="/ambiance/eclairage">Éclairage</a></p>
@@ -160,6 +165,15 @@
   }
   /* Le plan tient en entier dans l'écran, pivoté ou non */
   var img = document.getElementById('plan-img');
+  // Taille choisie par la personne (part de la largeur disponible), retenue
+  // sur cet appareil ; null = le plan tient dans l'écran.
+  var taille = null;
+  try { taille = parseFloat(localStorage.getItem('eo-plan-taille')) || null; } catch (e) {}
+  function retenirTaille(v){
+    taille = v ? Math.max(0.15, Math.min(4, v)) : null;
+    try { if (taille) localStorage.setItem('eo-plan-taille', taille); else localStorage.removeItem('eo-plan-taille'); } catch (e) {}
+    ajuster();
+  }
   function ajuster(){
     var rot = Number(cadre.dataset.rotation) || 0, tourne = rot % 180 != 0;
     var w = img && img.naturalWidth ? img.naturalWidth : 16, h = img && img.naturalHeight ? img.naturalHeight : 9;
@@ -178,7 +192,7 @@
     zone.style.marginLeft = (12 - gauche) + 'px'; zone.style.width = (page - 24) + 'px';
     var dispoL = page - 24;
     var dispoH = edition ? window.innerHeight - 40 : Math.max(260, window.innerHeight - (cadre.getBoundingClientRect().top + window.scrollY) - 44);
-    var L = Math.min(dispoL, dispoH * ratio), H = L / ratio;
+    var L = taille ? taille * dispoL : Math.min(dispoL, dispoH * ratio), H = L / ratio;
     cadre.style.width = L + 'px'; cadre.style.height = H + 'px';
     if (img) {
       img.style.width = (tourne ? H : L) + 'px'; img.style.height = (tourne ? L : H) + 'px';
@@ -350,7 +364,7 @@
       return;
     }
     if (!edition) { ouvrir(r); return; }
-    ev.preventDefault(); e.setPointerCapture(ev.pointerId);
+    ev.preventDefault(); try { e.setPointerCapture(ev.pointerId); } catch (x) {}
     glisse = {e: e, r: r, bouge: false};
   });
   cadre.addEventListener('pointermove', function(ev){
@@ -465,6 +479,23 @@
     if (document.fullscreenElement === zone) zone.appendChild(panneau); else document.body.appendChild(panneau);
     setTimeout(ajuster, 50);
   });
+  /* Taille du plan à la demande */
+  function tailleActuelle(){ return cadre.getBoundingClientRect().width / (document.documentElement.clientWidth - 24); }
+  document.getElementById('plan-plus').addEventListener('click', function(){ retenirTaille(tailleActuelle() * 1.15); });
+  document.getElementById('plan-moins').addEventListener('click', function(){ retenirTaille(tailleActuelle() / 1.15); });
+  document.getElementById('plan-ajuster').addEventListener('click', function(){ retenirTaille(null); });
+  var poignee = document.getElementById('plan-poignee'), tire = null;
+  poignee.addEventListener('pointerdown', function(ev){
+    ev.preventDefault(); ev.stopPropagation(); try { poignee.setPointerCapture(ev.pointerId); } catch (x) {}
+    tire = {x: ev.clientX, l: cadre.getBoundingClientRect().width};
+  });
+  poignee.addEventListener('pointermove', function(ev){
+    if (!tire) return;
+    var page = document.documentElement.clientWidth - 24;
+    taille = Math.max(0.15, Math.min(4, (tire.l + ev.clientX - tire.x) / page)); ajuster();
+  });
+  function lacherPoignee(){ if (tire) { tire = null; retenirTaille(taille); } }
+  poignee.addEventListener('pointerup', lacherPoignee); poignee.addEventListener('pointercancel', lacherPoignee);
   charger(); setInterval(charger, 30000);
 })();
 </script>

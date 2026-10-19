@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.5** — plan en plein écran.
+Version actuelle : **2.67.6** — taille du plan à la demande.
+
+Version Rust 2.67.6 : boutons − / + / ⤢ Ajuster et poignée ↘ sur le plan ; taille = part de la largeur disponible, localStorage eo-plan-taille (par appareil). setPointerCapture protégé par try (échouait sur événements simulés).
 
 Version Rust 2.67.5 : bouton ⛶ Plein écran (Fullscreen API sur #plan-zone, panneau de détail déplacé dedans). Emmanuel ne veut pas que son plan soit découpé/recomposé : garder le dessin entier.
 
