@@ -341,14 +341,29 @@
     chercherTaille(e);
   }
   function chercherTaille(e){
-    var bas = 5, haut = 60;
+    // Plafond proportionnel au plan : un texte court ne doit pas devenir géant.
+    var bas = 5, haut = Math.max(10, cadre.clientWidth / 55);
     while (haut - bas > 0.5) {
       var f = (bas + haut) / 2; e.style.fontSize = f + 'px';
       if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) haut = f; else bas = f;
     }
     e.style.fontSize = bas + 'px';
   }
-  function ajusterTextes(){ cadre.querySelectorAll('.rep.dim').forEach(ajusterTexte); }
+  function ajusterTextes(){
+    cadre.querySelectorAll('.rep.dim').forEach(ajusterTexte);
+    // Les cases d'une même salle partagent la même taille de texte (la plus
+    // petite), pour qu'une case résumée ou vide ne paraisse pas énorme.
+    var groupes = {};
+    cadre.querySelectorAll('.rep.dim.rep-case').forEach(function(e){
+      var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+      var c = r && casep(r.ref_id); if (!c) return;
+      (groupes[c.salle_id] = groupes[c.salle_id] || []).push(e);
+    });
+    Object.keys(groupes).forEach(function(k){
+      var min = Math.min.apply(null, groupes[k].map(function(e){ return parseFloat(e.style.fontSize) || 12; }));
+      groupes[k].forEach(function(e){ e.style.fontSize = min + 'px'; });
+    });
+  }
   function charger(){
     return fetch('/ambiance/plan/etat.json', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){
       etat = j;

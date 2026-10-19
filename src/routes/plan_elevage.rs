@@ -211,14 +211,14 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
     }
     // Cases posées sur le plan : nombre de porcs (inventaire + mouvements),
     // truies présentes et, en maternité, porcelets de la portée en cours.
-    let case_ids: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, nom, num_vanne FROM casesalle \
+    let case_ids: Vec<(i64, String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT id, nom, num_vanne, salle_id FROM casesalle \
          WHERE id IN (SELECT ref_id FROM plan_repere WHERE type='case')",
     )
     .fetch_all(&state.pool)
     .await?;
     let mut cases = serde_json::Map::new();
-    for (case_id, nom, vanne) in case_ids {
+    for (case_id, nom, vanne, salle_id) in case_ids {
         let truies: Vec<(String, Option<i64>)> = sqlx::query_as(
             "SELECT t.num_travail, \
                     (SELECT p.presents FROM portee_effectif p WHERE p.truie_id=t.id \
@@ -234,6 +234,7 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
             json!({
                 "nom": nom,
                 "vanne": vanne,
+                "salle_id": salle_id,
                 "porcs": case_pig_count(&state.pool, case_id).await?.max(0),
                 "truies": truies.into_iter().map(|(num, porcelets)| json!({
                     "num": num,
