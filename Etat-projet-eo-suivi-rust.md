@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.9** — plan : résumé des petits encarts, lampes Zigbee au toucher.
+Version actuelle : **2.67.10** — plan : texte des cases homogène, résumé court.
+
+Version Rust 2.67.10 : cases d'une salle à la même taille de texte (et résumées ensemble), plafond de police = largeur du plan/55, résumé court (data-resume=2 : température seule, vanne seule) sous 7 px, encart minimum 0,5 %.
 
 Version Rust 2.67.9 : encart dimensionné dont le texte tomberait sous 9 px → affichage résumé (resume() côté page) ; repère zigbee d'un interrupteur avec ipx_point pilotable sur …/state → point_id, toucher = commander.
 
