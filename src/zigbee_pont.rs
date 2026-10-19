@@ -35,6 +35,8 @@ const HISTORISEES: &[&str] = &[
     // Courbe de puissance des compteurs (surveillance électrique).
     "power",
     "total_power",
+    // Vitesse des variateurs de ventilation (historique du plan de l'élevage).
+    "brightness",
 ];
 /// Intervalle minimal entre deux points d'historique d'une même grandeur.
 const HISTORIQUE_PAS_S: i64 = 120;

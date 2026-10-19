@@ -335,6 +335,9 @@ pub(super) async fn historique_json(
         "zigbee" => {
             ajouter(&mut series, "Température", "°C", zigbee(ieee.clone(), "temperature").await);
             ajouter(&mut series, "Hygrométrie", "%", zigbee(ieee.clone(), "humidity").await);
+            let vitesse = zigbee(ieee.clone(), "brightness").await;
+            let vitesse = vitesse.into_iter().map(|(t, v)| (t, (v / 254.0 * 100.0).round())).collect();
+            ajouter(&mut series, "Vitesse", "%", vitesse);
         }
         "compteur" => {
             ajouter(&mut series, "Puissance", "W", zigbee(ieee.clone(), "power").await);
@@ -364,17 +367,23 @@ pub(super) async fn historique_json(
             if series.is_empty() {
                 let sondes: Vec<(String, String)> = sqlx::query_as(
                     "SELECT chemin, role FROM ipx_point WHERE hote='zigbee' AND salle_id=? \
-                     AND role IN ('temperature','humidite')",
+                     AND role IN ('temperature','humidite','ventilation') \
+                     ORDER BY CASE role WHEN 'temperature' THEN 0 WHEN 'humidite' THEN 1 ELSE 2 END",
                 )
                 .bind(salle_id)
                 .fetch_all(&state.pool)
                 .await?;
                 for (chemin, role) in sondes {
                     let Some((ieee, _)) = chemin.split_once('/') else { continue };
-                    if role == "temperature" {
-                        ajouter(&mut series, "Température", "°C", zigbee(ieee.to_string(), "temperature").await);
-                    } else {
-                        ajouter(&mut series, "Hygrométrie", "%", zigbee(ieee.to_string(), "humidity").await);
+                    match role.as_str() {
+                        "temperature" => ajouter(&mut series, "Température", "°C", zigbee(ieee.to_string(), "temperature").await),
+                        "humidite" => ajouter(&mut series, "Hygrométrie", "%", zigbee(ieee.to_string(), "humidity").await),
+                        // Variateur : luminosité 0–254 → %.
+                        _ => {
+                            let points = zigbee(ieee.to_string(), "brightness").await;
+                            let points = points.into_iter().map(|(t, v)| (t, (v / 254.0 * 100.0).round())).collect();
+                            ajouter(&mut series, "Ventilation", "%", points);
+                        }
                     }
                 }
             }

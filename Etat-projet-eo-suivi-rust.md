@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.7** — plan : Zigbee par salle, lampes au toucher, compteurs.
+Version actuelle : **2.67.8** — plan : encarts redimensionnables, caméras, historiques.
+
+Version Rust 2.67.8 : plan_repere.w/h (encart en % du plan, texte ajusté), repère camera (vignette si dimensionné, image 5 s dans l'encart), GET /ambiance/plan/historique.json (ambiance_mesure /10 ou zigbee_mesure, ≤300 points, 1/7/30 j), zigbee_pont historise brightness (variateurs). Correctif : bloc panneau compteur inséré dans dessiner() en 2.67.7.
 
 Version Rust 2.67.7 : salles hors régulation alimentées par les ipx_point zigbee de la salle (temperature/humidite/ventilation, brightness→%), mode "zigbee" ; toucher un repère relais bascule la lampe directement ; repère compteur (ieee dans libelle) : zigbee_valeur power + elec_jour 10 derniers jours. Ventil Ps-1/2/3 (TS0601) ne remontent pas leur vitesse.
 
