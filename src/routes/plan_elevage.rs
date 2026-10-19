@@ -543,8 +543,8 @@ pub(super) async fn repere(
             .await?;
         // Encart redimensionné (w et h vides = revenir à la taille du contenu).
         if form.contains_key("w") {
-            let w = form_f64(&form, "w").map(|v| v.clamp(1.0, 100.0));
-            let h = form_f64(&form, "h").map(|v| v.clamp(1.0, 100.0));
+            let w = form_f64(&form, "w").map(|v| v.clamp(0.5, 100.0));
+            let h = form_f64(&form, "h").map(|v| v.clamp(0.5, 100.0));
             sqlx::query("UPDATE plan_repere SET w=?,h=? WHERE id=?")
                 .bind(w)
                 .bind(h)

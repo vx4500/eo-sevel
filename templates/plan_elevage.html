@@ -22,7 +22,8 @@
 .plan-vide-texte{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;text-align:center;padding:20px;pointer-events:none}
 .rep{position:absolute;transform:translate(-50%,-50%);background:#fff;color:#0f172a;border:2px solid #16a34a;border-radius:8px;padding:2px 7px;font-size:.85rem;line-height:1.25;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;user-select:none}
 .rep b{font-size:1.15em}
-.rep.dim{white-space:normal;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;padding:2px 4px}
+.rep.dim{white-space:normal;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-sizing:border-box;padding:1px 2px;min-width:0;min-height:0}
+.rep.dim[data-resume="2"]{padding:0;border-width:1px;border-radius:4px}
 .rep.dim .ligne{flex-wrap:wrap;justify-content:center;gap:0 .6em}
 .rep.dim.rep-salle .nom{border:0;margin:0}
 .rep .taille{display:none;position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;border-radius:3px;background:#2563eb;cursor:nwse-resize;touch-action:none}
@@ -305,15 +306,17 @@
   }
   /* Le texte d'un encart dimensionné prend la plus grande taille qui tient. */
   /* Résumé d'un repère quand son encart est trop petit pour tout lire. */
-  function resume(r){
+  function resume(r, court){
     var s = salle(r.ref_id), m;
     switch (r.type) {
       case 'salle':
         if (!s) return '?';
+        if (court) return '<b>' + nb(s.t, 1) + '°</b>';
         return '<b>' + esc(s.nom) + '</b> ' + nb(s.t, 1) + '° 🌀' + nb(s.ventil, 0) + '%';
       case 'case':
         var cc = casep(r.ref_id); if (!cc) return '?';
         var v = esc(cc.vanne ? 'V' + cc.vanne : cc.nom);
+        if (court) return cc.truies.length == 1 && cc.truies[0].porcelets != null ? '🐷' + cc.truies[0].porcelets : '<b>' + v + '</b>';
         if (cc.truies.length == 1 && cc.truies[0].porcelets != null) return '<b>' + v + '</b> 🐷' + cc.truies[0].porcelets;
         if (cc.truies.length) return '<b>' + v + '</b> ' + cc.truies.length + ' 🐖';
         return '<b>' + v + '</b> ' + (cc.porcs || 0);
@@ -321,7 +324,7 @@
         var z = zig(r.libelle); if (!z) return '📡';
         if (z.temperature != null) return '<b>' + nb(z.temperature, 1) + '°</b>';
         if (z.brightness != null) return '🌀<b>' + nb(z.brightness, 0) + '%</b>';
-        return (z.state ? '💡 ' : '⚫ ') + esc(z.nom);
+        return (z.state ? '💡' : '⚫') + (court ? '' : ' ' + esc(z.nom));
       case 'compteur':
         var k = compteur(r.libelle); return '⚡<b>' + (k ? puissance(k.w) : '?') + '</b>';
       case 'camera': return '📷';
@@ -336,7 +339,13 @@
       if (!r || r.type == 'camera' && r.w) return;
       var boutons = Array.prototype.slice.call(e.querySelectorAll('.suppr, .taille'));
       e.innerHTML = resume(r); boutons.forEach(function(b){ e.appendChild(b); });
-      e.dataset.resume = '1'; e.title = e.title || '';
+      e.dataset.resume = '1';
+      chercherTaille(e);
+      // Encore illisible : résumé court (température seule, vanne seule…).
+      if (parseFloat(e.style.fontSize) < 7) {
+        e.innerHTML = resume(r, true); boutons.forEach(function(b){ e.appendChild(b); });
+        e.dataset.resume = '2';
+      }
     }
     chercherTaille(e);
   }
@@ -353,11 +362,24 @@
     cadre.querySelectorAll('.rep.dim').forEach(ajusterTexte);
     // Les cases d'une même salle partagent la même taille de texte (la plus
     // petite), pour qu'une case résumée ou vide ne paraisse pas énorme.
-    var groupes = {};
+    var groupes = {}, resumees = {};
+    cadre.querySelectorAll('.rep.dim.rep-case[data-resume]').forEach(function(e){
+      var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+      var c = r && casep(r.ref_id); if (c) resumees[c.salle_id] = true;
+    });
+    // Une case résumée dans une salle : toutes ses voisines le sont aussi.
+    cadre.querySelectorAll('.rep.dim.rep-case:not([data-resume])').forEach(function(e){
+      var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
+      var c = r && casep(r.ref_id); if (!c || !resumees[c.salle_id]) return;
+      var boutons = Array.prototype.slice.call(e.querySelectorAll('.suppr, .taille'));
+      e.innerHTML = resume(r); boutons.forEach(function(b){ e.appendChild(b); });
+      e.dataset.resume = '1'; chercherTaille(e);
+    });
     cadre.querySelectorAll('.rep.dim.rep-case').forEach(function(e){
       var r = etat.reperes.find(function(x){ return x.id == e.dataset.id; });
       var c = r && casep(r.ref_id); if (!c) return;
-      (groupes[c.salle_id] = groupes[c.salle_id] || []).push(e);
+      var cle = c.salle_id + '-' + (e.dataset.resume || '0');
+      (groupes[cle] = groupes[cle] || []).push(e);
     });
     Object.keys(groupes).forEach(function(k){
       var min = Math.min.apply(null, groupes[k].map(function(e){ return parseFloat(e.style.fontSize) || 12; }));
@@ -523,8 +545,8 @@
     if (!etire) return;
     var b = cadre.getBoundingClientRect();
     var cx = b.left + etire.r.x / 100 * b.width, cy = b.top + etire.r.y / 100 * b.height;
-    etire.w = Math.max(2, Math.min(100, Math.abs(ev.clientX - cx) * 2 / b.width * 100));
-    etire.h = Math.max(2, Math.min(100, Math.abs(ev.clientY - cy) * 2 / b.height * 100));
+    etire.w = Math.max(0.8, Math.min(100, Math.abs(ev.clientX - cx) * 2 / b.width * 100));
+    etire.h = Math.max(0.8, Math.min(100, Math.abs(ev.clientY - cy) * 2 / b.height * 100));
     etire.e.classList.add('dim'); etire.e.style.width = etire.w + '%'; etire.e.style.height = etire.h + '%';
     ajusterTexte(etire.e);
   });
