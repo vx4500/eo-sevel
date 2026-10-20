@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.68.1** — saisie rapide sur le plan, perte porcelet par vanne.
+Version actuelle : **2.68.2** — saisie rapide en plein écran.
+
+Version Rust 2.68.2 : au passage en plein écran du plan, #fab et #fab-panel sont déplacés dans #plan-zone (comme le panneau de détail) et le + est forcé visible, y compris sur téléphone.
 
 Version Rust 2.68.1 : /api/truies renvoie en_maternite ; perte porcelet = truies en maternité seulement, triées par vanne, n° de vanne exact prioritaire, choix automatique si une seule ; bouton + à gauche sur /ambiance/plan ; menu du compte : Administration avant Mes équipements et défilant ; mentions de Home Assistant retirées.
 
