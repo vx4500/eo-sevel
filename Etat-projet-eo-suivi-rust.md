@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.68.0** — menu réorganisé.
+Version actuelle : **2.68.1** — saisie rapide sur le plan, perte porcelet par vanne.
+
+Version Rust 2.68.1 : /api/truies renvoie en_maternite ; perte porcelet = truies en maternité seulement, triées par vanne, n° de vanne exact prioritaire, choix automatique si une seule ; bouton + à gauche sur /ambiance/plan ; menu du compte : Administration avant Mes équipements et défilant ; mentions de Home Assistant retirées.
 
 Version Rust 2.68.0 : « Mes résultats » fusionné en tête de Ma gestion ; rubrique directe « Plan » (.rust-menu-direct, sans bouton — le script du menu ignore désormais les rubriques sans bouton) ; Mes équipements devient un groupe du menu du compte (data-onglets="groupe" : onglets et fil d'Ariane limités au groupe).
 
