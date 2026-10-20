@@ -22,6 +22,11 @@
     .rust-menu>button[aria-expanded=true]{background:#ffffff22}
     .rust-menu>button:focus-visible{outline:2px solid #f6c68a;outline-offset:-3px}
     .rust-menu.rubrique-active>button{border-bottom-color:#b06a2c}
+    .rust-menu-direct>a{display:block;color:#fff;text-decoration:none;font:inherit;font-weight:600;padding:14px 14px;
+      border-bottom:3px solid transparent;white-space:nowrap}
+    .rust-menu-direct>a b{font-weight:600}
+    .rust-menu-direct>a:hover{background:#ffffff16}
+    .rust-menu-direct.rubrique-active>a{border-bottom-color:#b06a2c}
     .rust-menu .chevron{font-size:.7em;opacity:.8;margin-left:5px}
     .rust-sub{display:none;position:absolute;top:100%;left:0;background:#fff;color:#1d2620;
       border-top:3px solid #b06a2c;box-shadow:0 22px 40px rgba(11,36,27,.24);z-index:70;
@@ -226,26 +231,25 @@
     </div>
   </div></div>{% endif %}
 
-  {% if 'productivite' in session.pages or 'economique' in session.pages or 'ifip' in session.pages or 'charcutiers' in session.pages or 'engraissement' in session.pages %}
-  <div class="rust-menu" data-rubrique="Mes résultats"><button type="button" aria-expanded="false">Mes résultats <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub">
-    {% if session.a_truies and 'productivite' in session.pages %}<div class="rust-sub-groupe"><h3>Technique</h3>
+  {% if session.module_equipements and 'ambiance' in session.pages %}
+  <div class="rust-menu rust-menu-direct" data-rubrique="Plan"><a href="/ambiance/plan"><b>Plan</b></a></div>{% endif %}
+
+  {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or 'structure' in session.pages or 'productivite' in session.pages or 'ifip' in session.pages or 'charcutiers' in session.pages or 'engraissement' in session.pages %}
+  <div class="rust-menu" data-rubrique="Ma gestion"><button type="button" aria-expanded="false">Ma gestion <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
+    {% if session.a_truies and 'productivite' in session.pages %}<div class="rust-sub-groupe"><h3>Résultats techniques</h3>
       <a href="/gttt"><b>GTTT</b><small>Résultats de reproduction : portées, sevrés</small></a>
       <a href="/productivite"><b>Productivité</b><small>Porcs produits par truie et par an</small></a>
       <a href="/analyse-bandes"><b>Analyse des bandes</b><small>Comparer B1, B2, B3 et repérer les truies faibles</small></a>
     </div>{% endif %}
-    <div class="rust-sub-groupe"><h3>Économique</h3>
+    {% if 'economique' in session.pages or 'ifip' in session.pages %}<div class="rust-sub-groupe"><h3>Résultats économiques</h3>
       {% if 'economique' in session.pages %}<a href="/gte"><b>GTE</b><small>Coûts, marges et indice de consommation</small></a>{% endif %}
       {% if 'ifip' in session.pages %}<a href="/ifip"><b>Références IFIP</b><small>Comparaison à la moyenne nationale</small></a>{% endif %}
-    </div>
+    </div>{% endif %}
     {% if 'charcutiers' in session.pages or 'engraissement' in session.pages %}<div class="rust-sub-groupe"><h3>Abattoir et engraissement</h3>
       {% if 'charcutiers' in session.pages %}<a href="/abattoir"><b>Retours d’abattoir</b><small>TMP, poids, plus-value, saisies</small></a>{% endif %}
       {% if session.engraisse and session.module_charcutiers_rfid and 'charcutiers' in session.pages %}<a href="/charcutiers"><b>Charcutiers RFID</b><small>Suivi individuel des porcs bagués</small></a>{% endif %}
       {% if session.engraisse and session.module_prestataires and 'engraissement' in session.pages %}<a href="/engraissement"><b>Prestataire</b><small>Engraissement confié à un tiers</small></a>{% endif %}
     </div>{% endif %}
-  </div></div>{% endif %}
-
-  {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or 'structure' in session.pages %}
-  <div class="rust-menu" data-rubrique="Ma gestion"><button type="button" aria-expanded="false">Ma gestion <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
     {% if 'structure' in session.pages %}<div class="rust-sub-groupe"><h3>Bâtiments</h3>
       <a href="/salles"><b>Mes salles</b><small>Bande, animaux, ambiance, éclairage : tout par salle</small></a>
     </div>{% endif %}
@@ -267,26 +271,6 @@
     </div>
   </div></div>{% endif %}
 
-  {% if session.module_equipements and 'ambiance' in session.pages %}
-  <div class="rust-menu" data-rubrique="Mes équipements"><button type="button" aria-expanded="false">Mes équipements <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
-    <div class="rust-sub-groupe"><h3>Automatismes de l’élevage</h3>
-      <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
-      <a href="/equipements/modules"><b>Choisir mes modules</b><small>Afficher ou masquer les équipements</small></a>
-      <a href="/ambiance/plan"><b>Plan de l’élevage</b><small>Tout l’élevage en un coup d’œil</small></a>
-      {% if equip_actif('awel') %}<a href="/ambiance"><b>EO_Awel</b><small>Ventilation, températures et alertes</small></a>{% endif %}
-      {% if equip_actif('ipx') %}<a href="/ambiance/ipx/v5/relais"><b>Ipx800v5</b><small>Relais, entrées et extensions</small></a>{% endif %}
-      {% if equip_actif('zigbee') %}<a href="/ambiance/zigbee"><b>Réseau Zigbee</b><small>Sondes, interrupteurs, variateurs, compteurs</small></a>{% endif %}
-      {% if equip_actif('laezh') %}<a href="/equipements/laezh"><b>EO_Laezh</b><small>Machine à lait pour porcelets</small></a>{% endif %}
-      {% if equip_actif('treizh') %}<a href="/equipements/treizh"><b>EO_Treizh</b><small>Station de pesée et de tri Domino</small></a>{% endif %}
-      {% if equip_actif('kren') %}<a href="/equipements/kren"><b>EO_Kren</b><small>Distribution automatisée d’aliment</small></a>{% endif %}
-      {% if equip_actif('sms') %}<a href="/equipements/sms"><b>Free SMS</b><small>Alertes par SMS, retour de courant</small></a>{% endif %}
-      {% if equip_actif('proxmox') %}<a href="/equipements/proxmox"><b>Serveur Proxmox</b><small>Serveur, machines, sauvegardes</small></a>{% endif %}
-      {% if equip_actif('assistant') %}<a href="/assistant"><b>Assistant</b><small>Questions en langage courant</small></a>{% endif %}
-      {% if equip_actif('cameras') %}<a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>{% endif %}
-      {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>{% endif %}
-      {% if session.est_admin and equip_actif('acces') %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
-    </div>
-  </div></div>{% endif %}
 
   {% if session.module_vente_directe %}{% if 'vente' in session.pages %}
   <div class="rust-menu" data-rubrique="Vente directe"><button type="button" aria-expanded="false">Vente directe <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
@@ -303,7 +287,7 @@
   <a class="weekly-report-button eo-imprimer-page" href="/imprimer" title="Imprimer : choisir une bande ou des truies et les colonnes" aria-label="Imprimer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/></svg></a>
   <button type="button" id="farm-alert-button" class="farm-alert-button" aria-label="Alertes de l’élevage" aria-controls="farm-alert-panel" aria-expanded="false"><span aria-hidden="true">!</span><b id="farm-alert-count">…</b></button>
 
-  <div class="rust-menu rust-menu-fin" data-rubrique="Mon compte"><button type="button" aria-expanded="false">{{ session.nom }} <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub">
+  <div class="rust-menu rust-menu-fin" data-rubrique="Mon compte" data-onglets="groupe"><button type="button" aria-expanded="false">{{ session.nom }} <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
     {% if 'structure' in session.pages or 'ambiance' in session.pages %}<div class="rust-sub-groupe menu-tel"><h3>Salles et ambiance</h3>
       {% if 'structure' in session.pages %}<a href="/salles"><b>Mes salles</b><small>Bande, animaux, température, éclairage</small></a>{% endif %}
       {% if 'ambiance' in session.pages %}<a href="/ambiance"><b>Températures et ventilation</b><small>Ambiance de toutes les salles</small></a>
@@ -321,6 +305,22 @@
       <a href="/contact"><b>Diagnostic et contact</b><small>État du serveur, signaler un problème</small></a>
       {% if session.role != 'salarie' %}<a href="/etat-donnees"><b>État des données</b><small>Incohérences à corriger</small></a>{% endif %}
     </div>
+    {% if session.module_equipements and 'ambiance' in session.pages %}<div class="rust-sub-groupe"><h3>Mes équipements</h3>
+      <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
+      <a href="/equipements/modules"><b>Choisir mes modules</b><small>Afficher ou masquer les équipements</small></a>
+      {% if equip_actif('awel') %}<a href="/ambiance"><b>EO_Awel</b><small>Ventilation, températures et alertes</small></a>{% endif %}
+      {% if equip_actif('ipx') %}<a href="/ambiance/ipx/v5/relais"><b>Ipx800v5</b><small>Relais, entrées et extensions</small></a>{% endif %}
+      {% if equip_actif('zigbee') %}<a href="/ambiance/zigbee"><b>Réseau Zigbee</b><small>Sondes, interrupteurs, variateurs, compteurs</small></a>{% endif %}
+      {% if equip_actif('laezh') %}<a href="/equipements/laezh"><b>EO_Laezh</b><small>Machine à lait pour porcelets</small></a>{% endif %}
+      {% if equip_actif('treizh') %}<a href="/equipements/treizh"><b>EO_Treizh</b><small>Station de pesée et de tri Domino</small></a>{% endif %}
+      {% if equip_actif('kren') %}<a href="/equipements/kren"><b>EO_Kren</b><small>Distribution automatisée d’aliment</small></a>{% endif %}
+      {% if equip_actif('sms') %}<a href="/equipements/sms"><b>Free SMS</b><small>Alertes par SMS, retour de courant</small></a>{% endif %}
+      {% if equip_actif('proxmox') %}<a href="/equipements/proxmox"><b>Serveur Proxmox</b><small>Serveur, machines, sauvegardes</small></a>{% endif %}
+      {% if equip_actif('assistant') %}<a href="/assistant"><b>Assistant</b><small>Questions en langage courant</small></a>{% endif %}
+      {% if equip_actif('cameras') %}<a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>{% endif %}
+      {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>{% endif %}
+      {% if session.est_admin and equip_actif('acces') %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
+    </div>{% endif %}
     {% if session.role == 'admin' %}<div class="rust-sub-groupe"><h3>Administration</h3>
       <a href="/utilisateurs"><b>Utilisateurs</b><small>Comptes et droits par page</small></a>
       <a href="/parametres"><b>Paramètres</b><small>Élevage, aliments, modules</small></a>
@@ -1544,11 +1544,14 @@
   function fermerTout(sauf){
     menus.forEach(function(menu){
       if(menu === sauf) return;
-      menu.querySelector('button').setAttribute('aria-expanded','false');
+      var b = menu.querySelector('button');
+      if(b) b.setAttribute('aria-expanded','false');
     });
   }
   menus.forEach(function(menu){
     var bouton = menu.querySelector('button');
+    // Rubrique sans sous-menu (lien direct, ex. Plan) : rien à ouvrir.
+    if(!bouton) return;
     bouton.addEventListener('click', function(event){
       event.stopPropagation();
       var ouvert = bouton.getAttribute('aria-expanded') === 'true';
@@ -1610,6 +1613,10 @@
     place.menu.classList.add('rubrique-active');
     place.lien.setAttribute('aria-current','page');
     var rubrique = place.menu.dataset.rubrique || '';
+    if(place.menu.dataset.onglets === 'groupe'){
+      var h3 = place.lien.closest('.rust-sub-groupe') && place.lien.closest('.rust-sub-groupe').querySelector('h3');
+      if(h3) rubrique = h3.textContent.trim();
+    }
     var titre = (place.lien.querySelector('b') || place.lien).textContent.trim();
     var exacte = place.lien.getAttribute('href').replace(/\/+$/,'') ===
       (window.location.pathname.replace(/\/+$/,'') || '/');
@@ -1638,7 +1645,9 @@
     fil.appendChild(dedans);
 
     // Onglets : les pages sœurs de la rubrique, dans l'ordre du menu.
-    var soeurs = Array.prototype.filter.call(place.menu.querySelectorAll('a[href^="/"]'), function(l){ return !l.closest('.menu-tel'); });
+    // Menu du compte : seulement les pages du même groupe (équipements, administration…).
+    var portee = place.menu.dataset.onglets === 'groupe' ? (place.lien.closest('.rust-sub-groupe') || place.menu) : place.menu;
+    var soeurs = Array.prototype.filter.call(portee.querySelectorAll('a[href^="/"]'), function(l){ return !l.closest('.menu-tel'); });
     if(soeurs.length > 1){
       soeurs.forEach(function(lien){
         var onglet = document.createElement('a');
@@ -1654,7 +1663,7 @@
 
     // Barre du bas : marquer l'entrée correspondant à la rubrique courante.
     var correspondances = {'Aujourd’hui':'/quotidien','Mes animaux':'/bandes',
-      'Mes résultats':'/gte','Ma gestion':'/economique','Vente directe':'/vente-directe'};
+      'Ma gestion':'/economique','Vente directe':'/vente-directe'};
     var vise = correspondances[rubrique];
     if(/^\/(salles?|ambiance)(\/|$)/.test(window.location.pathname)) vise = '/salles';
     document.querySelectorAll('.nav-pouce a[data-pouce]').forEach(function(lien){
