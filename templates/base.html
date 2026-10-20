@@ -35,6 +35,8 @@
     .rust-sub.large{width:min(78vw,860px)}
     .rust-menu>button[aria-expanded=true]+.rust-sub{display:grid}
     .rust-menu-fin .rust-sub{left:auto;right:0}
+    /* Menu du compte (équipements + administration) : défile s'il dépasse l'écran. */
+    .rust-menu-fin .rust-sub{max-height:calc(100vh - 70px);overflow-y:auto}
     .menu-tel{display:none}
     @media(max-width:850px){.menu-tel{display:block}}
     .rust-sub-groupe h3{margin:0 0 5px;font-size:.71rem;text-transform:uppercase;letter-spacing:.09em;
@@ -305,6 +307,14 @@
       <a href="/contact"><b>Diagnostic et contact</b><small>État du serveur, signaler un problème</small></a>
       {% if session.role != 'salarie' %}<a href="/etat-donnees"><b>État des données</b><small>Incohérences à corriger</small></a>{% endif %}
     </div>
+    {% if session.role == 'admin' %}<div class="rust-sub-groupe"><h3>Administration</h3>
+      <a href="/utilisateurs"><b>Utilisateurs</b><small>Comptes et droits par page</small></a>
+      <a href="/parametres"><b>Paramètres</b><small>Élevage, aliments, modules</small></a>
+      <a href="/reglages"><b>Réglages</b><small>Valeurs de calcul et seuils</small></a>
+      <a href="/journal"><b>Journal</b><small>Historique des actions</small></a>
+      <a href="/maj"><b>Mise à jour</b><small>Version du serveur</small></a>
+      <a href="/sauvegarde"><b>Sauvegardes</b><small>Télécharger et restaurer la base</small></a>
+    </div>{% endif %}
     {% if session.module_equipements and 'ambiance' in session.pages %}<div class="rust-sub-groupe"><h3>Mes équipements</h3>
       <a href="/equipements"><b>Vue d’ensemble</b><small>État et raccordement des équipements</small></a>
       <a href="/equipements/modules"><b>Choisir mes modules</b><small>Afficher ou masquer les équipements</small></a>
@@ -320,14 +330,6 @@
       {% if equip_actif('cameras') %}<a href="/equipements/cameras"><b>Caméras</b><small>Image des caméras dans les salles</small></a>{% endif %}
       {% if equip_actif('soupe') %}<a href="/equipements/soupe"><b>Machine à soupe</b><small>Exa-Feeder : phases, repas, alertes</small></a>{% endif %}
       {% if session.est_admin and equip_actif('acces') %}<a href="/equipements/acces-distance"><b>Accès à distance</b><small>Tunnel Cloudflare</small></a>{% endif %}
-    </div>{% endif %}
-    {% if session.role == 'admin' %}<div class="rust-sub-groupe"><h3>Administration</h3>
-      <a href="/utilisateurs"><b>Utilisateurs</b><small>Comptes et droits par page</small></a>
-      <a href="/parametres"><b>Paramètres</b><small>Élevage, aliments, modules</small></a>
-      <a href="/reglages"><b>Réglages</b><small>Valeurs de calcul et seuils</small></a>
-      <a href="/journal"><b>Journal</b><small>Historique des actions</small></a>
-      <a href="/maj"><b>Mise à jour</b><small>Version du serveur</small></a>
-      <a href="/sauvegarde"><b>Sauvegardes</b><small>Télécharger et restaurer la base</small></a>
     </div>{% endif %}
   </div></div>
 </nav>
