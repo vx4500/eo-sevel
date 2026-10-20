@@ -1124,7 +1124,7 @@ async fn equipements(
         .await
         .unwrap_or(0);
     let tunnel = crate::tunnel::instantane();
-    let acces = json!({"code":"acces","nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans Home Assistant ni port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
+    let acces = json!({"code":"acces","nom":"Accès à distance", "etat": if tunnel.connexions > 0 { "actif" } else { "attente" }, "etat_texte": if tunnel.connexions > 0 { "Tunnel Cloudflare connecté".to_string() } else if tunnel.en_marche { "Connexion en cours".to_string() } else { "À configurer".to_string() }, "description":"Tunnel Cloudflare : EO_Sevel depuis internet, sans port ouvert.", "href":"/equipements/acces-distance", "action":"Régler l’accès"});
     let zigbee = json!({
         "code":"zigbee",
         "nom":"Réseau Zigbee",

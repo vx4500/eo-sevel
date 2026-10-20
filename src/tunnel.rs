@@ -1,5 +1,5 @@
 //! Accès à distance par tunnel Cloudflare, piloté par EO_Sevel lui-même
-//! (sans Home Assistant) : le jeton du tunnel, collé dans Mes équipements,
+//! (intégré) : le jeton du tunnel, collé dans Mes équipements,
 //! suffit. EO_Sevel lance `cloudflared`, le relance s'il s'arrête et garde
 //! ses dernières lignes de journal pour la page.
 //!

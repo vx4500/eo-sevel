@@ -2,7 +2,7 @@
 //!
 //! Beaucoup d'élevages n'ont aucun accès internet : ni nom de domaine, ni
 //! certificat, ni DNS. Le téléphone doit donc pouvoir trouver le serveur tout
-//! seul sur le réseau, à la manière de Home Assistant. Le serveur publie ici
+//! seul sur le réseau. Le serveur publie ici
 //! un service `_eosuivi._tcp.local.` que l'application Android découvre avec
 //! `NsdManager` ; un `avahi-browse -rt _eosuivi._tcp` sur un poste Linux du
 //! même réseau affiche exactement la même chose et sert à vérifier.

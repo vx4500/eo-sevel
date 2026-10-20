@@ -1,4 +1,4 @@
--- Consommation par heure importée (historique Home Assistant d'avant le
+-- Consommation par heure importée (historique de l'ancien relevé d'avant le
 -- passage des compteurs sur EO_Sevel) : sert à la vue Jour quand il n'y a
 -- pas de mesures de puissance.
 CREATE TABLE IF NOT EXISTS elec_heure (
