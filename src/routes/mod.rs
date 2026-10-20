@@ -6197,7 +6197,7 @@ async fn api_bandes_actives(State(state): State<AppState>) -> AppResult<axum::Js
 async fn api_truies(State(state): State<AppState>) -> AppResult<axum::Json<Value>> {
     let rows = generic_rows(
         &state.pool,
-        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,(SELECT lower(s.nom) FROM salle s WHERE s.id=t.salle_id) AS salle,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','localtime','-10 day') AND date('now','localtime','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
+        "SELECT t.id,t.num_travail,t.bande_code,t.rfid,c.num_vanne,(SELECT lower(s.nom) FROM salle s WHERE s.id=t.salle_id) AS salle,(SELECT CASE WHEN lower(COALESCE(s.type,'')) LIKE '%matern%' OR lower(s.nom) LIKE 'mater%' THEN 1 ELSE 0 END FROM salle s WHERE s.id=COALESCE(c.salle_id,t.salle_id)) AS en_maternite,b.date_mb AS mise_bas_prevue,CASE WHEN b.date_mb IS NOT NULL AND date(b.date_mb) BETWEEN date('now','localtime','-10 day') AND date('now','localtime','+10 day') AND NOT EXISTS(SELECT 1 FROM evenement e WHERE e.truie_id=t.id AND e.type='mise_bas' AND e.bande_id=b.id) THEN 1 ELSE 0 END AS dans_periode_mise_bas FROM truie t LEFT JOIN bande b ON b.code=t.bande_code AND b.active=1 LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.reformee=0 ORDER BY t.num_travail",
     )
     .await?;
     Ok(axum::Json(Value::Array(rows)))

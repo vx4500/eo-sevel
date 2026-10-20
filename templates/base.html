@@ -382,7 +382,7 @@
     <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
     <input type="hidden" name="type" id="fab-type" value="eld">
     <label id="fab-truie-wrap"><span id="fab-truie-label">Truie</span>
-      <input type="search" id="fab-truie-recherche" placeholder="Rechercher par numéro, RFID ou bande" hidden>
+      <input type="search" id="fab-truie-recherche" placeholder="N° de vanne, numéro de truie, RFID ou bande" inputmode="search" hidden>
       <select name="truie_id" id="fab-truie" required><option value="">Chargement…</option></select>
     </label>
     <p id="fab-groupe" hidden><a href="/inseminations?verraterie=1">Saisie par groupe (IA et chaleurs) →</a></p>
@@ -761,14 +761,26 @@
     var verraterie=typeInput.value==='ia'||typeInput.value==='chaleur';
     if(typeInput.value!=='mise_bas'&&typeInput.value!=='perte'&&!verraterie) return;
     var query=(sowSearch.value||'').trim().toLowerCase();
-    var rows=_truieRows.filter(function(row){
+    var perte=typeInput.value==='perte';
+    // Perte porcelet : seulement les truies en maternité.
+    var base=perte?_truieRows.filter(function(row){return Number(row.en_maternite)===1;}):_truieRows;
+    var rows=base.filter(function(row){
       if(!query&&verraterie) return String(row.salle||'').indexOf('verrat')===0;
-      if(!query) return typeInput.value==='perte'||Number(row.dans_periode_mise_bas)===1;
+      if(!query) return perte||Number(row.dans_periode_mise_bas)===1;
       return [row.num_travail,row.rfid,row.bande_code,row.num_vanne].some(function(v){return String(v||'').toLowerCase().includes(query);});
     });
+    // Un numéro de vanne tapé en entier l'emporte : « 22 » donne la vanne 22, pas 122 ni la truie 500220.
+    var exactes=query?rows.filter(function(row){return String(row.num_vanne||'').toLowerCase()===query;}):[];
+    if(exactes.length) rows=exactes;
+    if(perte) rows=rows.slice().sort(function(a,b){return (parseInt(a.num_vanne,10)||9999)-(parseInt(b.num_vanne,10)||9999);});
     var previous=sow.value;
-    fillSelect(sow,rows,function(row){return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'')+(row.num_vanne?' · vanne '+text(row.num_vanne):'')+(row.mise_bas_prevue?' · prévue '+text(row.mise_bas_prevue):'');});
+    fillSelect(sow,rows,function(row){
+      if(perte) return (row.num_vanne?'Vanne '+text(row.num_vanne)+' · ':'')+text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'');
+      return text(row.num_travail)+(row.bande_code?' · '+text(row.bande_code):'')+(row.num_vanne?' · vanne '+text(row.num_vanne):'')+(row.mise_bas_prevue?' · prévue '+text(row.mise_bas_prevue):'');
+    });
     if(rows.some(function(row){return String(row.id)===previous;})) sow.value=previous;
+    // Une seule truie correspond : elle est choisie d'office.
+    if(query&&rows.length===1) { sow.value=String(rows[0].id); sow.dispatchEvent(new Event('change')); }
     if(!rows.length) sow.options[0].text=query?'Aucune truie trouvée':(verraterie?'Aucune truie en verraterie':'Aucune truie dans la période de mise-bas');
   }
   sowSearch.addEventListener('input',function(){
