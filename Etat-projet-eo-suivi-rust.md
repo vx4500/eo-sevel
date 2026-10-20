@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.67.12** — plan : rendu sur téléphone.
+Version actuelle : **2.68.0** — menu réorganisé.
+
+Version Rust 2.68.0 : « Mes résultats » fusionné en tête de Ma gestion ; rubrique directe « Plan » (.rust-menu-direct, sans bouton — le script du menu ignore désormais les rubriques sans bouton) ; Mes équipements devient un groupe du menu du compte (data-onglets="groupe" : onglets et fil d'Ariane limités au groupe).
 
 Version Rust 2.67.12 : .rep.dim centré en « safe center » (sinon le débordement centré n'apparaît pas dans scrollWidth et le texte ne rétrécit pas), repères non étirés en var(--plan-fs) = largeur du plan/81 (6–14 px), panneau au-dessus de .nav-pouce sous 850 px.
 
