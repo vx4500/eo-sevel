@@ -771,6 +771,7 @@ pub fn router(state: AppState) -> Router {
         .route("/quotidien", get(quotidien))
         .route("/quotidien/note", post(quotidien_note))
         .route("/quotidien/ras", post(quotidien_ras))
+        .route("/quotidien/cours/actualiser", post(quotidien_cours_actualiser))
         .route("/vente-directe/sessions", get(vente_sessions))
         .route("/reglages", get(reglages))
         .route("/parametres", get(parametres))
@@ -14258,7 +14259,19 @@ async fn quotidien(
     ctx.insert("page".into(), json!(page));
     ctx.insert("plus_notes".into(), json!(page * 30 < total));
     ctx.insert("total_notes".into(), json!(total));
+    ctx.insert("cours".into(), crate::cours::suivi(&state.pool).await?);
     render(&state, "quotidien.html", Value::Object(ctx))
+}
+
+/// Roue ↻ du suivi des cours : relevé immédiat de toutes les sources.
+async fn quotidien_cours_actualiser(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    verify_csrf(&session, &form)?;
+    crate::cours::actualiser(&state.pool).await;
+    Ok(Redirect::to("/quotidien#cours").into_response())
 }
 
 async fn quotidien_note(

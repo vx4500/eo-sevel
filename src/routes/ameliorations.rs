@@ -466,6 +466,10 @@ mod tests {
             .execute(&p)
             .await
             .unwrap();
+        sqlx::raw_sql(include_str!("../../migrations/0030_cours.sql"))
+            .execute(&p)
+            .await
+            .unwrap();
         p
     }
     fn session() -> SessionData {
@@ -513,6 +517,7 @@ mod tests {
         assert_eq!(body.matches("Enregistrer la modification").count(), 30);
         assert!(body.contains("Plus anciennes"));
         assert!(body.contains("65 notes"));
+        assert!(body.contains("Cours des céréales") && body.contains("/quotidien/cours/actualiser"));
     }
     #[tokio::test]
     async fn routeur_et_pages_modernisees() {

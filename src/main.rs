@@ -4,6 +4,7 @@ mod ambiance;
 mod auth;
 mod cleanup;
 mod config;
+mod cours;
 mod db;
 mod demo;
 mod eclairage_core;
@@ -130,6 +131,12 @@ async fn main() -> anyhow::Result<()> {
     let proxmox_pool = pool.clone();
     tokio::spawn(async move {
         crate::proxmox::boucle(proxmox_pool).await;
+    });
+
+    // Suivi des cours (porc, céréales) : un relevé par jour.
+    let cours_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::cours::boucle(cours_pool).await;
     });
 
     // Machine à soupe : alerte quand le service d'écoute ne donne plus de nouvelles.

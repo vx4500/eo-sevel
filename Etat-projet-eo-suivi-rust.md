@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.68.2** — saisie rapide en plein écran.
+Version actuelle : **2.69.0** — suivi des cours (porc, céréales) sur la page Aujourd’hui.
+
+Version Rust 2.69.0 : src/cours.rs relève chaque jour (et à la demande, roue ↻) le prix de base Cooperl par /api/cours d’EO_Compare, le cadran de Plérin et la note hebdomadaire « Situation des cours et marchés » du RNM FranceAgriMer (blé FOB Rouen, orge rendu Rouen, maïs rendu Bordeaux) ; historique dans cours_releve (migration 0030).
 
 Version Rust 2.68.2 : au passage en plein écran du plan, #fab et #fab-panel sont déplacés dans #plan-zone (comme le panneau de détail) et le + est forcé visible, y compris sur téléphone.
 
