@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.69.0** — suivi des cours (porc, céréales) sur la page Aujourd’hui.
+Version actuelle : **2.70.0** — l’assistant Claude peut déclarer des morts, transférer des porcs et enregistrer des départs abattoir.
+
+Version Rust 2.70.0 : trois outils d’écriture au connecteur Claude (src/routes/mcp.rs) : declarer_mort, transferer_porcs, depart_porcs, en deux temps (confirme), avec contrôle des salles/cases, de l’effectif, de la cause et de la date ; la maternité reste saisie dans EO_Sevel.
 
 Version Rust 2.69.0 : src/cours.rs relève chaque jour (et à la demande, roue ↻) le prix de base Cooperl par /api/cours d’EO_Compare, le cadran de Plérin et la note hebdomadaire « Situation des cours et marchés » du RNM FranceAgriMer (blé FOB Rouen, orge rendu Rouen, maïs rendu Bordeaux) ; historique dans cours_releve (migration 0030).
 
