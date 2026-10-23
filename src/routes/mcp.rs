@@ -43,6 +43,29 @@ fn outils() -> Value {
              "date": {"type": "string", "description": "AAAA-MM-JJ"},
              "note": {"type": "string"}, "bande": {"type": "string"},
              "confirme": confirme}, "required": ["titre", "date"]}},
+        {"name": "declarer_mort",
+         "description": "Déclare des porcs morts dans une salle (engraissement, post-sevrage…, pas la maternité). Case facultative si la salle n'en a qu'une. Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string"}, "case": {"type": "string", "description": "numéro de vanne ou nom de la case (facultatif)"},
+             "nombre": {"type": "integer"}, "cause": {"type": "string", "description": "une cause configurée (la liste est renvoyée si elle est inconnue)"},
+             "stade": {"type": "string", "description": "facultatif : déduit de la salle"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
+             "confirme": confirme}, "required": ["salle", "nombre", "cause"]}},
+        {"name": "transferer_porcs",
+         "description": "Transfère des porcs d'une salle (ou case) vers une autre ; les porcs gardent leur bande. Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "salle_source": {"type": "string"}, "case_source": {"type": "string", "description": "facultatif"},
+             "salle_destination": {"type": "string"}, "case_destination": {"type": "string", "description": "facultatif si la salle n'a qu'une case"},
+             "nombre": {"type": "integer"}, "bande": {"type": "string", "description": "facultatif : vérifie que les porcs sont de cette bande"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
+             "confirme": confirme}, "required": ["salle_source", "salle_destination", "nombre"]}},
+        {"name": "depart_porcs",
+         "description": "Enregistre un départ de porcs à l'abattoir depuis une salle (pris dans les cases les plus pleines). Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string"}, "case": {"type": "string", "description": "facultatif"},
+             "nombre": {"type": "integer"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
+             "confirme": confirme}, "required": ["salle", "nombre"]}},
         {"name": "rappels",
          "description": "Rappels et tâches non faits, par échéance.",
          "input_schema": {"type": "object", "properties": {}}},
@@ -131,6 +154,69 @@ async fn case_par_vanne(pool: &SqlitePool, salle: &str, vanne: &str) -> Result<(
     }
 }
 
+/// Porcs présents par case d'une salle (case facultative), la plus pleine
+/// d'abord : (case_id, salle_id, salle, case, effectif). La maternité est
+/// refusée : ses porcelets se comptent par portée, saisie dans EO_Sevel.
+async fn cases_porcs(pool: &SqlitePool, salle: &str, case: &str) -> Result<Vec<(i64, i64, String, String, i64)>, String> {
+    let lignes: Vec<(i64, i64, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT c.id,c.salle_id,s.nom,c.nom,s.type FROM casesalle c JOIN salle s ON s.id=c.salle_id \
+         WHERE lower(s.nom) LIKE '%'||lower(?1)||'%' AND (?2='' OR c.num_vanne=?2 OR lower(c.nom)=lower(?2) OR c.nom LIKE ?2||' %') ORDER BY c.id",
+    )
+    .bind(salle).bind(case.trim_start_matches(['v', 'V']).trim())
+    .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    if lignes.is_empty() {
+        return Err(format!("Pas de salle « {salle} »{}. Utilise cases_salle ou lister les salles avec requete.",
+            if case.is_empty() { String::new() } else { format!(" avec la case « {case} »") }));
+    }
+    let salles: std::collections::BTreeSet<&str> = lignes.iter().map(|l| l.2.as_str()).collect();
+    if salles.len() > 1 {
+        return Err(format!("Plusieurs salles correspondent : {}. Laquelle ?", salles.into_iter().collect::<Vec<_>>().join(", ")));
+    }
+    if lignes.iter().any(|l| stade_pour_type_salle(l.4.as_deref().unwrap_or("")).as_deref() == Some("Maternité")) {
+        return Err("Salle de maternité : les porcelets se saisissent par portée dans EO_Sevel.".into());
+    }
+    let mut sortie = Vec::new();
+    for (id, salle_id, s, c, _) in lignes {
+        let n = case_pig_count(pool, id).await.map_err(|e| e.to_string())?;
+        sortie.push((id, salle_id, s, c, n));
+    }
+    sortie.sort_by(|a, b| b.4.cmp(&a.4));
+    Ok(sortie)
+}
+
+/// Répartit `nombre` porcs sur les cases (les plus pleines d'abord).
+fn prelever(cases: &[(i64, i64, String, String, i64)], nombre: i64) -> Result<Vec<(i64, i64, i64)>, String> {
+    let present: i64 = cases.iter().map(|c| c.4).sum();
+    if nombre <= 0 {
+        return Err("Le nombre doit être d'au moins 1.".into());
+    }
+    if nombre > present {
+        return Err(format!("{} : {nombre} porcs demandés, {present} présents.", cases[0].2));
+    }
+    let mut reste = nombre;
+    let mut pris = Vec::new();
+    for (case_id, salle_id, _, _, n) in cases {
+        if reste == 0 { break; }
+        let p = reste.min(*n);
+        if p > 0 { pris.push((*case_id, *salle_id, p)); reste -= p; }
+    }
+    Ok(pris)
+}
+
+fn date_ou_aujourdhui(a: &Value) -> Result<String, String> {
+    let auj = chrono::Local::now().date_naive();
+    let d = match arg(a, "date") {
+        "" => auj,
+        t => chrono::NaiveDate::parse_from_str(t, "%Y-%m-%d").map_err(|_| "Date attendue au format AAAA-MM-JJ".to_string())?,
+    };
+    if d > auj { return Err("Date dans le futur.".into()); }
+    Ok(d.to_string())
+}
+
+async fn code_bande(pool: &SqlitePool, bande_id: Option<i64>) -> Option<String> {
+    sqlx::query_scalar("SELECT code FROM bande WHERE id=?").bind(bande_id?).fetch_optional(pool).await.ok().flatten()
+}
+
 async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, String> {
     let pool = &state.pool;
     match nom {
@@ -212,6 +298,98 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                 .bind(titre).bind(bande).bind(date.to_string()).bind(note)
                 .execute(pool).await.map_err(|e| e.to_string())?;
             journaliser(pool, "creer_rappel", titre, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "declarer_mort" => {
+            let date = date_ou_aujourdhui(a)?;
+            let nombre = a.get("nombre").and_then(Value::as_i64).unwrap_or(0);
+            let cases = cases_porcs(pool, arg(a, "salle"), arg(a, "case")).await?;
+            if cases.len() > 1 && arg(a, "case").is_empty() && nombre > 0 && cases[0].4 < nombre {
+                return Err(format!("Précise la case : {}.", cases.iter().map(|c| format!("{} ({} porcs)", c.3, c.4)).collect::<Vec<_>>().join(", ")));
+            }
+            let (case_id, _, salle, case, present) = cases[0].clone();
+            prelever(&cases[..1], nombre)?;
+            let causes: Vec<String> = sqlx::query_scalar("SELECT libelle FROM causeperte ORDER BY libelle")
+                .fetch_all(pool).await.map_err(|e| e.to_string())?;
+            let cause = causes.iter().find(|c| c.to_lowercase() == arg(a, "cause").to_lowercase())
+                .ok_or_else(|| format!("Cause inconnue « {} ». Causes possibles : {}.", arg(a, "cause"), causes.join(", ")))?.clone();
+            let stade = Some(arg(a, "stade").to_string()).filter(|s| !s.is_empty())
+                .or(stade_from_case(pool, case_id).await.map_err(|e| e.to_string())?)
+                .map(|s| normalize_death_stage(&s));
+            let bande = code_bande(pool, bande_de_la_case(pool, case_id, &date).await.map_err(|e| e.to_string())?).await;
+            let resume = format!("{nombre} porc(s) mort(s) le {date} en {salle}, case {case} ({}), cause {cause}{}. Reste {} porcs dans la case.",
+                stade.as_deref().unwrap_or("stade inconnu"), bande.as_deref().map(|b| format!(", bande {b}")).unwrap_or_default(), present - nombre);
+            if a.get("confirme").and_then(Value::as_bool) != Some(true) {
+                return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
+            }
+            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,nombre,declare_par) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?)")
+                .bind(&bande).bind(&date).bind(&stade).bind(case_id).bind(&cause).bind(nombre).bind(AUTEUR)
+                .execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "declarer_mort", &salle, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "transferer_porcs" => {
+            let date = date_ou_aujourdhui(a)?;
+            let nombre = a.get("nombre").and_then(Value::as_i64).unwrap_or(0);
+            let sources = cases_porcs(pool, arg(a, "salle_source"), arg(a, "case_source")).await?;
+            let dest = cases_porcs(pool, arg(a, "salle_destination"), arg(a, "case_destination")).await?;
+            if dest.len() > 1 {
+                return Err(format!("Précise la case d'arrivée : {}.", dest.iter().map(|c| c.3.as_str()).collect::<Vec<_>>().join(", ")));
+            }
+            let (dest_case, dest_salle, dest_nom, dest_case_nom, dest_n) = dest[0].clone();
+            let sources: Vec<_> = sources.into_iter().filter(|c| c.0 != dest_case).collect();
+            if sources.is_empty() {
+                return Err("La source et la destination sont identiques.".into());
+            }
+            let pris = prelever(&sources, nombre)?;
+            let mut lignes = Vec::new();
+            for (case_id, salle_id, n) in pris {
+                let bande_id = bande_de_la_case(pool, case_id, &date).await.map_err(|e| e.to_string())?;
+                let code = code_bande(pool, bande_id).await;
+                let voulue = arg(a, "bande");
+                if !voulue.is_empty() && code.as_deref().map(|c| c.to_lowercase()) != Some(voulue.to_lowercase()) {
+                    return Err(format!("Les porcs de {} sont de la bande {}, pas {voulue}.", sources[0].2, code.as_deref().unwrap_or("inconnue")));
+                }
+                lignes.push((case_id, salle_id, n, bande_id, code));
+            }
+            let bandes: std::collections::BTreeSet<String> = lignes.iter().filter_map(|l| l.4.clone()).collect();
+            let resume = format!("{nombre} porc(s) de {} vers {dest_nom}, case {dest_case_nom}, le {date}{}. Après : {} porcs à l'arrivée.",
+                sources[0].2, if bandes.is_empty() { String::new() } else { format!(", bande {}", bandes.into_iter().collect::<Vec<_>>().join(", ")) }, dest_n + nombre);
+            if a.get("confirme").and_then(Value::as_bool) != Some(true) {
+                return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
+            }
+            let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+            for (case_id, salle_id, n, bande_id, _) in lignes {
+                sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,salle_dest_id,case_source_id,case_dest_id,nombre,note) VALUES(?,'porc',?,?,?,?,?,?,?)")
+                    .bind(&date).bind(bande_id).bind(salle_id).bind(dest_salle).bind(case_id).bind(dest_case).bind(n).bind(AUTEUR)
+                    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            }
+            tx.commit().await.map_err(|e| e.to_string())?;
+            journaliser(pool, "transferer_porcs", &dest_nom, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "depart_porcs" => {
+            let date = date_ou_aujourdhui(a)?;
+            let nombre = a.get("nombre").and_then(Value::as_i64).unwrap_or(0);
+            let cases = cases_porcs(pool, arg(a, "salle"), arg(a, "case")).await?;
+            let pris = prelever(&cases, nombre)?;
+            let present: i64 = cases.iter().map(|c| c.4).sum();
+            let resume = format!("Départ abattoir le {date} : {nombre} porc(s) de {}. Reste {} porcs.", cases[0].2, present - nombre);
+            if a.get("confirme").and_then(Value::as_bool) != Some(true) {
+                return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
+            }
+            // Même forme que la confirmation d'un départ prévu (/departs) :
+            // sortie sans case d'arrivée, note « Départ du … ».
+            let note = format!("Départ du {} ({AUTEUR})", chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").map(|d| d.format("%d/%m").to_string()).unwrap_or_default());
+            let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+            for (case_id, salle_id, n) in pris {
+                let bande_id = bande_de_la_case(pool, case_id, &date).await.map_err(|e| e.to_string())?;
+                sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,case_source_id,nombre,note) VALUES(?,'porc',?,?,?,?,?)")
+                    .bind(&date).bind(bande_id).bind(salle_id).bind(case_id).bind(n).bind(&note)
+                    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+            }
+            tx.commit().await.map_err(|e| e.to_string())?;
+            journaliser(pool, "depart_porcs", &cases[0].2, &resume).await;
             Ok(format!("Enregistré : {resume}"))
         }
         "rappels" => {
@@ -381,6 +559,48 @@ mod tests {
         assert!(e);
         let (e, _) = outil(&state, &jeton, "deplacer_truie", json!({"numero":"999999","salle":"Verraterie","vanne":"47","confirme":true})).await;
         assert!(e);
+
+        // Porcs : morts, transferts, départs (deux temps, contrôles d'effectif).
+        let morts = |p: &SqlitePool| { let p = p.clone(); async move { sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM declarationmort").fetch_one(&p).await.unwrap() } };
+        let transferts = |p: &SqlitePool| { let p = p.clone(); async move { sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM transfert").fetch_one(&p).await.unwrap() } };
+        let (m0, t0) = (morts(&pool).await, transferts(&pool).await);
+        let (e, t) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Engraissement 5","nombre":1,"cause":"respiratoire"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER"));
+        assert_eq!(morts(&pool).await, m0);
+        let (e, t) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Engraissement 5","nombre":1,"cause":"respiratoire","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"));
+        assert_eq!(morts(&pool).await, m0 + 1);
+        for args in [json!({"salle":"Engraissement 5","nombre":0,"cause":"Respiratoire","confirme":true}),
+                     json!({"salle":"Engraissement 5","nombre":10000,"cause":"Respiratoire","confirme":true}),
+                     json!({"salle":"Engraissement 5","nombre":1,"cause":"grippe","confirme":true}),
+                     json!({"salle":"Nulle part","nombre":1,"cause":"Respiratoire","confirme":true}),
+                     json!({"salle":"Mater 1","nombre":1,"cause":"Respiratoire","confirme":true}),
+                     json!({"salle":"Engraissement","nombre":1,"cause":"Respiratoire","confirme":true}),
+                     json!({"salle":"Engraissement 5","nombre":1,"cause":"Respiratoire","date":"2099-01-01","confirme":true})] {
+            let (e, _) = outil(&state, &jeton, "declarer_mort", args).await;
+            assert!(e);
+        }
+        assert_eq!(morts(&pool).await, m0 + 1);
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"Engraissement 5","salle_destination":"Engraissement 4","nombre":5})).await;
+        assert!(!e && t.starts_with("À CONFIRMER"));
+        let (e, _) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"Engraissement 5","salle_destination":"Engraissement 4","nombre":5,"bande":"ZZZ","confirme":true})).await;
+        assert!(e);
+        let (e, _) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"Engraissement 5","salle_destination":"Engraissement 5","nombre":5,"confirme":true})).await;
+        assert!(e);
+        let (e, _) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"Engraissement 5","salle_destination":"35G6K","nombre":5,"confirme":true})).await;
+        assert!(e, "deux cases d'arrivée : il faut préciser");
+        assert_eq!(transferts(&pool).await, t0);
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"Engraissement 5","salle_destination":"Engraissement 4","nombre":5,"confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"));
+        assert_eq!(transferts(&pool).await, t0 + 1);
+        let (e, t) = outil(&state, &jeton, "depart_porcs", json!({"salle":"35G6K","nombre":10})).await;
+        assert!(!e && t.starts_with("À CONFIRMER"));
+        let (e, _) = outil(&state, &jeton, "depart_porcs", json!({"salle":"35G6K","nombre":100000,"confirme":true})).await;
+        assert!(e);
+        let (e, t) = outil(&state, &jeton, "depart_porcs", json!({"salle":"35G6K","nombre":10,"confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"));
+        let n: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(nombre),0) FROM transfert WHERE case_dest_id IS NULL AND note LIKE 'Départ du%' AND id>(SELECT MAX(id)-5 FROM transfert)").fetch_one(&pool).await?;
+        assert_eq!(n, 10);
         Ok(())
     }
 }
