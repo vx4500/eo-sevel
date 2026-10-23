@@ -6,7 +6,7 @@
 {% macro carte(c) %}
 <article class="cmd-carte cmd-{{ c.statut }}">
   <header><div><b class="cmd-client">{{ c.nom_client }}</b><small>{{ c.cree_le[8:10] }}/{{ c.cree_le[5:7] }} à {{ c.cree_le[11:16] }}{% if c.session_nom %} · {{ c.session_nom }}{% endif %}</small></div><b class="cmd-total">{{ c.total|euro }}</b></header>
-  <p class="cmd-produits">{{ c.lignes or '—' }}{% if c.kg_commandes %} <b>({{ c.kg_commandes }} kg)</b>{% endif %}</p>
+  <p class="cmd-produits">{{ c.lignes or '—' }}{% if c.kg_commandes %} <b>({{ c.kg_commandes }} kg commandés)</b>{% endif %}</p>
   {% if c.notes %}<p class="cmd-note">📝 {{ c.notes }}</p>{% endif %}
   <p class="cmd-contact">📞 <a href="tel:{{ c.telephone }}">{{ c.telephone }}</a>{% if c.email %} · {{ c.email }}{% endif %}{% if c.recap_envoye_le %} · ✓ récap envoyé{% elif c.email %} · récap non envoyé{% endif %}{% if c.code_modification %} · code <b>{{ c.code_modification }}</b>{% endif %}</p>
   <footer>
@@ -20,7 +20,7 @@
     {% if not c.session_vente_id %}<form method="post" action="/vente-directe/commande/{{ c.id }}/session"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><select name="session_vente_id" onchange="this.form.submit()" aria-label="Session"><option value="">Rattacher à une vente…</option>{% for s in sessions_vente %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></form>{% endif %}
     <span class="grow"></span>
     <a href="/vente-directe/commande/{{ c.id }}">Modifier</a>
-    <a href="/vente-directe/commande/{{ c.id }}/imprimer" target="_blank">Bon</a>
+    <a href="/vente-directe/commande/{{ c.id }}/imprimer" target="_blank">Bon de commande</a>
   </footer>
 </article>
 {% endmacro %}
