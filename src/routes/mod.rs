@@ -1675,6 +1675,10 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
         "/planning",
         "urgent",
     );
+    // Nouvelles commandes de vente directe passées par les clients.
+    if let Ok(n) = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'").fetch_one(pool).await {
+        push_farm_alert(&mut alerts, n, "Nouvelles commandes clients à valider", "/vente-directe/commandes", "attention");
+    }
     let case_anomalies = cases_incoherentes(pool).await?.len() as i64;
     push_farm_alert(
         &mut alerts,
@@ -15257,6 +15261,33 @@ mod economique_visuel_tests {
                 assert!(html.contains("id=\"eco-donnees\"") && html.contains("eco-courbe"));
             }
             std::fs::write(format!("/var/tmp/eco-{}.html", if secteur.is_empty() { "synthese" } else { secteur }), html)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod commandes_clients_tests {
+    use super::*;
+
+    /// `EO_TEST_BASE=/var/tmp/copie.db cargo test -- --ignored commandes_sur_copie` :
+    /// rend /vente-directe/commandes et vérifie l'alerte des nouvelles commandes.
+    #[tokio::test]
+    #[ignore]
+    async fn commandes_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{chemin}")).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse().unwrap(), db_path: chemin.clone().into(), secure_cookies: false },
+            pool.clone(),
+            crate::templates::build().unwrap(),
+        );
+        let html = vente_directe_commandes(State(state), Extension(super::documents::tests::session())).await?.0;
+        std::fs::write("/var/tmp/commandes.html", &html)?;
+        let nouvelles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'").fetch_one(&pool).await?;
+        if nouvelles > 0 {
+            assert!(html.contains("cmd-annonce"));
+            assert!(farm_alerts(&pool).await?.to_string().contains("Nouvelles commandes clients"));
         }
         Ok(())
     }

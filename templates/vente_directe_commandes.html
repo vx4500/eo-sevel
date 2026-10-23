@@ -1,7 +1,57 @@
 {% extends "base.html" %}{% block content %}
+{% set libelles = {'nouvelle':'Nouvelle','validee':'Validée','preparation':'En préparation','prete':'Prête','livree':'Livrée','annulee':'Annulée'} %}
+{% set nouvelles = commandes|selectattr('statut','equalto','nouvelle')|list %}
+{% set en_cours = commandes|selectattr('statut','in',['validee','preparation','prete'])|list %}
+{% set terminees = commandes|selectattr('statut','in',['livree','annulee'])|list %}
+{% macro carte(c) %}
+<article class="cmd-carte cmd-{{ c.statut }}">
+  <header><div><b class="cmd-client">{{ c.nom_client }}</b><small>{{ c.cree_le[8:10] }}/{{ c.cree_le[5:7] }} à {{ c.cree_le[11:16] }}{% if c.session_nom %} · {{ c.session_nom }}{% endif %}</small></div><b class="cmd-total">{{ c.total|euro }}</b></header>
+  <p class="cmd-produits">{{ c.lignes or '—' }}{% if c.kg_commandes %} <b>({{ c.kg_commandes }} kg)</b>{% endif %}</p>
+  {% if c.notes %}<p class="cmd-note">📝 {{ c.notes }}</p>{% endif %}
+  <p class="cmd-contact">📞 <a href="tel:{{ c.telephone }}">{{ c.telephone }}</a>{% if c.email %} · {{ c.email }}{% endif %}{% if c.recap_envoye_le %} · ✓ récap envoyé{% elif c.email %} · récap non envoyé{% endif %}{% if c.code_modification %} · code <b>{{ c.code_modification }}</b>{% endif %}</p>
+  <footer>
+    <form method="post" action="/vente-directe/commande/{{ c.id }}/statut"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+      {% if c.statut == 'nouvelle' %}<button name="statut" value="validee">✓ Valider</button>
+      {% elif c.statut == 'validee' %}<button name="statut" value="preparation">En préparation</button>
+      {% elif c.statut == 'preparation' %}<button name="statut" value="prete">Prête</button>
+      {% elif c.statut == 'prete' %}<button name="statut" value="livree">Livrée</button>{% endif %}
+      <select name="statut" onchange="this.form.submit()" aria-label="Statut">{% for st in ['nouvelle','validee','preparation','prete','livree','annulee'] %}<option value="{{ st }}" {% if st == c.statut %}selected{% endif %}>{{ libelles[st] }}</option>{% endfor %}</select>
+    </form>
+    {% if not c.session_vente_id %}<form method="post" action="/vente-directe/commande/{{ c.id }}/session"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><select name="session_vente_id" onchange="this.form.submit()" aria-label="Session"><option value="">Rattacher à une vente…</option>{% for s in sessions_vente %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></form>{% endif %}
+    <span class="grow"></span>
+    <a href="/vente-directe/commande/{{ c.id }}">Modifier</a>
+    <a href="/vente-directe/commande/{{ c.id }}/imprimer" target="_blank">Bon</a>
+  </footer>
+</article>
+{% endmacro %}
 <h1>Commandes clients</h1>
-<p class="rust-actions"><a href="/vente-directe">← Produits et inventaire</a><a href="/vente-directe/bilan">Récapitulatif des ventes</a>{% for s in sessions_vente %}{% if s.active %}<form method="post" action="/vente-directe/session/{{ s.id }}/cloturer" onsubmit="return confirm('Clôturer cette vente et fermer la page client ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="danger">⏹ Fin de vente</button></form>{% endif %}{% endfor %}</p>
-<section><div class="rust-actions"><h2>Commandes</h2>{% for s in sessions_vente %}{% if s.active %}<a href="/vente-directe/preparation/imprimer?session_id={{ s.id }}" target="_blank">Préparation {{ s.nom }}</a>{% endif %}{% endfor %}</div><div class="rust-scroll"><table><thead><tr><th>Date</th><th>Client</th><th>Coordonnées</th><th>Produits</th><th>Session</th><th>Total</th><th>Statut</th><th>Actions</th></tr></thead><tbody>
-{% for c in commandes %}<tr><td>{{ c.cree_le }}</td><td><b>{{ c.nom_client }}</b>{% if c.notes %}<br><small>{{ c.notes }}</small>{% endif %}</td><td>{{ c.telephone }}<br>{{ c.email or '' }}{% if c.recap_envoye_le %}<br><small>✓ Récap envoyé {{ c.recap_envoye_le }}</small>{% elif c.email %}<br><small>Récap non envoyé</small>{% endif %}{% if c.code_modification %}<br><small>Code : <b>{{ c.code_modification }}</b></small>{% endif %}</td><td>{{ c.lignes or '—' }}{% if c.kg_commandes %}<br><b>{{ c.kg_commandes }} kg commandés</b>{% endif %}</td><td><form method="post" action="/vente-directe/commande/{{ c.id }}/session"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><select name="session_vente_id" onchange="this.form.submit()"><option value="">Non rattachée</option>{% for s in sessions_vente %}<option value="{{ s.id }}" {% if s.id == c.session_vente_id %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></form></td><td><b>{{ c.total|euro }}</b></td><td><form method="post" action="/vente-directe/commande/{{ c.id }}/statut"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><select name="statut" onchange="this.form.submit()">{% for st in ['nouvelle','validee','preparation','prete','livree','annulee'] %}<option value="{{ st }}" {% if st == c.statut %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></form></td><td><div class="rust-actions"><a href="/vente-directe/commande/{{ c.id }}">Modifier</a><a class="button" href="/vente-directe/commande/{{ c.id }}/imprimer" target="_blank">Bon de commande</a><form method="post" action="/vente-directe/commande/{{ c.id }}/supprimer" onsubmit="return confirm('Supprimer définitivement cette commande ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></div></td></tr>{% else %}<tr><td colspan="8" class="rust-empty">Aucune commande</td></tr>{% endfor %}
-</tbody></table></div></section>
+<p class="rust-actions"><a href="/vente-directe">← Produits et inventaire</a><a href="/vente-directe/bilan">Récapitulatif des ventes</a>{% for s in sessions_vente %}{% if s.active %}<a href="/vente-directe/preparation/imprimer?session_id={{ s.id }}" target="_blank">🖨 Préparation {{ s.nom }}</a><form method="post" action="/vente-directe/session/{{ s.id }}/cloturer" onsubmit="return confirm('Clôturer cette vente et fermer la page client ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="danger">⏹ Fin de vente {{ s.nom }}</button></form>{% endif %}{% endfor %}</p>
+
+{% if nouvelles %}<div class="cmd-annonce" role="status">🔔 <b>{{ nouvelles|length }} nouvelle{% if nouvelles|length > 1 %}s{% endif %} commande{% if nouvelles|length > 1 %}s{% endif %}</b> à valider</div>{% endif %}
+
+<p class="cmd-resume"><span><b>{{ nouvelles|length }}</b> nouvelle{% if nouvelles|length > 1 %}s{% endif %}</span><span><b>{{ en_cours|length }}</b> en cours</span><span><b>{{ terminees|length }}</b> terminée{% if terminees|length > 1 %}s{% endif %}</span></p>
+
+{% if nouvelles %}<section><h2>Nouvelles commandes</h2><div class="cmd-grille">{% for c in nouvelles %}{{ carte(c) }}{% endfor %}</div></section>{% endif %}
+
+<section><h2>À préparer et à livrer</h2>{% if en_cours %}<div class="cmd-grille">{% for c in en_cours %}{{ carte(c) }}{% endfor %}</div>{% else %}<p class="rust-empty">Rien en cours.</p>{% endif %}</section>
+
+<section><h2>Livrées et annulées</h2>{% if terminees %}<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Client</th><th>Produits</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>
+{% for c in terminees %}<tr><td>{{ c.cree_le[8:10] }}/{{ c.cree_le[5:7] }}/{{ c.cree_le[:4] }}</td><td>{{ c.nom_client }}</td><td><small>{{ c.lignes or '—' }}</small></td><td>{{ c.total|euro }}</td><td>{{ libelles[c.statut] }}</td><td><div class="rust-actions"><a href="/vente-directe/commande/{{ c.id }}">Voir</a><form method="post" action="/vente-directe/commande/{{ c.id }}/supprimer" onsubmit="return confirm('Supprimer définitivement cette commande ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form></div></td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="rust-empty">Aucune commande terminée.</p>{% endif %}</section>
+
+<style>
+.cmd-annonce{background:#fff3cd;color:#664d03;border:1px solid #ffda6a;border-radius:10px;padding:12px 16px;margin:12px 0;font-size:1.1em}
+.cmd-resume{display:flex;gap:18px;flex-wrap:wrap}
+.cmd-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.cmd-carte{border:1px solid var(--line,#d0d7de);border-left:5px solid #8c959f;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.cmd-carte.cmd-nouvelle{border-left-color:#d4a72c}
+.cmd-carte.cmd-validee,.cmd-carte.cmd-preparation{border-left-color:#0969da}
+.cmd-carte.cmd-prete{border-left-color:#1a7f37}
+.cmd-carte header{display:flex;justify-content:space-between;gap:8px}
+.cmd-carte header small{display:block;opacity:.7}
+.cmd-client{font-size:1.1em}.cmd-total{font-size:1.1em;white-space:nowrap}
+.cmd-carte p{margin:0}.cmd-contact,.cmd-note{font-size:.9em;opacity:.85}
+.cmd-carte footer{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.cmd-carte footer form{display:flex;gap:6px;margin:0}.cmd-carte footer .grow{flex:1}
+</style>
 {% endblock %}

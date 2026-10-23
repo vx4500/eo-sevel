@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.70.0** — l’assistant Claude peut déclarer des morts, transférer des porcs et enregistrer des départs abattoir.
+Version actuelle : **2.70.1** — commandes clients en fiches par statut, alerte des nouvelles commandes.
+
+Version Rust 2.70.1 : /vente-directe/commandes regroupe nouvelles / en cours / terminées (bouton d’étape suivante), et farm_alerts signale les commandes au statut « nouvelle ».
+
+Version 2.70.0 — l’assistant Claude peut déclarer des morts, transférer des porcs et enregistrer des départs abattoir.
 
 Version Rust 2.70.0 : trois outils d’écriture au connecteur Claude (src/routes/mcp.rs) : declarer_mort, transferer_porcs, depart_porcs, en deux temps (confirme), avec contrôle des salles/cases, de l’effectif, de la cause et de la date ; la maternité reste saisie dans EO_Sevel.
 
