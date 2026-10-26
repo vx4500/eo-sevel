@@ -10830,6 +10830,9 @@ async fn vente_directe(
     let nb_commandes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte")
         .fetch_one(&state.pool)
         .await?;
+    let nb_nouvelles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'")
+        .fetch_one(&state.pool)
+        .await?;
 
     let debut = query
         .get("debut")
@@ -10879,6 +10882,7 @@ async fn vente_directe(
     ctx.insert("sessions_vente".into(), Value::Array(sessions));
     ctx.insert("reglage".into(), settings);
     ctx.insert("nb_commandes".into(), json!(nb_commandes));
+    ctx.insert("nb_nouvelles".into(), json!(nb_nouvelles));
     ctx.insert("produits_vendus".into(), Value::Array(sales));
     ctx.insert(
         "totaux_ventes".into(),
@@ -15282,6 +15286,9 @@ mod commandes_clients_tests {
             pool.clone(),
             crate::templates::build().unwrap(),
         );
+        let page = vente_directe(State(state.clone()), Extension(super::documents::tests::session()), Query(HashMap::new())).await?.0;
+        std::fs::write("/var/tmp/vente-directe.html", &page)?;
+        assert!(page.contains("vd-etat") && page.contains("vd-produit"));
         let html = vente_directe_commandes(State(state), Extension(super::documents::tests::session())).await?.0;
         std::fs::write("/var/tmp/commandes.html", &html)?;
         let nouvelles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'").fetch_one(&pool).await?;

@@ -1,44 +1,98 @@
 {% extends "base.html" %}{% block content %}
+{% set active = sessions_vente|selectattr('active')|first %}
 <h1>Vente directe</h1>
-<p class="rust-actions"><a class="button" href="/commande" target="_blank">Ouvrir la page client</a><a href="/vente-directe/sessions">Sessions et coûts</a><a href="/vente-directe/bilan">Récapitulatif des ventes</a><a href="/vente-directe/commandes">Commandes clients ({{ nb_commandes }})</a>{% for s in sessions_vente %}{% if s.active %}<a href="/vente-directe/preparation/imprimer?session_id={{ s.id }}" target="_blank">Imprimer la préparation</a>{% endif %}{% endfor %}</p>
-<section id="commandes-client" class="card">
-  <h2>Commandes sur la page client</h2>
-  {% if reglage.commandes_ouvertes %}<p><span class="rust-badge">● Ouvertes</span> Les clients peuvent actuellement envoyer une commande.</p>{% else %}<p><span class="rust-badge danger">⏹ Fermées</span> Le formulaire client est masqué et un bandeau de fin de vente est affiché.</p>{% endif %}
-  <form method="post" action="/vente-directe/commandes-ouverture"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Message affiché lorsque la vente est terminée<textarea name="message_fermeture" maxlength="500">{{ reglage.message_fermeture or 'Cette vente est terminée. Les commandes sont fermées.' }}</textarea></label>{% if reglage.commandes_ouvertes %}<input type="hidden" name="ouvert" value="0"><button class="danger" title="Fermer la prise de commandes" onclick="return confirm('Fermer les commandes sur la page client ?')">⏹ Fermer les commandes</button>{% else %}<input type="hidden" name="ouvert" value="1"><button title="Rouvrir la prise de commandes">▶ Rouvrir les commandes</button>{% endif %}</form>
+
+<section class="vd-etat {% if reglage.commandes_ouvertes %}ouvert{% else %}ferme{% endif %}">
+  <div class="vd-etat-info">
+    <b>{% if reglage.commandes_ouvertes %}● Commandes ouvertes{% else %}⏹ Commandes fermées{% endif %}</b>
+    <span>{% if active %}Vente <b>{{ active.nom }}</b>{% if active.date_livraison %} · livraison {{ active.date_livraison|date_fr }}{% endif %}{% else %}Aucune vente active{% endif %}</span>
+  </div>
+  <form method="post" action="/vente-directe/commandes-ouverture"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="message_fermeture" value="{{ reglage.message_fermeture or 'Cette vente est terminée. Les commandes sont fermées.' }}">{% if reglage.commandes_ouvertes %}<input type="hidden" name="ouvert" value="0"><button class="danger" onclick="return confirm('Fermer les commandes sur la page client ?')">⏹ Fermer les commandes</button>{% else %}<input type="hidden" name="ouvert" value="1"><button>▶ Rouvrir les commandes</button>{% endif %}</form>
 </section>
-<div class="rust-grid">
-  <form class="card" method="post" action="/vente-directe/reglage-livraison"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h2>Informations client</h2><label>Date de livraison<input type="date" name="date_livraison" value="{{ reglage.date_livraison or '' }}"></label><label>Message de livraison<textarea name="texte_livraison">{{ reglage.texte_livraison or '' }}</textarea></label><button>Enregistrer</button></form>
-  <section class="card"><h2>Session active</h2>{% for s in sessions_vente %}{% if s.active %}<p><b>{{ s.nom }}</b></p><p>Livraison : {{ s.date_livraison|date_fr }}</p><a href="/vente-directe/preparation/imprimer?session_id={{ s.id }}" target="_blank">Feuille de préparation</a>{% endif %}{% else %}<p>Aucune session.</p>{% endfor %}<p><a href="/vente-directe/sessions">Créer ou activer une session</a></p></section>
+
+<nav class="vd-raccourcis">
+  <a href="/vente-directe/commandes"><b>📋 Commandes</b><small>{% if nb_nouvelles %}<span class="vd-nouv">{{ nb_nouvelles }} nouvelle{% if nb_nouvelles > 1 %}s{% endif %}</span> · {% endif %}{{ nb_commandes }} au total</small></a>
+  {% if active %}<a href="/vente-directe/preparation/imprimer?session_id={{ active.id }}" target="_blank"><b>🖨 Préparation</b><small>Feuille de la vente {{ active.nom }}</small></a>{% endif %}
+  <a href="/commande" target="_blank"><b>🛒 Page client</b><small>Voir ce que voient les clients</small></a>
+  <a href="/vente-directe/sessions"><b>📅 Ventes et coûts</b><small>Créer ou activer une vente</small></a>
+  <a href="/vente-directe/bilan"><b>📊 Récapitulatif</b><small>Marges et communications</small></a>
+</nav>
+
+<section id="produits"><h2>Produits ({{ produits|length }})</h2>
+<div class="vd-produits">
+{% for p in produits %}<details class="vd-pli vd-produit{% if not p.actif %} inactif{% endif %}">
+  <summary>
+    <span class="vd-ordre"><form class="inline" method="post" action="/vente-directe/produit/{{ p.id }}/deplacer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="direction" value="haut" class="ghost" title="Monter">↑</button><button name="direction" value="bas" class="ghost" title="Descendre">↓</button></form></span>
+    {% if p.image_mime %}<img src="/vente-directe/produit/{{ p.id }}/image" alt="" loading="lazy">{% else %}<span class="vd-sans-image">📷</span>{% endif %}
+    <b class="vd-nom">{{ p.nom }}</b>
+    <span class="vd-prix">{{ p.prix|euro }} / {{ p.unite }}</span>
+    <span class="vd-stock">{% if p.quantite_disponible is none %}stock illimité{% elif p.quantite_disponible <= 0 %}<span class="vd-epuise">épuisé</span>{% else %}{{ p.quantite_disponible }} {{ p.unite }} dispo{% endif %}</span>
+    {% if not p.actif %}<span class="vd-badge">masqué</span>{% endif %}
+    <span class="vd-modifier">Modifier ▾</span>
+  </summary>
+  <div class="vd-edition">
+    <form method="post" action="/vente-directe/produit/{{ p.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Produit et tarif</h3><label>Nom<input name="nom" value="{{ p.nom }}" required></label><label>Prix<input name="prix" value="{{ p.prix }}" inputmode="decimal" required></label><label>Unité<select name="unite"><option value="kg" {% if p.unite == 'kg' %}selected{% endif %}>kg</option><option value="pièce" {% if p.unite == 'pièce' %}selected{% endif %}>pièce</option></select></label><label class="vd-case"><input type="checkbox" name="actif" {% if p.actif %}checked{% endif %}> visible par les clients</label><button>Enregistrer</button></form>
+    <form method="post" action="/vente-directe/produit/{{ p.id }}/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Inventaire</h3><label>Quantité disponible<input name="quantite_disponible" value="{{ p.quantite_disponible if p.quantite_disponible is not none else '' }}" inputmode="decimal" placeholder="quantité"></label><label class="vd-case"><input type="checkbox" name="stock_illimite" {% if p.quantite_disponible is none %}checked{% endif %}> illimité</label><button>Valider l’inventaire</button></form>
+    <form method="post" action="/vente-directe/produit/{{ p.id }}/image" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Photo</h3><input type="file" name="image" accept="image/jpeg,image/png,image/webp" {% if not p.image_mime %}required{% endif %}><small class="muted">JPEG, PNG ou WebP · 5 Mo maximum</small><div class="rust-actions"><button>Importer l’image</button>{% if p.image_mime %}<button name="supprimer_image" value="1" class="ghost danger" formnovalidate>Retirer</button>{% endif %}</div></form>
+  </div>
+</details>{% else %}<p class="rust-empty">Aucun produit</p>{% endfor %}
 </div>
-<section id="parametres" class="card">
-  <h2>Enseigne</h2>
-  <p>Logo affiché en en-tête de la page client publique.</p>
+{% if session.peut_modifier %}<details class="vd-pli"><summary>➕ Ajouter un produit</summary><form class="rust-actions" method="post" action="/vente-directe/produit-ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Produit<input name="nom" required></label><label>Prix<input name="prix" inputmode="decimal" required></label><label>Unité<select name="unite"><option>kg</option><option>pièce</option></select></label><label>Stock initial<input name="quantite_disponible" inputmode="decimal" placeholder="vide = illimité"></label><button>Ajouter</button></form></details>{% endif %}
+</section>
+
+<section id="reglages"><h2>Réglages de la page client</h2>
+<details class="vd-pli"><summary>🚚 Livraison : {% if reglage.date_livraison %}{{ reglage.date_livraison|date_fr }}{% else %}date non renseignée{% endif %}</summary>
+  <form method="post" action="/vente-directe/reglage-livraison"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Date de livraison<input type="date" name="date_livraison" value="{{ reglage.date_livraison or '' }}"></label><label>Message de livraison<textarea name="texte_livraison">{{ reglage.texte_livraison or '' }}</textarea></label><button>Enregistrer</button></form>
+</details>
+<details class="vd-pli" id="commandes-client"><summary>⏹ Message de fin de vente</summary>
+  <form method="post" action="/vente-directe/commandes-ouverture"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ouvert" value="{% if reglage.commandes_ouvertes %}1{% else %}0{% endif %}"><label>Message affiché lorsque la vente est terminée<textarea name="message_fermeture" maxlength="500">{{ reglage.message_fermeture or 'Cette vente est terminée. Les commandes sont fermées.' }}</textarea></label><button>Enregistrer le message</button></form>
+</details>
+<details class="vd-pli" id="parametres"><summary>🏷 Logo de l’enseigne{% if not reglage.logo %} (aucun){% endif %}</summary>
   {% if reglage.logo %}<img src="/vente-directe/enseigne-logo" alt="Logo actuel" style="max-height:80px;max-width:240px;object-fit:contain;display:block;margin-bottom:8px">{% endif %}
-  <form method="post" action="/vente-directe/enseigne-logo" enctype="multipart/form-data" class="rust-actions"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Fichier (JPEG, PNG ou WebP, 5 Mo max)<input type="file" name="logo" accept="image/png,image/jpeg,image/webp" {% if not reglage.logo %}required{% endif %}></label>{% if reglage.logo %}<button name="supprimer_logo" value="1" class="ghost danger">Retirer</button>{% endif %}<button>{% if reglage.logo %}Remplacer{% else %}Importer{% endif %}</button></form>
-  <small class="muted">JPEG, PNG ou WebP · 5 Mo maximum</small>
+  <form method="post" action="/vente-directe/enseigne-logo" enctype="multipart/form-data" class="rust-actions"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Fichier (JPEG, PNG ou WebP, 5 Mo max)<input type="file" name="logo" accept="image/png,image/jpeg,image/webp" {% if not reglage.logo %}required{% endif %}></label>{% if reglage.logo %}<button name="supprimer_logo" value="1" class="ghost danger" formnovalidate>Retirer</button>{% endif %}<button>{% if reglage.logo %}Remplacer{% else %}Importer{% endif %}</button></form>
+</details>
 </section>
 
 <section id="classement-ventes">
   <h2>Classement des produits vendus</h2>
-  <form class="card rust-actions" method="get" action="/vente-directe">
+  <div class="vd-kpi"><div><b>{{ totaux_ventes.chiffre_affaires|euro }}</b><small>chiffre d’affaires</small></div><div><b>{{ totaux_ventes.kg }}</b><small>kg vendus</small></div><div><b>{{ totaux_ventes.pieces }}</b><small>pièces</small></div><div><b>{{ totaux_ventes.commandes }}</b><small>commandes</small></div></div>
+  <details class="vd-pli"{% if filtres_ventes.debut or filtres_ventes.fin or filtres_ventes.session_id %} open{% endif %}><summary>Filtrer par période ou par vente</summary>
+  <form class="rust-actions" method="get" action="/vente-directe#classement-ventes">
     <label>Du<input type="date" name="debut" value="{{ filtres_ventes.debut or '' }}"></label>
     <label>Au<input type="date" name="fin" value="{{ filtres_ventes.fin or '' }}"></label>
-    <label>Session<select name="session_id"><option value="">Toutes les sessions</option>{% for s in sessions_vente %}<option value="{{ s.id }}" {% if filtres_ventes.session_id == s.id %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
+    <label>Vente<select name="session_id"><option value="">Toutes</option>{% for s in sessions_vente %}<option value="{{ s.id }}" {% if filtres_ventes.session_id == s.id %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}</select></label>
     <label>Classer par<select name="tri"><option value="quantite_vendue" {% if filtres_ventes.tri == 'quantite_vendue' %}selected{% endif %}>Quantité vendue</option><option value="kg" {% if filtres_ventes.tri == 'kg_vendus' %}selected{% endif %}>Kilogrammes vendus</option><option value="chiffre_affaires" {% if filtres_ventes.tri == 'chiffre_affaires' %}selected{% endif %}>Chiffre d’affaires</option><option value="prix_moyen" {% if filtres_ventes.tri == 'prix_moyen' %}selected{% endif %}>Prix moyen</option><option value="commandes" {% if filtres_ventes.tri == 'commandes' %}selected{% endif %}>Nombre de commandes</option></select></label>
-    <button>Afficher le classement</button><a href="/vente-directe#classement-ventes">Effacer les filtres</a>
-  </form>
-  <div class="rust-grid"><div class="card kpi"><div class="v">{{ totaux_ventes.kg }}</div><div class="l">kg vendus</div></div><div class="card kpi"><div class="v">{{ totaux_ventes.pieces }}</div><div class="l">pièces / autres unités</div></div><div class="card kpi"><div class="v">{{ totaux_ventes.chiffre_affaires|euro }}</div><div class="l">chiffre d’affaires</div></div><div class="card kpi"><div class="v">{{ totaux_ventes.commandes }}</div><div class="l">commandes</div></div></div>
-  <div class="rust-scroll"><table class="rust-sortable"><thead><tr><th>Rang</th><th>Produit</th><th>Quantité vendue</th><th>Kg vendus</th><th>Chiffre d’affaires</th><th>Prix moyen</th><th>Commandes</th></tr></thead><tbody>{% for p in produits_vendus %}<tr><td><b>{{ loop.index }}</b></td><td>{{ p.produit }}</td><td>{{ p.quantite_vendue }} {{ p.unite }}</td><td>{{ p.kg_vendus }}</td><td>{{ p.chiffre_affaires|euro }}</td><td>{{ p.prix_moyen|euro }}/{{ p.unite }}</td><td>{{ p.commandes }}</td></tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune vente pour ces filtres</td></tr>{% endfor %}</tbody></table></div>
+    <button>Afficher</button><a href="/vente-directe#classement-ventes">Effacer</a>
+  </form></details>
+  <div class="rust-scroll"><table class="rust-sortable"><thead><tr><th>Rang</th><th>Produit</th><th>Quantité</th><th>Kg</th><th>Chiffre d’affaires</th><th>Prix moyen</th><th>Commandes</th></tr></thead><tbody>{% for p in produits_vendus %}<tr><td><b>{{ loop.index }}</b></td><td>{{ p.produit }}</td><td>{{ p.quantite_vendue }} {{ p.unite }}</td><td>{{ p.kg_vendus }}</td><td>{{ p.chiffre_affaires|euro }}</td><td>{{ p.prix_moyen|euro }}/{{ p.unite }}</td><td>{{ p.commandes }}</td></tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune vente pour ces filtres</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
-<section id="produits"><h2>Produits et inventaire</h2>
-{% if session.peut_modifier %}<form class="card rust-actions" method="post" action="/vente-directe/produit-ajouter"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Produit<input name="nom" required></label><label>Prix<input name="prix" inputmode="decimal" required></label><label>Unité<select name="unite"><option>kg</option><option>pièce</option></select></label><label>Stock initial<input name="quantite_disponible" inputmode="decimal" placeholder="vide = illimité"></label><button>Ajouter</button></form>{% endif %}
-<div class="rust-scroll"><table><thead><tr><th>Ordre</th><th>Visuel client</th><th>Produit et tarif</th><th>Inventaire disponible</th></tr></thead><tbody>
-{% for p in produits %}<tr>
-  <td><form class="inline" method="post" action="/vente-directe/produit/{{ p.id }}/deplacer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="direction" value="haut" class="ghost">↑</button><button name="direction" value="bas" class="ghost">↓</button></form></td>
-  <td>{% if p.image_mime %}<img src="/vente-directe/produit/{{ p.id }}/image" alt="{{ p.nom }}" loading="lazy" style="width:100px;height:70px;object-fit:cover;border-radius:8px">{% endif %}<form method="post" action="/vente-directe/produit/{{ p.id }}/image" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" {% if not p.image_mime %}required{% endif %}>{% if p.image_mime %}<button name="supprimer_image" value="1" class="ghost danger">Retirer</button>{% endif %}<button>Importer l’image</button></form><small class="muted">JPEG, PNG ou WebP · 5 Mo maximum</small></td>
-  <td><form class="rust-actions" method="post" action="/vente-directe/produit/{{ p.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="nom" value="{{ p.nom }}" required><input name="prix" value="{{ p.prix }}" inputmode="decimal" required style="max-width:100px"><select name="unite"><option value="kg" {% if p.unite == 'kg' %}selected{% endif %}>kg</option><option value="pièce" {% if p.unite == 'pièce' %}selected{% endif %}>pièce</option></select><label><input type="checkbox" name="actif" {% if p.actif %}checked{% endif %}> actif</label><button>Mettre à jour</button></form></td>
-  <td><form class="rust-actions" method="post" action="/vente-directe/produit/{{ p.id }}/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="quantite_disponible" value="{{ p.quantite_disponible if p.quantite_disponible is not none else '' }}" inputmode="decimal" placeholder="quantité" style="max-width:110px"><label><input type="checkbox" name="stock_illimite" {% if p.quantite_disponible is none %}checked{% endif %}> illimité</label><button>Valider l’inventaire</button></form></td>
-</tr>{% else %}<tr><td colspan="4" class="rust-empty">Aucun produit</td></tr>{% endfor %}
-</tbody></table></div></section>
+<style>
+.vd-etat{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;border-radius:12px;padding:14px 18px;margin:10px 0 14px;border:1px solid}
+.vd-etat.ouvert{background:rgba(26,127,55,.10);border-color:rgba(26,127,55,.45)}
+.vd-etat.ferme{background:rgba(207,34,46,.08);border-color:rgba(207,34,46,.45)}
+.vd-etat-info{display:flex;flex-direction:column;gap:2px}.vd-etat-info>b{font-size:1.15em}
+.vd-etat form{margin:0}
+.vd-raccourcis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:18px}
+.vd-raccourcis a{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid rgba(127,127,127,.3);border-radius:10px;text-decoration:none;color:inherit}
+.vd-raccourcis a:hover{border-color:currentColor}
+.vd-raccourcis small{opacity:.75}.vd-nouv{color:#b35900;font-weight:700}
+.vd-pli{background:transparent!important;border:1px solid rgba(127,127,127,.3)!important;border-radius:10px;padding:8px 12px;margin:0 0 8px}
+.vd-produits .vd-pli{padding:4px 10px;margin:0 0 4px}
+.vd-pli>summary{cursor:pointer;font-weight:600;list-style:none}
+.vd-pli>summary::-webkit-details-marker{display:none}
+.vd-produit>summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.vd-produit img,.vd-sans-image{width:40px;height:30px;object-fit:cover;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:rgba(127,127,127,.12)}
+.vd-nom{flex:1;min-width:140px}.vd-prix{font-weight:700;white-space:nowrap}.vd-stock{font-weight:400;opacity:.8;white-space:nowrap}
+.vd-epuise{color:#cf222e;font-weight:700}.vd-badge{font-size:12px;padding:2px 8px;border-radius:20px;background:rgba(127,127,127,.2);font-weight:400}
+.vd-modifier{font-weight:400;font-size:.9em;opacity:.7}
+.vd-produit.inactif{opacity:.6}
+.vd-ordre form{display:flex;gap:2px;margin:0}.vd-ordre button{padding:2px 6px}
+.vd-edition{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)}
+.vd-edition form{display:flex;flex-direction:column;gap:8px;margin:0}.vd-edition h3{margin:0;font-size:1em}
+.vd-case{display:flex;gap:6px;align-items:center}
+.vd-kpi{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+.vd-kpi div{flex:1;min-width:130px;padding:10px 14px;border:1px solid rgba(127,127,127,.3);border-radius:10px;display:flex;flex-direction:column}
+.vd-kpi b{font-size:1.3em}.vd-kpi small{opacity:.75}
+</style>
 {% endblock %}

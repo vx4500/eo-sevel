@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.70.1** — commandes clients en fiches par statut, alerte des nouvelles commandes.
+Version actuelle : **2.70.2** — page Vente directe réorganisée (état de la vente, raccourcis, produits en liste repliable).
+
+Version Rust 2.70.2 : templates/vente_directe.html réorganisé (bandeau .vd-etat, raccourcis, produits en <details class="vd-pli">), nb_nouvelles dans le contexte.
+
+Version 2.70.1 — commandes clients en fiches par statut, alerte des nouvelles commandes.
 
 Version Rust 2.70.1 : /vente-directe/commandes regroupe nouvelles / en cours / terminées (bouton d’étape suivante), et farm_alerts signale les commandes au statut « nouvelle ».
 
