@@ -1,6 +1,10 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.70.2** — page Vente directe réorganisée (état de la vente, raccourcis, produits en liste repliable).
+Version actuelle : **2.70.3** — page client : date de livraison passée masquée.
+
+Version Rust 2.70.3 : la requête session_active de /commande ne renvoie date_livraison que si elle est aujourd’hui ou plus tard.
+
+Version 2.70.2 — page Vente directe réorganisée (état de la vente, raccourcis, produits en liste repliable).
 
 Version Rust 2.70.2 : templates/vente_directe.html réorganisé (bandeau .vd-etat, raccourcis, produits en <details class="vd-pli">), nb_nouvelles dans le contexte.
 

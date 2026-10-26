@@ -11830,7 +11830,7 @@ async fn commande_page(
     .into_iter()
     .next()
     .unwrap_or_else(|| json!({"date_livraison":null,"texte_livraison":null,"commandes_ouvertes":1,"message_fermeture":null,"logo":false}));
-    let active=generic_rows(&state.pool,"SELECT id,nom,date_livraison,date_limite_commandes FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now','localtime')<=date(date_limite_commandes)) ORDER BY id DESC LIMIT 1").await?.into_iter().next().unwrap_or(Value::Null);
+    let active=generic_rows(&state.pool,"SELECT id,nom,CASE WHEN date(date_livraison)>=date('now','localtime') THEN date_livraison END AS date_livraison,date_limite_commandes FROM sessionventedirecte WHERE active=1 AND (date_limite_commandes IS NULL OR date('now','localtime')<=date(date_limite_commandes)) ORDER BY id DESC LIMIT 1").await?.into_iter().next().unwrap_or(Value::Null);
     render(
         &state,
         "commande.html",
