@@ -1,0 +1,83 @@
+{% extends "base.html" %}{% block title %}Inventaire du {{ inventaire.date[8:10] }}/{{ inventaire.date[5:7] }}/{{ inventaire.date[0:4] }} — EO_Sevel{% endblock %}{% block content %}
+<style>
+.inv-table{width:100%}
+.inv-table td.n,.inv-table th.n{text-align:right;white-space:nowrap}
+.inv-table input[type=number]{width:5.5em;text-align:right}
+.inv-table input[type=text]{width:100%;min-width:8em}
+.inv-ecart-moins{color:#b42318;font-weight:bold}
+.inv-ecart-plus{color:#b8692b;font-weight:bold}
+.inv-papier{display:none}
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  body{background:#fff}
+  .no-print,#page-alert{display:none!important}
+  .card{box-shadow:none;border:0;padding:0;margin:0 0 8px}
+  h1{font-size:15pt;margin:0 0 4px}
+  h2{font-size:12pt;margin:10px 0 3px;break-after:avoid}
+  table{font-size:9.5pt;border-collapse:collapse}
+  thead{display:table-header-group}
+  tr{break-inside:avoid}
+  th,td{padding:3px 5px;border:1px solid #999}
+  th{background:#eee;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  a{color:#000;text-decoration:none}
+  .inv-ecran{display:none!important}
+  .inv-papier{display:inline}
+  .inv-table td.case-vide{min-width:5em}
+}
+</style>
+<p class="no-print"><a href="/inventaire">← Inventaires</a></p>
+<h1>📋 Inventaire du {{ inventaire.date[8:10] }}/{{ inventaire.date[5:7] }}/{{ inventaire.date[0:4] }}</h1>
+<p class="muted">Quantités normalement présentes d'après EO_Sevel à cette date.{% if inventaire.note %} · {{ inventaire.note }}{% endif %}<span class="inv-papier"> · Compté par : ______________________</span></p>
+{% if ok %}<p class="no-print"><b>✓ Comptage enregistré.</b></p>{% endif %}
+
+<div class="no-print rust-actions" style="gap:8px;flex-wrap:wrap">
+  <button type="button" onclick="window.print()">🖨 Imprimer la feuille</button>
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-masquer"> Imprimer sans les quantités attendues (comptage à l'aveugle)</label>
+</div>
+
+<form method="post" action="/inventaire/{{ inventaire.id }}">
+<input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+{% for s in sections %}
+<section class="card">
+  <h2>{{ s.nom }} <small class="muted">— {{ s.attendu }} attendu{{ "s" if s.attendu > 1 }}{% if s.comptees %} · {{ s.trouve }} trouvé{{ "s" if s.trouve > 1 }}{% if not s.complete %} (comptage partiel){% endif %}{% endif %}</small></h2>
+  <div class="rust-scroll">
+  <table class="inv-table" data-sans-pli><thead><tr>
+    <th>Lieu</th><th>Désignation</th><th class="n inv-attendu">Normalement présent</th><th class="n">Trouvé</th><th class="n inv-ecran">Écart</th><th>Remarque</th>
+  </tr></thead><tbody>
+  {% for l in s.lignes %}
+    <tr><td>{{ l.lieu }}</td>
+      <td><b>{{ l.designation }}</b>{% if l.detail %} <small class="muted">{{ l.detail }}</small>{% endif %}</td>
+      <td class="n inv-attendu">{{ l.attendu }}</td>
+      <td class="n case-vide"><span class="inv-ecran"><input type="number" name="trouve_{{ l.id }}" min="0" inputmode="numeric" value="{{ l.trouve if l.trouve is not none else '' }}"{% if not session.peut_modifier %} disabled{% endif %}></span></td>
+      <td class="n inv-ecran">{% if l.ecart is not none %}{% if l.ecart < 0 %}<span class="inv-ecart-moins">{{ l.ecart }}</span>{% elif l.ecart > 0 %}<span class="inv-ecart-plus">+{{ l.ecart }}</span>{% else %}✓{% endif %}{% endif %}</td>
+      <td class="case-vide"><span class="inv-ecran"><input type="text" name="remarque_{{ l.id }}" maxlength="200" value="{{ l.remarque or '' }}"{% if not session.peut_modifier %} disabled{% endif %}></span></td></tr>
+  {% endfor %}
+  </tbody></table>
+  </div>
+</section>
+{% else %}
+<p class="muted">Aucun animal attendu à cette date.</p>
+{% endfor %}
+
+{% if session.peut_modifier and sections %}
+<div class="no-print rust-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <button type="submit">Enregistrer les quantités trouvées</button>
+</div>
+{% endif %}
+</form>
+
+{% if session.peut_modifier %}
+<form class="no-print" method="post" action="/inventaire/{{ inventaire.id }}/supprimer" onsubmit="return confirm('Supprimer cet inventaire et ses comptages ?')" style="margin-top:16px">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <button type="submit" class="ghost">Supprimer cet inventaire</button>
+</form>
+{% endif %}
+
+<script>
+(function(){
+  var c=document.getElementById('inv-masquer'); if(!c) return;
+  var style=document.createElement('style'); document.head.appendChild(style);
+  c.addEventListener('change',function(){ style.textContent=c.checked?'@media print{.inv-attendu{display:none!important}}':''; });
+})();
+</script>
+{% endblock %}

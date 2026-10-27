@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}Inventaire — EO_Sevel{% endblock %}{% block content %}
+<h1>📋 Inventaire</h1>
+<p class="muted">Le logiciel prépare la liste de ce qui devrait être présent à la date choisie : truies et cochettes une par une, verrats, portées sous la mère et porcs case par case. Imprimez la feuille pour faire le tour de l'élevage, puis reportez les quantités trouvées : les écarts sont calculés.</p>
+
+{% if session.peut_modifier %}
+<section class="card">
+  <h2>Nouvel inventaire</h2>
+  <form method="post" action="/inventaire/nouveau" class="rust-actions" style="align-items:flex-end;flex-wrap:wrap;gap:12px">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <label>Date de l'inventaire<input type="date" name="date" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required></label>
+    <label style="flex:1;min-width:200px">Note <small class="muted">(facultatif)</small><input type="text" name="note" maxlength="200" placeholder="Tour du matin, contrôle fin de mois…"></label>
+    <button type="submit">Préparer la feuille</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Inventaires faits</h2>
+  {% if inventaires %}
+  <table data-sans-pli><thead><tr><th>Date</th><th>Note</th><th>Lignes comptées</th><th>Animaux attendus</th><th>Écarts</th></tr></thead><tbody>
+  {% for i in inventaires %}
+    <tr><td><a href="/inventaire/{{ i.id }}">{{ i.date[8:10] }}/{{ i.date[5:7] }}/{{ i.date[0:4] }}</a></td>
+      <td>{{ i.note or "" }}</td>
+      <td>{{ i.comptees }} / {{ i.lignes }}{% if i.comptees == i.lignes and i.lignes > 0 %} ✓{% endif %}</td>
+      <td>{{ i.attendu }}</td>
+      <td>{% if i.comptees == 0 %}<span class="muted">pas encore compté</span>{% elif i.ecarts == 0 %}aucun{% else %}<b style="color:#b8692b">{{ i.ecarts }}</b>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}
+  <p class="muted">Aucun inventaire pour l'instant.</p>
+  {% endif %}
+</section>
+{% endblock %}

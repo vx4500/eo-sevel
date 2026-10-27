@@ -403,6 +403,10 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0030_cours.sql"))
         .execute(pool)
         .await?;
+    // Inventaire terrain (voir routes::inventaire).
+    sqlx::raw_sql(include_str!("../migrations/0031_inventaire.sql"))
+        .execute(pool)
+        .await?;
     // Ventilation d'une salle vide (économie) : NULL = réglage désactivé.
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
     // Plan de l'élevage pivoté par quarts de tour (voir routes::plan_elevage).
