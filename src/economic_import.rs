@@ -35,10 +35,18 @@ pub struct ImportDocument {
     pub warnings: Vec<String>,
 }
 
+/// Position de l'en-tête `%PDF-`. Certains envois (bordereaux Cooperl reçus
+/// par messagerie) placent quelques octets devant ; la norme PDF en tolère
+/// jusqu'à 1 024, comme les lecteurs courants.
+pub fn debut_pdf(bytes: &[u8]) -> Option<usize> {
+    bytes.windows(5).take(1024).position(|window| window == b"%PDF-")
+}
+
 pub fn extract_pdf_text(bytes: &[u8]) -> Result<String, String> {
-    if !bytes.starts_with(b"%PDF-") {
+    let Some(debut) = debut_pdf(bytes) else {
         return Err("Le fichier ne possède pas une signature PDF valide".into());
-    }
+    };
+    let bytes = &bytes[debut..];
     let document = match lopdf::Document::load_mem(bytes).or_else(|_| match repair_startxref_offset(bytes) {
         Some(patched) => lopdf::Document::load_mem(&patched),
         None => lopdf::Document::load_mem(bytes),
@@ -1380,7 +1388,7 @@ fn parse_synthese(text: &str) -> Result<ImportDocument, String> {
     let frappe = frappe_uniporc(text);
     let date = capture(
         text,
-        r"(?i)Date d.abattage[^0-9]*([0-9]{2}/[0-9]{2}/[0-9]{2,4})",
+        r"(?i)Date (?:d.)?abattage[^0-9]*([0-9]{2}/[0-9]{2}/[0-9]{2,4})",
         1,
     )
     .and_then(|value| iso_date(&value));
@@ -1402,6 +1410,21 @@ fn parse_synthese(text: &str) -> Result<ImportDocument, String> {
     );
     let mut tmp = labeled_amount(text, &["TMP moyen", "T.M.P.", "TMP"]);
     let mut plus_value = labeled_amount(text, &["plus-value", "plus value", "plus-values"]);
+    let mut range_rate = range_rate;
+    // Bordereau de pesée Cooperl : ligne « Ensemble » des mesures à chaud du
+    // lot = Nb, G3, M3, TMP, Poids, + Value Tech., % Gamme PBE, % Coeur, puis
+    // les kg facturés et la plus-value Tech+QT en fin de ligne.
+    if let Some(valeurs) = text
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .find(|mots| mots.first() == Some(&"Ensemble") && mots.len() >= 9)
+    {
+        pigs = pigs.or_else(|| integer(valeurs[1]));
+        tmp = tmp.or_else(|| number(valeurs[4]));
+        average_weight = average_weight.or_else(|| number(valeurs[5]));
+        range_rate = range_rate.or_else(|| number(valeurs[7]));
+        plus_value = plus_value.or_else(|| valeurs.last().and_then(|value| number(value)));
+    }
     if let Some(reference) = frappe.as_deref().filter(|_| {
         pigs.is_none() || average_weight.is_none() || tmp.is_none() || plus_value.is_none()
     }) {
@@ -1424,10 +1447,17 @@ fn parse_synthese(text: &str) -> Result<ImportDocument, String> {
         kind: "synthese".into(),
         date: date.clone(),
         reference: frappe.clone(),
-        label: format!(
-            "Synthèse Uniporc {}",
-            frappe.as_deref().unwrap_or("sans frappe")
-        ),
+        label: if text.to_uppercase().contains("COOPERL") {
+            format!(
+                "Bordereau de pesée Cooperl {}",
+                date.as_deref().unwrap_or("sans date")
+            )
+        } else {
+            format!(
+                "Synthèse Uniporc {}",
+                frappe.as_deref().unwrap_or("sans frappe")
+            )
+        },
         quantity: pigs.map(|value| value as f64),
         unit_price: None,
         amount: None,
@@ -1477,6 +1507,27 @@ fn finish_document(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn octets_avant_l_en_tete_pdf_toleres() {
+        assert_eq!(debut_pdf(b"%PDF-1.4\n"), Some(0));
+        let mut decale = b"/CTM 10 Tf 0 Tc 0 Tw 0 Tz 0 TL\n".to_vec();
+        decale.extend_from_slice(b"%PDF-1.4\n");
+        assert_eq!(debut_pdf(&decale), Some(31));
+        assert_eq!(debut_pdf(&[b' '; 2000]), None);
+        let mut trop_loin = vec![b' '; 1100];
+        trop_loin.extend_from_slice(b"%PDF-1.4\n");
+        assert_eq!(debut_pdf(&trop_loin), None);
+    }
+
+    /// EO_TEST_PDF=chemin cargo test --bin eo-sevel -- --ignored analyse_pdf_reel --nocapture
+    #[test]
+    #[ignore]
+    fn analyse_pdf_reel() {
+        let bytes = std::fs::read(std::env::var("EO_TEST_PDF").unwrap()).unwrap();
+        let texte = extract_pdf_text(&bytes).expect("texte");
+        println!("{:#?}", parse_document(&texte));
+    }
+
     use super::*;
 
     /// Construit un mini-PDF valide à la main (table xref classique), pour

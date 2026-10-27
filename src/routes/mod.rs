@@ -6099,7 +6099,7 @@ async fn import_unifie(
     }
     if files.len() > 1 {
         if files.iter().all(|(_, bytes)| {
-            bytes.starts_with(b"%PDF") || economic_import::extension_image(bytes).is_some()
+            economic_import::debut_pdf(bytes).is_some() || economic_import::extension_image(bytes).is_some()
         }) {
             return pdf_analyser_bytes(&state, &session, files).await;
         }
@@ -6112,7 +6112,7 @@ async fn import_unifie(
         .next()
         .expect("un fichier vérifié ci-dessus");
 
-    if bytes.starts_with(b"%PDF") || economic_import::extension_image(&bytes).is_some() {
+    if economic_import::debut_pdf(&bytes).is_some() || economic_import::extension_image(&bytes).is_some() {
         return pdf_analyser_bytes(&state, &session, vec![(filename, bytes)]).await;
     }
 

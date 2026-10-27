@@ -1,6 +1,8 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.70.3** — page client : date de livraison passée masquée.
+Version actuelle : **2.70.4** — import du bordereau de pesée Cooperl.
+
+Version Rust 2.70.4 : economic_import::debut_pdf tolère jusqu’à 1 024 octets avant %PDF- (bordereaux reçus par messagerie) ; parse_synthese lit la ligne « Ensemble » et « Date Abattage » du bordereau de pesée Cooperl.
 
 Version Rust 2.70.3 : la requête session_active de /commande ne renvoie date_livraison que si elle est aujourd’hui ou plus tard.
 
