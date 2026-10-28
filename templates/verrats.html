@@ -1,0 +1,56 @@
+{% extends "base.html" %}{% block title %}Verrats — EO_Sevel{% endblock %}{% block content %}
+<h1>🐗 Verrats</h1>
+<p class="muted">Case où loge chaque verrat, statut et sortie. Un verrat actif rangé dans une case apparaît dans la fiche de sa salle et sur la feuille d'inventaire.</p>
+
+{% set statuts = {"actif": "Actif", "reforme": "Réformé", "mort": "Mort"} %}
+<section class="card">
+  <h2>Verrats enregistrés</h2>
+  {% if verrats %}
+  <div class="rust-scroll">
+  <table><thead><tr><th>Verrat</th><th>Race</th><th>Statut</th><th>Case</th><th>Entrée</th><th>Note</th>{% if session.peut_modifier %}<th>Actions</th>{% endif %}</tr></thead><tbody>
+  {% for v in verrats %}
+    <tr{% if v.statut != "actif" %} class="muted"{% endif %}>
+      <td><b>{{ v.code }}</b></td>
+      <td>{{ v.race or "—" }}</td>
+      <td>{% if v.statut == "actif" %}<b style="color:#2e7d32">Actif</b>{% else %}{{ statuts[v.statut] or v.statut }}{% if v.date_sortie %} le {{ v.date_sortie|date_fr }}{% endif %}{% if v.motif_sortie %}<br><small>{{ v.motif_sortie }}</small>{% endif %}{% endif %}</td>
+      <td>{% if v.case_nom %}<a href="/salles/{{ v.salle_id }}">{{ v.salle_nom }} · {{ v.case_nom }}</a>{% elif v.statut == "actif" %}<span style="color:#b8692b">Aucune case</span>{% else %}—{% endif %}</td>
+      <td>{{ v.date_entree|date_fr if v.date_entree else "—" }}</td>
+      <td>{{ v.note or "" }}</td>
+      {% if session.peut_modifier %}<td>
+        <details><summary>Modifier</summary>
+        <form method="post" action="/verrats/{{ v.id }}" style="display:grid;gap:6px;min-width:240px;margin-top:6px">
+          <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+          <label>Statut<select name="statut">{% for k in ["actif", "reforme", "mort"] %}<option value="{{ k }}"{% if v.statut == k %} selected{% endif %}>{{ statuts[k] }}</option>{% endfor %}</select></label>
+          <label>Case<select name="case_id"><option value="">— Aucune —</option>{% for c in cases %}<option value="{{ c.id }}"{% if v.case_id == c.id %} selected{% endif %}>{{ c.salle }} · {{ c.nom }}</option>{% endfor %}</select></label>
+          <label>Race<input name="race" value="{{ v.race or '' }}" maxlength="60"></label>
+          <label>Date d'entrée<input type="date" name="date_entree" value="{{ v.date_entree or '' }}"></label>
+          <label>Date de sortie <small class="muted">(si réformé ou mort)</small><input type="date" name="date_sortie" value="{{ v.date_sortie or aujourdhui }}" max="{{ aujourdhui }}"></label>
+          <label>Motif de sortie<input name="motif_sortie" value="{{ v.motif_sortie or '' }}" maxlength="120" placeholder="Âge, boiterie, accident…"></label>
+          <label>Note<input name="note" value="{{ v.note or '' }}" maxlength="200"></label>
+          <button type="submit">Enregistrer</button>
+        </form></details>
+      </td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  </div>
+  {% else %}
+  <p class="muted">Aucun verrat enregistré.</p>
+  {% endif %}
+</section>
+
+{% if session.peut_modifier %}
+<section class="card">
+  <h2>Ajouter un verrat</h2>
+  <form method="post" action="/verrats" class="rust-actions" style="align-items:flex-end;flex-wrap:wrap;gap:12px">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <label>Numéro<input name="code" required maxlength="40"></label>
+    <label>Race<input name="race" maxlength="60"></label>
+    <label>Case<select name="case_id"><option value="">— Aucune —</option>{% for c in cases %}<option value="{{ c.id }}">{{ c.salle }} · {{ c.nom }}</option>{% endfor %}</select></label>
+    <label>Date d'entrée<input type="date" name="date_entree" max="{{ aujourdhui }}"></label>
+    <label style="flex:1;min-width:180px">Note<input name="note" maxlength="200"></label>
+    <button type="submit">Ajouter</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

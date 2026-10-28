@@ -106,22 +106,28 @@ async fn lignes_attendues(pool: &SqlitePool, date: &str) -> AppResult<Vec<Ligne>
         });
     }
 
-    let verrats: Vec<(String, Option<String>)> =
-        sqlx::query_as("SELECT code, race FROM verrat WHERE actif=1 ORDER BY code")
-            .fetch_all(pool)
-            .await?;
+    // Verrats présents ce jour-là, à leur case quand elle est connue.
+    let verrats: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT v.code, v.race, si.nom, s.nom, c.nom FROM verrat v \
+         LEFT JOIN casesalle c ON c.id=v.case_id LEFT JOIN salle s ON s.id=c.salle_id LEFT JOIN site si ON si.id=s.site_id \
+         WHERE (v.actif=1 OR COALESCE(v.date_sortie,'')>?1) AND (v.date_entree IS NULL OR v.date_entree<=?1) ORDER BY v.code",
+    )
+    .bind(date)
+    .fetch_all(pool)
+    .await?;
     let verraterie: Option<(Option<String>, String)> = sqlx::query_as(
         "SELECT si.nom, s.nom FROM salle s LEFT JOIN site si ON si.id=s.site_id \
          WHERE lower(s.type) LIKE '%verrat%' OR lower(s.nom) LIKE '%verrat%' ORDER BY s.ordre LIMIT 1",
     )
     .fetch_optional(pool)
     .await?;
-    for (code, race) in verrats {
+    for (code, race, site, salle, case) in verrats {
+        let connue = salle.is_some();
         lignes.push(Ligne {
             section: "Verrats",
-            site: verraterie.as_ref().and_then(|v| v.0.clone()),
-            salle: verraterie.as_ref().map(|v| v.1.clone()),
-            emplacement: None,
+            site: if connue { site } else { verraterie.as_ref().and_then(|v| v.0.clone()) },
+            salle: if connue { salle } else { verraterie.as_ref().map(|v| v.1.clone()) },
+            emplacement: case,
             designation: format!("Verrat {code}"),
             detail: race,
             attendu: 1,
@@ -431,7 +437,7 @@ mod tests {
              CREATE TABLE bande(id INTEGER PRIMARY KEY, code TEXT);
              CREATE TABLE truie(id INTEGER PRIMARY KEY, num_travail TEXT, rang INTEGER, bande_code TEXT, statut TEXT,
                reformee INTEGER DEFAULT 0, date_reforme TEXT, date_entree TEXT, salle_id INTEGER, case_id INTEGER);
-             CREATE TABLE verrat(id INTEGER PRIMARY KEY, code TEXT, race TEXT, actif INTEGER);
+             CREATE TABLE verrat(id INTEGER PRIMARY KEY, code TEXT, race TEXT, actif INTEGER, case_id INTEGER, date_entree TEXT, date_sortie TEXT);
              CREATE TABLE evenement(id INTEGER PRIMARY KEY, type TEXT, date TEXT, truie_id INTEGER, bande_id INTEGER, nes_vifs INTEGER);
              CREATE TABLE adoptionporcelet(id INTEGER PRIMARY KEY, date TEXT, source_id INTEGER, destination_id INTEGER, nombre INTEGER);
              CREATE TABLE perteporcelet(id INTEGER PRIMARY KEY, truie_id INTEGER, bande_id INTEGER, nb INTEGER, date TEXT, evenement_id INTEGER);
@@ -446,7 +452,7 @@ mod tests {
              INSERT INTO truie VALUES(1,'500711',3,'B2.33','active',0,NULL,'2025-01-01',2,20),
                                      (2,'600001',0,NULL,'active',0,NULL,'2026-10-01',1,10),
                                      (3,'400100',5,NULL,'reformee',1,'2026-09-01','2024-01-01',NULL,NULL);
-             INSERT INTO verrat VALUES(1,'PIE','Piétrain',1);
+             INSERT INTO verrat VALUES(1,'PIE','Piétrain',1,10,NULL,NULL);
              INSERT INTO evenement VALUES(1,'mise_bas','2026-10-01',1,7,12);
              INSERT INTO perteporcelet VALUES(1,1,7,1,'2026-10-03',1);
              INSERT INTO transfert VALUES(1,'2026-08-01','porc',7,NULL,30,100),(2,'2026-10-26','porc',7,30,NULL,66);

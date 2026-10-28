@@ -414,6 +414,12 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     // Taille d'un encart du plan, en % du plan (NULL = taille du contenu).
     ensure_column(pool, "plan_repere", "w", "REAL").await?;
     ensure_column(pool, "plan_repere", "h", "REAL").await?;
+    // Verrats : case où loge le verrat et statut (voir routes::verrats).
+    ensure_column(pool, "verrat", "case_id", "INTEGER REFERENCES casesalle(id)").await?;
+    ensure_column(pool, "verrat", "statut", "TEXT").await?;
+    ensure_column(pool, "verrat", "date_entree", "TEXT").await?;
+    ensure_column(pool, "verrat", "date_sortie", "TEXT").await?;
+    ensure_column(pool, "verrat", "motif_sortie", "TEXT").await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))

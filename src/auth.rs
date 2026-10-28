@@ -222,7 +222,7 @@ fn section_for_path(path: &str) -> Option<&'static str> {
         "flux" => Some("bandes"),
         "analyse-bandes" => Some("productivite"),
         "bandes" | "bande" | "maternite" | "soin-portee" => Some("bandes"),
-        "truies" | "truie" | "recherche" | "inseminations" => Some("truies"),
+        "truies" | "truie" | "recherche" | "inseminations" | "verrats" => Some("truies"),
         "charcutiers" | "charcutier" | "abattoir" | "traitement-charc" => Some("charcutiers"),
         "productivite" | "gttt" => Some("productivite"),
         "ifip" => Some("ifip"),

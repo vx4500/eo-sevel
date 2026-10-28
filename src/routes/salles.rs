@@ -341,7 +341,14 @@ pub(super) async fn fiche(
             case_id,
         )
         .await?;
+        let verrats = generic_rows_bind(
+            pool,
+            "SELECT id, code, race FROM verrat WHERE actif=1 AND case_id=? ORDER BY code",
+            case_id,
+        )
+        .await?;
         cases.push(json!({
+            "verrats": verrats,
             "incoherente": incoherentes.iter().any(|c| c.0 == case_id),
             "id": case_id,
             "nom": nom,
@@ -814,7 +821,8 @@ mod tests {
         sqlx::raw_sql(
             "ALTER TABLE salle ADD COLUMN longueur REAL; ALTER TABLE salle ADD COLUMN largeur REAL; \
              ALTER TABLE salle ADD COLUMN hauteur REAL; ALTER TABLE salle ADD COLUMN mode_chauffage TEXT; \
-             ALTER TABLE ipx_point ADD COLUMN formule TEXT; ALTER TABLE ambiance_salle ADD COLUMN ventil_vide REAL;",
+             ALTER TABLE ipx_point ADD COLUMN formule TEXT; ALTER TABLE ambiance_salle ADD COLUMN ventil_vide REAL; \
+             ALTER TABLE verrat ADD COLUMN case_id INTEGER;",
         )
         .execute(&state.pool)
         .await?;

@@ -34,6 +34,7 @@ mod eclairage;
 mod demo_portal;
 mod departs;
 mod inventaire;
+mod verrats;
 mod vaccination;
 pub(crate) mod documents;
 mod factures;
@@ -671,6 +672,8 @@ pub fn router(state: AppState) -> Router {
         .route("/inventaire/nouveau", post(inventaire::creer))
         .route("/inventaire/{id}", get(inventaire::feuille).post(inventaire::enregistrer))
         .route("/inventaire/{id}/supprimer", post(inventaire::supprimer))
+        .route("/verrats", get(verrats::liste).post(verrats::ajouter))
+        .route("/verrats/{id}", post(verrats::modifier))
         .route("/departs/nouveau", post(departs::creer))
         .route("/departs/{id}/confirmer", post(departs::confirmer))
         .route("/departs/{id}/supprimer", post(departs::supprimer))
