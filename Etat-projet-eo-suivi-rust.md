@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.71.1** — verrats : case et statut.
+Version actuelle : **2.71.2** — verrats sur le plan et dans la recherche.
 
+
+Version Rust 2.71.2 : plan de l'élevage (cases[].verrats, 🐗 dans la case) et recherche (type Verrat, par numéro, race ou vanne).
 
 Version Rust 2.71.1 : routes/verrats.rs (/verrats, menu Animaux, droit « truies ») ; colonnes verrat.case_id, statut, date_entree, date_sortie, motif_sortie (ensure_column) ; verrat affiché dans sa case (fiche de salle) et placé à sa case sur la feuille d'inventaire.
 Version Rust 2.71.0 : routes/inventaire.rs (/inventaire, menu Ma gestion, droit « structure »), migration 0031 (inventaire, inventaire_ligne) ; feuille à une date donnée : truies/cochettes une par ligne (case actuelle), verrats actifs, portées sous la mère, porcs par case recalculés à la date ; quantités attendues figées à la création, trouvées et remarques saisies ensuite, écarts par ligne et par section ; impression A4 avec option sans les quantités attendues.
