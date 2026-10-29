@@ -67,6 +67,18 @@ fn outils() -> Value {
              "salle_truies": {"type": "string", "description": "salle où vont les truies, « Verraterie » par défaut"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle", "destination"]}},
+        {"name": "enregistrer_achat",
+         "description": "Enregistre un achat (facture) dans l'économie, comme la saisie à la main de la page Économie : semence, vétérinaire, génétique ou aliment. Ex. « ajoute 510 € de semence LB-CIA à la B3.14 ». Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "categorie": {"type": "string", "enum": ["semence", "veto", "genetique", "aliment"]},
+             "montant_ht": {"type": "number", "description": "montant hors taxes en euros"},
+             "fournisseur": {"type": "string"},
+             "designation": {"type": "string", "description": "produit ou désignation de la facture"},
+             "quantite": {"type": "number", "description": "doses (semence), quantité (veto), animaux (génétique) ou tonnes (aliment)"},
+             "bande": {"type": "string", "description": "code de la bande concernée, ex. « B3.14 » (facultatif)"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, date de la facture ; aujourd'hui par défaut"},
+             "num_facture": {"type": "string"}, "note": {"type": "string"},
+             "confirme": confirme}, "required": ["categorie", "montant_ht"]}},
         {"name": "depart_porcs",
          "description": "Enregistre un départ de porcs à l'abattoir depuis une salle (pris dans les cases les plus pleines). Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
@@ -350,6 +362,48 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                 super::sevrage::sevrer(pool, AUTEUR, bande, &form).await.map_err(|e| e.to_string())?;
             }
             journaliser(pool, "sevrer_salle", &salle, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "enregistrer_achat" => {
+            let categorie = arg(a, "categorie");
+            let montant = a.get("montant_ht").and_then(Value::as_f64).filter(|m| *m > 0.0)
+                .ok_or("Montant HT manquant.")?;
+            let date = date_ou_aujourdhui(a)?;
+            let quantite = a.get("quantite").and_then(Value::as_f64);
+            let texte_ou = |k: &str| Some(arg(a, k).to_string()).filter(|t| !t.is_empty());
+            let (fournisseur, designation, num, note) = (texte_ou("fournisseur"), texte_ou("designation"), texte_ou("num_facture"), texte_ou("note"));
+            let bande: Option<(i64, String)> = match arg(a, "bande") {
+                "" => None,
+                b => Some(sqlx::query_as("SELECT id,code FROM bande WHERE lower(replace(code,' ',''))=lower(replace(?,' ',''))")
+                    .bind(b).fetch_optional(pool).await.map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("Pas de bande « {b} ».") )?),
+            };
+            let libelle = match categorie {
+                "semence" => "semence", "veto" => "vétérinaire", "genetique" => "génétique", "aliment" => "aliment",
+                _ => return Err("Catégorie : semence, veto, genetique ou aliment.".into()),
+            };
+            let resume = format!("Achat {libelle} du {date} : {montant:.2} € HT{}{}{}{}.",
+                fournisseur.as_deref().map(|f| format!(", {f}")).unwrap_or_default(),
+                designation.as_deref().map(|d| format!(", {d}")).unwrap_or_default(),
+                quantite.map(|q| format!(", quantité {q}")).unwrap_or_default(),
+                bande.as_ref().map(|b| format!(", bande {}", b.1)).unwrap_or_else(|| ", sans bande".into()));
+            if a.get("confirme").and_then(Value::as_bool) != Some(true) {
+                return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
+            }
+            let bande_id = bande.as_ref().map(|b| b.0);
+            let requete = match categorie {
+                "semence" => sqlx::query("INSERT INTO achatsemence(date,num_facture,fournisseur,designation,nb_doses,montant_ht,bande_id,note) VALUES(?,?,?,?,?,?,?,?)")
+                    .bind(&date).bind(&num).bind(&fournisseur).bind(&designation).bind(quantite.map(|q| q.round() as i64)).bind(montant).bind(bande_id).bind(&note),
+                "veto" => sqlx::query("INSERT INTO achatveto(date,produit,quantite,montant_ht,num_facture,fournisseur,bande_id) VALUES(?,?,?,?,?,?,?)")
+                    .bind(&date).bind(&designation).bind(quantite).bind(montant).bind(&num).bind(&fournisseur).bind(bande_id),
+                "genetique" => sqlx::query("INSERT INTO achatgenetique(date,num_facture,fournisseur,designation,nb_animaux,montant_ht,bande_code,note) VALUES(?,?,?,?,?,?,?,?)")
+                    .bind(&date).bind(&num).bind(&fournisseur).bind(&designation).bind(quantite.map(|q| q.round() as i64)).bind(montant).bind(bande.as_ref().map(|b| b.1.clone())).bind(&note),
+                _ => sqlx::query("INSERT INTO livraisonaliment(date,fournisseur,produit,tonnage,montant_ht,num_facture,bande_id) VALUES(?,?,?,?,?,?,?)")
+                    .bind(&date).bind(&fournisseur).bind(&designation).bind(quantite).bind(montant).bind(&num).bind(bande_id),
+            };
+            requete.execute(pool).await.map_err(|e| e.to_string())?;
+            crate::db::auto_assign_economic_invoices(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "enregistrer_achat", libelle, &resume).await;
             Ok(format!("Enregistré : {resume}"))
         }
         "deplacer_truie" => {
@@ -726,6 +780,16 @@ mod tests {
         let (e, t) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"mater 1","destination":"PS1 et PS 2","confirme":true})).await;
         assert!(!e && t.starts_with("Enregistré"), "{t}");
         assert_eq!(ouvertes(&pool).await, 0);
+
+        // Achat à la voix : semence affectée à une bande.
+        let (e, t) = outil(&state, &jeton, "enregistrer_achat", json!({"categorie":"semence","montant_ht":510,"fournisseur":"LB-CIA Piétrain","quantite":80,"bande":"b3.14","date":"2025-12-08"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("B3.14"));
+        let (e, _) = outil(&state, &jeton, "enregistrer_achat", json!({"categorie":"semence","montant_ht":510,"bande":"B9.99","confirme":true})).await;
+        assert!(e);
+        let (e, t) = outil(&state, &jeton, "enregistrer_achat", json!({"categorie":"semence","montant_ht":510,"fournisseur":"LB-CIA Piétrain","quantite":80,"bande":"B3.14","date":"2025-12-08","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        let affecte: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM achatsemence s JOIN affectationfacturebande a ON a.categorie='semence' AND a.facture_id=s.id JOIN bande b ON b.id=a.bande_id WHERE b.code='B3.14' AND s.montant_ht=510").fetch_one(&pool).await?;
+        assert!(affecte >= 1);
         let en_mater: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie t JOIN casesalle c ON c.id=t.case_id WHERE c.salle_id=7 AND t.reformee=0").fetch_one(&pool).await?;
         println!("truies encore rangées dans une case de la Mater 1 : {en_mater}");
         Ok(())

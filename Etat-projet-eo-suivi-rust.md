@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.73.1** — sevrage d'une salle à la voix (connecteur Claude).
+Version actuelle : **2.73.2** — achats (factures) à la voix (connecteur Claude).
 
+
+Version Rust 2.73.2 : outil MCP enregistrer_achat (semence, veto, génétique, aliment ; bande facultative ; mêmes tables que la saisie à la main de /economique, puis auto_assign_economic_invoices).
 
 Version Rust 2.73.1 : outil MCP sevrer_salle (sevre toutes les portées ouvertes d'une maternité, porcelets répartis par portée entière dans une ou plusieurs cases de post-sevrage, truies vers la verraterie) ; cœur du sevrage de bande extrait en sevrage::sevrer, partagé avec la page ; bouton « Envoyer à l'IA » retiré des notes du plan (pilotage vocal par l'application Claude).
 
