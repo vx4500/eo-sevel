@@ -14,7 +14,7 @@ pub(super) async fn liste(
 ) -> AppResult<Html<String>> {
     let verrats = generic_rows(
         &state.pool,
-        "SELECT v.id, v.code, v.race, v.note, v.case_id, COALESCE(v.statut, CASE WHEN v.actif=1 THEN 'actif' ELSE 'reforme' END) AS statut, \
+        "SELECT v.id, v.code, v.race, v.pere, v.mere, v.note, v.case_id, COALESCE(v.statut, CASE WHEN v.actif=1 THEN 'actif' ELSE 'reforme' END) AS statut, \
            v.date_entree, v.date_sortie, v.motif_sortie, c.nom AS case_nom, s.nom AS salle_nom, s.id AS salle_id \
          FROM verrat v LEFT JOIN casesalle c ON c.id=v.case_id LEFT JOIN salle s ON s.id=c.salle_id \
          ORDER BY v.actif DESC, v.code",
@@ -55,9 +55,11 @@ pub(super) async fn ajouter(
     if existe.is_some() {
         return Err(AppError::Invalid(format!("Le verrat {code} existe déjà")));
     }
-    sqlx::query("INSERT INTO verrat(code,race,note,actif,statut,case_id,date_entree) VALUES(?,?,?,1,'actif',?,?)")
+    sqlx::query("INSERT INTO verrat(code,race,pere,mere,note,actif,statut,case_id,date_entree) VALUES(?,?,?,?,?,1,'actif',?,?)")
         .bind(&code)
         .bind(form_text(&form, "race"))
+        .bind(form_text(&form, "pere"))
+        .bind(form_text(&form, "mere"))
         .bind(form_text(&form, "note"))
         .bind(case_id)
         .bind(form_date(&form, "date_entree")?)
@@ -89,9 +91,11 @@ pub(super) async fn modifier(
         (Some(form_date_or_today(&form, "date_sortie")?), form_text(&form, "motif_sortie"))
     };
     let fait = sqlx::query(
-        "UPDATE verrat SET race=?, note=?, statut=?, actif=?, case_id=?, date_entree=?, date_sortie=?, motif_sortie=? WHERE id=?",
+        "UPDATE verrat SET race=?, pere=?, mere=?, note=?, statut=?, actif=?, case_id=?, date_entree=?, date_sortie=?, motif_sortie=? WHERE id=?",
     )
     .bind(form_text(&form, "race"))
+    .bind(form_text(&form, "pere"))
+    .bind(form_text(&form, "mere"))
     .bind(form_text(&form, "note"))
     .bind(&statut)
     .bind(actif)
@@ -118,7 +122,7 @@ pub(super) async fn fiche(
 ) -> AppResult<Html<String>> {
     let mut verrat = generic_rows_bind_id(
         &state.pool,
-        "SELECT v.id, v.code, v.race, v.note, v.case_id, COALESCE(v.statut, CASE WHEN v.actif=1 THEN 'actif' ELSE 'reforme' END) AS statut, \
+        "SELECT v.id, v.code, v.race, v.pere, v.mere, v.note, v.case_id, COALESCE(v.statut, CASE WHEN v.actif=1 THEN 'actif' ELSE 'reforme' END) AS statut, \
            v.date_entree, v.date_sortie, v.motif_sortie, c.nom AS case_nom, s.nom AS salle_nom, s.id AS salle_id \
          FROM verrat v LEFT JOIN casesalle c ON c.id=v.case_id LEFT JOIN salle s ON s.id=c.salle_id WHERE v.id=?",
         id,
@@ -284,7 +288,7 @@ mod tests {
         })).expect("verrats.html");
         env.get_template("verrat.html").unwrap().render(serde_json::json!({
             "session": session, "aujourdhui": "2026-10-29", "en_attente": "2026-11-05",
-            "verrat": {"id": 1, "code": "510310", "race": "NU4V1", "note": null, "case_id": 118, "statut": "actif",
+            "verrat": {"id": 1, "code": "510310", "race": "NU4V1", "pere": "FR35AB123", "mere": "FR35AB456", "note": null, "case_id": 118, "statut": "actif",
                  "date_entree": null, "date_sortie": null, "motif_sortie": null, "case_nom": "42 Verra", "salle_nom": "Verraterie", "salle_id": 1},
             "soins": [{"id": 5, "date": "2026-10-29", "date_fin": null, "produit": "Eryseng Parvo", "motif": "Vaccin", "delai_attente": 7, "note": null, "fin_attente": "2026-11-05"}],
             "actes": [{"id": 2, "date": "2026-10-01", "libelle": "Eryseng Parvo", "produit": "ERYSENG", "note": null}],

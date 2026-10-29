@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.72.0** — fiche verrat (soins, vaccins, actes, IA).
+Version actuelle : **2.72.1** — verrat : père et mère.
 
+
+Version Rust 2.72.1 : colonnes verrat.pere et verrat.mere (ensure_column), saisies sur /verrats (ajout, Modifier) et affichées sur la fiche verrat.
 
 Version Rust 2.72.0 : /verrat/{id} (verrats::fiche) : soins et vaccins (evenement traitement avec verrat_id, truie_id NULL ; stock pharmacie via traitement_stock), actes de protocole (acterealiseverrat), IA faites avec le verrat, délai d'attente en cours. Liens depuis /verrats, la fiche de salle, le plan et la recherche.
 

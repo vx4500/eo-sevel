@@ -5,11 +5,13 @@
 <section class="card">
   <p><b>Statut :</b> {% if verrat.statut == "actif" %}<b style="color:#2e7d32">Actif</b>{% else %}{{ statuts[verrat.statut] or verrat.statut }}{% if verrat.date_sortie %} le {{ verrat.date_sortie|date_fr }}{% endif %}{% if verrat.motif_sortie %} — {{ verrat.motif_sortie }}{% endif %}{% endif %}
   · <b>Race :</b> {{ verrat.race or "—" }}
+  · <b>Père :</b> {{ verrat.pere or "—" }}
+  · <b>Mère :</b> {{ verrat.mere or "—" }}
   · <b>Case :</b> {% if verrat.case_nom %}<a href="/salles/{{ verrat.salle_id }}">{{ verrat.salle_nom }} · {{ verrat.case_nom }}</a>{% else %}aucune{% endif %}
   · <b>Entrée :</b> {{ verrat.date_entree|date_fr if verrat.date_entree else "—" }}</p>
   {% if verrat.note %}<p class="muted">{{ verrat.note }}</p>{% endif %}
   {% if en_attente %}<p style="color:#b42318"><b>⚠ En délai d'attente jusqu'au {{ en_attente|date_fr }}</b></p>{% endif %}
-  <p class="muted">Case, statut et sortie se changent sur la <a href="/verrats">liste des verrats</a> (Modifier).</p>
+  <p class="muted">Race, père, mère, case, statut et sortie se changent sur la <a href="/verrats">liste des verrats</a> (Modifier).</p>
 </section>
 
 {% if session.peut_modifier and verrat.statut == "actif" %}

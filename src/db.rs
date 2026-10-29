@@ -420,6 +420,9 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     ensure_column(pool, "verrat", "date_entree", "TEXT").await?;
     ensure_column(pool, "verrat", "date_sortie", "TEXT").await?;
     ensure_column(pool, "verrat", "motif_sortie", "TEXT").await?;
+    // Ascendance notée sur la facture d'achat.
+    ensure_column(pool, "verrat", "pere", "TEXT").await?;
+    ensure_column(pool, "verrat", "mere", "TEXT").await?;
     // Classement par nom des objets de l'automate : dépend de la colonne
     // `motif` ajoutée juste au-dessus.
     sqlx::raw_sql(include_str!("../migrations/0010_ipx_section_motif.sql"))
