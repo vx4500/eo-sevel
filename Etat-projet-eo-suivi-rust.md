@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.73.2** — achats (factures) à la voix (connecteur Claude).
+Version actuelle : **2.73.3** — GTE : aliment croissance du silo post-sevrage compté au post-sevrage.
 
+
+Version Rust 2.73.3 : STADE_EFFECTIF (gte_periode.rs) range au post-sevrage l'aliment croissance « auto » livré dans un silo qui reçoit du 1er âge (ACTI, START, PREM') et jamais de finition, comme la GTE Cooperl (silo 09).
 
 Version Rust 2.73.2 : outil MCP enregistrer_achat (semence, veto, génétique, aliment ; bande facultative ; mêmes tables que la saisie à la main de /economique, puis auto_assign_economic_invoices).
 

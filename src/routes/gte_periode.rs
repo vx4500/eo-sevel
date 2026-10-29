@@ -253,7 +253,11 @@ const REFORMES_SQL: &str = "SELECT CAST(COALESCE(SUM(poids_total),0) AS REAL) FR
 /// nom de l'aliment (GESTA, LACTA, CROISSANCE, FINITION, ACTI/PREM'…). En
 /// octobre 2026 presque toutes les livraisons étaient en « auto » : la
 /// consommation des truies sortait à 106 kg/truie/an au lieu d'environ 1,2 t.
-pub(super) const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto')<>'auto' THEN stade_aliment WHEN upper(produit) LIKE '%GESTA%' OR upper(produit) LIKE '%COCHETTE%' THEN 'gestation' WHEN upper(produit) LIKE '%LACTA%' THEN 'lactation' WHEN upper(produit) LIKE '%FINITION%' THEN 'finition' WHEN upper(produit) LIKE '%CROISSANCE%' THEN 'croissance' WHEN upper(produit) LIKE '%ACTI%' OR upper(produit) LIKE 'PREM''%' OR upper(produit) LIKE '%START%' OR upper(produit) LIKE '%BABY%' OR upper(produit) LIKE '%LAIT%' THEN 'ps' ELSE stade_aliment END)";
+///
+/// L'aliment croissance livré dans un silo du post-sevrage compte au
+/// post-sevrage, comme dans la GTE du groupement : c'est le silo qui reçoit
+/// l'aliment 1er âge (ACTI, START, PREM'…) et jamais de finition.
+pub(super) const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto')<>'auto' THEN stade_aliment WHEN upper(produit) LIKE '%GESTA%' OR upper(produit) LIKE '%COCHETTE%' THEN 'gestation' WHEN upper(produit) LIKE '%LACTA%' THEN 'lactation' WHEN upper(produit) LIKE '%FINITION%' THEN 'finition' WHEN upper(produit) LIKE '%CROISSANCE%' AND COALESCE(trim(silo),'')<>'' AND trim(silo) IN (SELECT trim(l2.silo) FROM livraisonaliment l2 WHERE COALESCE(trim(l2.silo),'')<>'' GROUP BY trim(l2.silo) HAVING SUM(upper(l2.produit) LIKE '%FINITION%')=0 AND SUM(upper(l2.produit) LIKE '%ACTI%' OR upper(l2.produit) LIKE 'PREM''%' OR upper(l2.produit) LIKE '%START%')>0) THEN 'ps' WHEN upper(produit) LIKE '%CROISSANCE%' THEN 'croissance' WHEN upper(produit) LIKE '%ACTI%' OR upper(produit) LIKE 'PREM''%' OR upper(produit) LIKE '%START%' OR upper(produit) LIKE '%BABY%' OR upper(produit) LIKE '%LAIT%' THEN 'ps' ELSE stade_aliment END)";
 
 /// Aliment livré sur la période, en kilos, réparti selon le stade de chaque
 /// livraison. Les livraisons « tous stades », « auto » non tranché ou de
@@ -1153,6 +1157,24 @@ mod tests {
         assert_eq!(juin.aliment_engr_kg, 20_000.0);
         assert_eq!(juin.porcelets_sevres, 0);
         assert_eq!(juin.poids_sevrage_kg, None);
+
+        // Croissance en « auto » : au post-sevrage dans le silo qui reçoit le
+        // 1er âge et jamais de finition (09), en engraissement ailleurs (01).
+        sqlx::raw_sql(
+            "INSERT INTO livraisonaliment(date,produit,silo,tonnage,stade_aliment) VALUES\
+             ('2026-01-05','ACTI PLUS C','09',2,'auto'),\
+             ('2026-01-06','MULTI BE CROISSANCE C','09',4,'auto'),\
+             ('2026-01-07','ACTI PLUS B','01',3,'auto'),\
+             ('2026-01-08','MULTI BE FINITION B','01',7,'auto'),\
+             ('2026-01-09','MULTI BE CROISSANCE B','01',5,'auto'),\
+             ('2026-01-10','MULTI BE CROISSANCE B','',1,'auto');",
+        )
+        .execute(&pool)
+        .await
+        .map_err(AppError::from)?;
+        let silos = charger(&pool, "2026-01-01", "2026-01-31").await?;
+        assert_eq!(silos.aliment_ps_kg, 9_000.0);
+        assert_eq!(silos.aliment_engr_kg, 13_000.0);
         Ok(())
     }
 }
