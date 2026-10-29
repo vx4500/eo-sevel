@@ -79,7 +79,7 @@
     <div class="sl-case"{% if c.incoherente %} style="border:2px solid #b3261e;background:#fbe0dc"{% endif %}><b>{% if c.incoherente %}<span style="color:#b3261e" title="Effectif incohérent : faire un inventaire de la case">* </span>{% endif %}{{ c.nom }}</b>{% if c.incoherente %} <small style="color:#b3261e">effectif incohérent</small>{% endif %}
       {% if c.porcs %}{{ c.porcs }} porc{% if c.porcs > 1 %}s{% endif %}{% if c.max_porcs %} / {{ c.max_porcs }}{% endif %}<br>{% endif %}
       {% for t in c.truies %}<a href="/truie/{{ t.id }}">{{ t.num_travail }}</a> <span class="muted">{{ t.statut }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}
-      {% for v in c.verrats %}{% if c.truies or not loop.first %}<br>{% endif %}<a href="/verrats">Verrat {{ v.code }}</a>{% if v.race %} <span class="muted">{{ v.race }}</span>{% endif %}{% endfor %}
+      {% for v in c.verrats %}{% if c.truies or not loop.first %}<br>{% endif %}<a href="/verrat/{{ v.id }}">Verrat {{ v.code }}</a>{% if v.race %} <span class="muted">{{ v.race }}</span>{% endif %}{% endfor %}
       {% if not c.porcs and not c.truies and not c.verrats %}<span class="sl-vide">vide</span>{% endif %}
     </div>
     {% endfor %}

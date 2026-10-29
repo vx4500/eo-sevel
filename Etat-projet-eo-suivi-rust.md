@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.71.2** — verrats sur le plan et dans la recherche.
+Version actuelle : **2.72.0** — fiche verrat (soins, vaccins, actes, IA).
 
+
+Version Rust 2.72.0 : /verrat/{id} (verrats::fiche) : soins et vaccins (evenement traitement avec verrat_id, truie_id NULL ; stock pharmacie via traitement_stock), actes de protocole (acterealiseverrat), IA faites avec le verrat, délai d'attente en cours. Liens depuis /verrats, la fiche de salle, le plan et la recherche.
 
 Version Rust 2.71.2 : plan de l'élevage (cases[].verrats, 🐗 dans la case) et recherche (type Verrat, par numéro, race ou vanne).
 

@@ -229,8 +229,8 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
         .bind(case_id)
         .fetch_all(&state.pool)
         .await?;
-        let verrats: Vec<String> =
-            sqlx::query_scalar("SELECT code FROM verrat WHERE actif=1 AND case_id=? ORDER BY code")
+        let verrats: Vec<(i64, String)> =
+            sqlx::query_as("SELECT id, code FROM verrat WHERE actif=1 AND case_id=? ORDER BY code")
                 .bind(case_id)
                 .fetch_all(&state.pool)
                 .await?;
@@ -241,7 +241,7 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
                 "vanne": vanne,
                 "salle_id": salle_id,
                 "porcs": case_pig_count(&state.pool, case_id).await?.max(0),
-                "verrats": verrats,
+                "verrats": verrats.into_iter().map(|(id, code)| json!({"id": id, "code": code})).collect::<Vec<_>>(),
                 "truies": truies.into_iter().map(|(num, porcelets)| json!({
                     "num": num,
                     "porcelets": porcelets,

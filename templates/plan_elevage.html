@@ -175,7 +175,7 @@
   function casep(id){ return etat.cases && etat.cases[id]; }
   function caseTexte(c){
     var h = '<span class="v">' + esc(c.vanne ? 'V' + c.vanne : c.nom) + '</span>';
-    (c.verrats || []).forEach(function(v){ h += '<br>🐗 ' + esc(v); });
+    (c.verrats || []).forEach(function(v){ h += '<br>🐗 ' + esc(v.code); });
     if (c.truies && c.truies.length) {
       c.truies.forEach(function(t){ h += '<br>' + esc(t.num) + (t.porcelets != null ? ' · 🐷 <b>' + t.porcelets + '</b>' : ''); });
     } else if (!(c.verrats || []).length || c.porcs) {
@@ -344,7 +344,7 @@
       case 'case':
         var cc = casep(r.ref_id); if (!cc) return '?';
         var v = esc(cc.vanne ? 'V' + cc.vanne : cc.nom);
-        if ((cc.verrats || []).length && !cc.truies.length && !cc.porcs) return court ? '🐗' : '<b>' + v + '</b> 🐗 ' + esc(cc.verrats.join(', '));
+        if ((cc.verrats || []).length && !cc.truies.length && !cc.porcs) return court ? '🐗' : '<b>' + v + '</b> 🐗 ' + esc(cc.verrats.map(function(v){ return v.code; }).join(', '));
         if (court) return cc.truies.length == 1 && cc.truies[0].porcelets != null ? '🐷' + cc.truies[0].porcelets : '<b>' + v + '</b>';
         if (cc.truies.length == 1 && cc.truies[0].porcelets != null) return '<b>' + v + '</b> 🐷' + cc.truies[0].porcelets;
         if (cc.truies.length) return '<b>' + v + '</b> ' + cc.truies.length + ' 🐖';
@@ -457,7 +457,7 @@
     if (r.type == 'case') {
       var cc = casep(r.ref_id); if (!cc) { fermer(); return; }
       h = '<h2>Case ' + esc(cc.nom) + (cc.vanne ? ' — vanne ' + esc(cc.vanne) : '') + '</h2>';
-      (cc.verrats || []).forEach(function(v){ h += '<p>🐗 Verrat <b>' + esc(v) + '</b> — <a href="/verrats">fiche des verrats</a></p>'; });
+      (cc.verrats || []).forEach(function(v){ h += '<p>🐗 Verrat <b><a href="/verrat/' + v.id + '">' + esc(v.code) + '</a></b> — <a href="/verrat/' + v.id + '">ouvrir sa fiche</a></p>'; });
       if (cc.truies.length) cc.truies.forEach(function(t){ h += '<p>Truie <b>' + esc(t.num) + '</b>' + (t.porcelets != null ? ' — ' + t.porcelets + ' porcelet(s) présent(s)' : '') + '</p>'; });
       else if (cc.porcs || !(cc.verrats || []).length) h += '<p><b>' + cc.porcs + '</b> porc(s) dans la case</p>';
       corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;

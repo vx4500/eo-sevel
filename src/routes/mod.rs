@@ -674,6 +674,11 @@ pub fn router(state: AppState) -> Router {
         .route("/inventaire/{id}/supprimer", post(inventaire::supprimer))
         .route("/verrats", get(verrats::liste).post(verrats::ajouter))
         .route("/verrats/{id}", post(verrats::modifier))
+        .route("/verrat/{id}", get(verrats::fiche))
+        .route("/verrat/{id}/soin", post(verrats::soin))
+        .route("/verrat/{id}/soin/{soin}/supprimer", post(verrats::soin_supprimer))
+        .route("/verrat/{id}/acte", post(verrats::acte))
+        .route("/verrat/{id}/acte/{acte}/supprimer", post(verrats::acte_supprimer))
         .route("/departs/nouveau", post(departs::creer))
         .route("/departs/{id}/confirmer", post(departs::confirmer))
         .route("/departs/{id}/supprimer", post(departs::supprimer))
@@ -6294,7 +6299,7 @@ async fn recherche(
     }
     let pattern = format!("%{q}%");
     let rows = sqlx::query(
-        "SELECT 'Truie' AS type,CAST(t.id AS TEXT) AS reference,COALESCE(t.num_travail,'')||CASE WHEN t.bande_code IS NOT NULL THEN ' · bande '||t.bande_code ELSE '' END||CASE WHEN c.num_vanne IS NOT NULL THEN ' · vanne '||c.num_vanne ELSE '' END AS detail,'/truie/'||t.id AS lien FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.num_travail LIKE ? OR COALESCE(t.num_national,'') LIKE ? OR COALESCE(t.rfid,'') LIKE ? OR COALESCE(c.num_vanne,'') LIKE ? UNION ALL SELECT 'Verrat',CAST(v.id AS TEXT),v.code||COALESCE(' · '||v.race,'')||CASE WHEN v.actif=1 THEN '' ELSE ' · sorti' END||COALESCE(' · '||s.nom||' case '||c.nom,''),'/verrats' FROM verrat v LEFT JOIN casesalle c ON c.id=v.case_id LEFT JOIN salle s ON s.id=c.salle_id WHERE v.code LIKE ?1 OR COALESCE(c.num_vanne,'') LIKE ?1 OR COALESCE(v.race,'') LIKE ?1 UNION ALL SELECT 'Bande',CAST(id AS TEXT),code||COALESCE(' · '||site,''),'/bande/'||id FROM bande WHERE code LIKE ? OR COALESCE(num_officiel,'') LIKE ? UNION ALL SELECT 'Apport',CAST(id AS TEXT),COALESCE(num_apport,'')||' · '||COALESCE(CAST(nb_porcs AS TEXT),'0')||' porcs','/economique' FROM venteapport WHERE COALESCE(num_apport,'') LIKE ? UNION ALL SELECT 'Commande',CAST(id AS TEXT),nom_client||' · '||COALESCE(telephone,''),'/vente-directe/commande/'||id FROM commandeventedirecte WHERE nom_client LIKE ? OR COALESCE(telephone,'') LIKE ? OR COALESCE(email,'') LIKE ? LIMIT 200",
+        "SELECT 'Truie' AS type,CAST(t.id AS TEXT) AS reference,COALESCE(t.num_travail,'')||CASE WHEN t.bande_code IS NOT NULL THEN ' · bande '||t.bande_code ELSE '' END||CASE WHEN c.num_vanne IS NOT NULL THEN ' · vanne '||c.num_vanne ELSE '' END AS detail,'/truie/'||t.id AS lien FROM truie t LEFT JOIN casesalle c ON c.id=t.case_id WHERE t.num_travail LIKE ? OR COALESCE(t.num_national,'') LIKE ? OR COALESCE(t.rfid,'') LIKE ? OR COALESCE(c.num_vanne,'') LIKE ? UNION ALL SELECT 'Verrat',CAST(v.id AS TEXT),v.code||COALESCE(' · '||v.race,'')||CASE WHEN v.actif=1 THEN '' ELSE ' · sorti' END||COALESCE(' · '||s.nom||' case '||c.nom,''),'/verrat/'||v.id FROM verrat v LEFT JOIN casesalle c ON c.id=v.case_id LEFT JOIN salle s ON s.id=c.salle_id WHERE v.code LIKE ?1 OR COALESCE(c.num_vanne,'') LIKE ?1 OR COALESCE(v.race,'') LIKE ?1 UNION ALL SELECT 'Bande',CAST(id AS TEXT),code||COALESCE(' · '||site,''),'/bande/'||id FROM bande WHERE code LIKE ? OR COALESCE(num_officiel,'') LIKE ? UNION ALL SELECT 'Apport',CAST(id AS TEXT),COALESCE(num_apport,'')||' · '||COALESCE(CAST(nb_porcs AS TEXT),'0')||' porcs','/economique' FROM venteapport WHERE COALESCE(num_apport,'') LIKE ? UNION ALL SELECT 'Commande',CAST(id AS TEXT),nom_client||' · '||COALESCE(telephone,''),'/vente-directe/commande/'||id FROM commandeventedirecte WHERE nom_client LIKE ? OR COALESCE(telephone,'') LIKE ? OR COALESCE(email,'') LIKE ? LIMIT 200",
     )
     .bind(&pattern)
     .bind(&pattern)

@@ -10,7 +10,7 @@
   <table><thead><tr><th>Verrat</th><th>Race</th><th>Statut</th><th>Case</th><th>Entrée</th><th>Note</th>{% if session.peut_modifier %}<th>Actions</th>{% endif %}</tr></thead><tbody>
   {% for v in verrats %}
     <tr{% if v.statut != "actif" %} class="muted"{% endif %}>
-      <td><b>{{ v.code }}</b></td>
+      <td><a href="/verrat/{{ v.id }}"><b>{{ v.code }}</b></a></td>
       <td>{{ v.race or "—" }}</td>
       <td>{% if v.statut == "actif" %}<b style="color:#2e7d32">Actif</b>{% else %}{{ statuts[v.statut] or v.statut }}{% if v.date_sortie %} le {{ v.date_sortie|date_fr }}{% endif %}{% if v.motif_sortie %}<br><small>{{ v.motif_sortie }}</small>{% endif %}{% endif %}</td>
       <td>{% if v.case_nom %}<a href="/salles/{{ v.salle_id }}">{{ v.salle_nom }} · {{ v.case_nom }}</a>{% elif v.statut == "actif" %}<span style="color:#b8692b">Aucune case</span>{% else %}—{% endif %}</td>

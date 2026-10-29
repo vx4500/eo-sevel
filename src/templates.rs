@@ -145,6 +145,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("inventaire.html", include_str!("../templates/inventaire.html"))?;
     env.add_template("inventaire_feuille.html", include_str!("../templates/inventaire_feuille.html"))?;
     env.add_template("verrats.html", include_str!("../templates/verrats.html"))?;
+    env.add_template("verrat.html", include_str!("../templates/verrat.html"))?;
     env.add_template("sanitaire_plan.html", include_str!("../templates/sanitaire_plan.html"))?;
     env.add_template("accueil_presentation.html", include_str!("../templates/accueil_presentation.html"))?;
     env.add_template("equipements_modules.html", include_str!("../templates/equipements_modules.html"))?;

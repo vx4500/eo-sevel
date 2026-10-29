@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% block title %}Verrat {{ verrat.code }} — EO_Sevel{% endblock %}{% block content %}
+{% set statuts = {"actif": "Actif", "reforme": "Réformé", "mort": "Mort"} %}
+<p><a href="/verrats">← Verrats</a></p>
+<h1>🐗 Verrat {{ verrat.code }}</h1>
+<section class="card">
+  <p><b>Statut :</b> {% if verrat.statut == "actif" %}<b style="color:#2e7d32">Actif</b>{% else %}{{ statuts[verrat.statut] or verrat.statut }}{% if verrat.date_sortie %} le {{ verrat.date_sortie|date_fr }}{% endif %}{% if verrat.motif_sortie %} — {{ verrat.motif_sortie }}{% endif %}{% endif %}
+  · <b>Race :</b> {{ verrat.race or "—" }}
+  · <b>Case :</b> {% if verrat.case_nom %}<a href="/salles/{{ verrat.salle_id }}">{{ verrat.salle_nom }} · {{ verrat.case_nom }}</a>{% else %}aucune{% endif %}
+  · <b>Entrée :</b> {{ verrat.date_entree|date_fr if verrat.date_entree else "—" }}</p>
+  {% if verrat.note %}<p class="muted">{{ verrat.note }}</p>{% endif %}
+  {% if en_attente %}<p style="color:#b42318"><b>⚠ En délai d'attente jusqu'au {{ en_attente|date_fr }}</b></p>{% endif %}
+  <p class="muted">Case, statut et sortie se changent sur la <a href="/verrats">liste des verrats</a> (Modifier).</p>
+</section>
+
+{% if session.peut_modifier and verrat.statut == "actif" %}
+<details class="card" open><summary><b>Soin ou vaccin</b></summary>
+<form method="post" action="/verrat/{{ verrat.id }}/soin" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));align-items:end">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Date<input type="date" name="date" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required></label>
+  <label>Date de fin <small class="muted">(plusieurs jours)</small><input type="date" name="date_fin"></label>
+  <label>Produit<input name="produit" list="verrat-produits" required></label>
+  <label>Motif<select name="motif"><option>Vaccin</option><option>Traitement</option><option>Antiparasitaire</option><option>Soin</option></select></label>
+  <label>Délai d'attente (jours)<input type="number" name="delai_attente" min="0"></label>
+  <label>Note<input name="note" maxlength="200"></label>
+  <button type="submit">Enregistrer</button>
+</form>
+<datalist id="verrat-produits">{% for p in produits %}<option value="{{ p.produit }}">{% endfor %}</datalist>
+<p class="muted" style="margin:6px 0 0">Avec une date de fin, une dose par jour sort du stock pharmacie, comme pour les truies.</p>
+</details>
+{% if protocoles %}
+<details class="card"><summary><b>Acte du plan sanitaire</b></summary>
+<form method="post" action="/verrat/{{ verrat.id }}/acte" class="rust-actions" style="align-items:flex-end;flex-wrap:wrap;gap:10px">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <label>Acte<select name="acte_id">{% for p in protocoles %}<option value="{{ p.id }}">{{ p.libelle }}{% if p.produit %} — {{ p.produit }}{% endif %}</option>{% endfor %}</select></label>
+  <label>Date<input type="date" name="date" value="{{ aujourdhui }}" max="{{ aujourdhui }}"></label>
+  <label>Note<input name="note" maxlength="200"></label>
+  <button type="submit">Marquer fait</button>
+</form></details>
+{% endif %}
+{% endif %}
+
+<section class="card"><h2>Soins et vaccins</h2>
+{% if soins or actes %}
+<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Produit</th><th>Motif</th><th>Délai d'attente</th><th>Note</th>{% if session.peut_modifier %}<th></th>{% endif %}</tr></thead><tbody>
+{% for s in soins %}<tr><td>{{ s.date|date_fr }}{% if s.date_fin %} → {{ s.date_fin|date_fr }}{% endif %}</td><td><b>{{ s.produit }}</b></td><td>{{ s.motif or "" }}</td>
+  <td>{% if s.fin_attente %}{{ s.delai_attente }} j, jusqu'au {{ s.fin_attente|date_fr }}{% else %}—{% endif %}</td><td>{{ s.note or "" }}</td>
+  {% if session.peut_modifier %}<td><form method="post" action="/verrat/{{ verrat.id }}/soin/{{ s.id }}/supprimer" onsubmit="return confirm('Supprimer ce soin ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost" type="submit">Supprimer</button></form></td>{% endif %}</tr>{% endfor %}
+{% for a in actes %}<tr><td>{{ a.date|date_fr }}</td><td><b>{{ a.libelle }}</b>{% if a.produit %} <small class="muted">{{ a.produit }}</small>{% endif %}</td><td>Plan sanitaire</td><td>—</td><td>{{ a.note or "" }}</td>
+  {% if session.peut_modifier %}<td><form method="post" action="/verrat/{{ verrat.id }}/acte/{{ a.id }}/supprimer" onsubmit="return confirm('Supprimer cet acte ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost" type="submit">Supprimer</button></form></td>{% endif %}</tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="muted">Aucun soin ni vaccin enregistré.</p>{% endif %}
+</section>
+
+<section class="card"><h2>IA faites avec ce verrat</h2>
+{% if ia %}<div class="rust-scroll"><table><thead><tr><th>Date</th><th>Truie</th><th>Bande</th></tr></thead><tbody>
+{% for i in ia %}<tr><td>{{ i.date|date_fr }}</td><td><a href="/truie/{{ i.truie_id }}">{{ i.num_travail }}</a></td><td>{{ i.bande or "—" }}</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<p class="muted">Aucune IA reliée à ce verrat.</p>{% endif %}
+</section>
+{% endblock %}
