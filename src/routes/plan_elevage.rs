@@ -11,7 +11,7 @@
 
 use super::*;
 
-const TYPES: [&str; 12] = [
+const TYPES: [&str; 13] = [
     "camera",
     "compteur",
     "case",
@@ -24,6 +24,7 @@ const TYPES: [&str; 12] = [
     "mode",
     "eclairage",
     "texte",
+    "note",
 ];
 
 async fn reperes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
@@ -574,7 +575,7 @@ pub(super) async fn repere(
         if type_repere == "texte" && libelle.is_none() {
             return Err(AppError::Invalid("Écrivez le texte du repère".into()));
         }
-        if !matches!(type_repere.as_str(), "texte" | "zigbee" | "compteur") && ref_id.is_none() {
+        if !matches!(type_repere.as_str(), "texte" | "note" | "zigbee" | "compteur") && ref_id.is_none() {
             return Err(AppError::Invalid(
                 if type_repere == "camera" {
                     "Choisissez la caméra"
@@ -639,6 +640,30 @@ pub(super) async fn cases_salle(
             .await?;
     }
     Ok(axum::Json(json!({ "ajoutees": ids.len() })).into_response())
+}
+
+/// Texte d'une note posée sur le plan, écrit ou dicté depuis le panneau.
+pub(super) async fn repere_texte(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let texte = form_text(&form, "libelle");
+    if texte.as_deref().is_some_and(|t| t.chars().count() > 4000) {
+        return Err(AppError::Invalid("Note trop longue (4 000 caractères au plus)".into()));
+    }
+    let fait = sqlx::query("UPDATE plan_repere SET libelle=? WHERE id=? AND type='note'")
+        .bind(texte)
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    if fait.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(axum::Json(json!({ "ok": true })).into_response())
 }
 
 pub(super) async fn repere_supprimer(

@@ -44,6 +44,13 @@
 .rep.neutre{border-color:#64748b}
 .rep.lampe-on{border-color:#ca8a04;background:#fef9c3}
 .rep.texte{border-style:dashed;border-color:#64748b;background:rgba(255,255,255,.85)}
+.rep.note{background:#fef9c3;border-color:#ca8a04;color:#3f2d00;text-align:left;white-space:normal;max-width:16em;font-weight:500}
+.rep.note.dim{max-width:none;overflow:hidden}
+.plan-note textarea{width:100%;min-height:9em;box-sizing:border-box;font:inherit}
+.plan-note .rust-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.plan-micro.ecoute{background:#b42318;color:#fff}
+.plan-demande{border-top:1px solid #e5e7eb;padding:8px 0;font-size:.92rem}
+.plan-demande pre{white-space:pre-wrap;font:inherit;margin:4px 0;background:#f8fafc;padding:6px;border-radius:6px;max-height:16em;overflow:auto}
 .rep-case{padding:1px 5px;font-size:.78rem;text-align:center;line-height:1.15}
 .rep-case .v{font-weight:700;color:#1e3a8a}
 .rep-case.vide{opacity:.6}
@@ -90,7 +97,7 @@
 .plan-edition .plan-bandeau{display:block}
 </style>
 
-<div id="plan" data-csrf="{{ session.csrf }}" data-modifier="{% if session.peut_modifier %}1{% endif %}">
+<div id="plan" data-csrf="{{ session.csrf }}" data-modifier="{% if session.peut_modifier %}1{% endif %}" data-admin="{% if session.est_admin %}1{% endif %}">
 <div class="plan-barre">
   <h1>Plan de l'élevage</h1>
   <span id="plan-demon" class="plan-demon">…</span>
@@ -138,6 +145,7 @@
     <option value="relais">🔌 Relais / lampe (automate)</option>
     <option value="eclairage">💡 Programme d'éclairage</option>
     <option value="texte">🔤 Texte libre</option>
+    <option value="note">📝 Note (à écrire ou dicter)</option>
   </select></label>
   <label id="plan-choix-salle">Salle<select id="plan-salle">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
   <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
@@ -163,7 +171,7 @@
 <script>
 (function(){
   var racine = document.getElementById('plan');
-  var csrf = racine.dataset.csrf, modifier = !!racine.dataset.modifier;
+  var csrf = racine.dataset.csrf, modifier = !!racine.dataset.modifier, admin = !!racine.dataset.admin;
   var cadre = document.getElementById('plan-cadre');
   var panneau = document.getElementById('plan-panneau'), corps = document.getElementById('plan-panneau-corps');
   var etat = {salles:[], programmes:[], reperes:[], relais:[]}, edition = false, ouvert = null, dernierMessage = null;
@@ -302,6 +310,8 @@
       case 'eclairage':
         var p = programme(r.ref_id);
         return p ? (p.allume ? '💡' : '⚫') + ' ' + esc(p.nom) : 'Programme supprimé';
+      case 'note':
+        return r.libelle ? esc(r.libelle).replace(/\n/g, '<br>') : '📝 <i>Note vide</i>';
       default: return esc(r.libelle);
     }
   }
@@ -314,7 +324,8 @@
       if (r.type == 'camera') cl += ' rep-camera neutre';
       if (r.type == 'case') { var cc = casep(r.ref_id); cl += ' rep-case neutre' + (cc && !cc.porcs && !(cc.truies || []).length && !(cc.verrats || []).length ? ' vide' : ''); }
       if (r.type == 'texte') cl += ' texte';
-      else if (r.type == 'case' || r.type == 'camera') {}
+      if (r.type == 'note') cl += ' note';
+      else if (r.type == 'case' || r.type == 'camera' || r.type == 'note') {}
       else if (r.type == 'compteur') { var k = compteur(r.libelle); cl += !k || k.age_s == null || k.age_s > 900 ? ' agee' : ''; }
       else if (r.type == 'zigbee') {
         var z = zig(r.libelle), az = alertesZigbee(r.libelle);
@@ -432,6 +443,7 @@
     if (rafraichir && panneau.contains(actif) && actif.tagName == 'INPUT') return;
     ouvert = r; var h = '';
     if (r.type == 'texte') { fermer(); return; }
+    if (r.type == 'note') { if (!rafraichir) ouvrirNote(r); return; }
     if (r.type == 'camera') {
       var nomCam = etat.cameras && etat.cameras[r.ref_id]; if (!nomCam) { fermer(); return; }
       if (rafraichir && ouvert === r) return;
@@ -544,7 +556,90 @@
       '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none"><polyline points="' + poly + '" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>' +
       '<div class="pied"><span>' + date(t0) + '</span><span>' + date(t1) + '</span></div></div>';
   }
-  function fermer(){ ouvert = null; dernierMessage = null; panneau.classList.remove('ouvert'); }
+  /* Note posée sur le plan : on l'écrit ou on la dicte au micro. */
+  var dictee = null;
+  function arreterDictee(){ if (dictee) { try { dictee.stop(); } catch (x) {} dictee = null; } }
+  function ouvrirNote(r){
+    arreterDictee();
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var h = '<div class="plan-note"><h2>📝 Note</h2>' +
+      '<textarea id="plan-note-texte" maxlength="4000"' + (modifier ? '' : ' readonly') + ' placeholder="Écrivez ici, ou touchez 🎤 et parlez…">' + esc(r.libelle || '') + '</textarea>';
+    if (modifier) {
+      h += '<div class="rust-actions">' + (SR ? '<button type="button" class="plan-micro" id="plan-note-micro">🎤 Dicter</button>' : '') +
+        '<button type="button" id="plan-note-ok">Enregistrer</button>' +
+        (admin ? '<button type="button" id="plan-note-ia">🤖 Envoyer à l\'IA</button>' : '') + '</div>' +
+        '<p class="muted" id="plan-note-msg">' + (SR ? 'Touchez 🎤, parlez, puis touchez de nouveau pour arrêter.' : 'Dictée : utilisez le micro du clavier du téléphone.') + '</p>';
+    }
+    if (admin) h += '<div id="plan-note-demandes"></div>';
+    corps.innerHTML = h + '</div>'; panneau.classList.add('ouvert'); ouvert = r;
+    if (admin) suivreDemandes(r);
+    if (!modifier) return;
+    var zone = document.getElementById('plan-note-texte'), msg = document.getElementById('plan-note-msg');
+    document.getElementById('plan-note-ok').addEventListener('click', function(){
+      arreterDictee();
+      poster('/ambiance/plan/repere/' + r.id + '/texte', {libelle: zone.value})
+        .then(function(){ r.libelle = zone.value; msg.textContent = '✓ Note enregistrée'; dessiner(); })
+        .catch(function(x){ alert(x.message); });
+    });
+    var boutonIa = document.getElementById('plan-note-ia');
+    if (boutonIa) boutonIa.addEventListener('click', function(){
+      arreterDictee();
+      if (!zone.value.trim()) { alert('Écrivez ou dictez la demande d\'abord.'); return; }
+      if (!confirm('Envoyer cette demande à l\'IA ? Elle préparera et testera la modification ; rien ne sera mis en service avant que vous cliquiez sur Installer.')) return;
+      poster('/ambiance/plan/repere/' + r.id + '/texte', {libelle: zone.value})
+        .then(function(){ r.libelle = zone.value; dessiner(); return poster('/demandes-ia', {texte: zone.value, repere_id: r.id}); })
+        .then(function(){ msg.textContent = '🤖 Demande envoyée à l\'IA.'; suivreDemandes(r); })
+        .catch(function(x){ alert(x.message); });
+    });
+    var micro = document.getElementById('plan-note-micro'); if (!micro) return;
+    micro.addEventListener('click', function(){
+      if (dictee) { arreterDictee(); return; }
+      var rec = new SR(); rec.lang = 'fr-FR'; rec.continuous = true; rec.interimResults = true;
+      var base = zone.value;
+      rec.onresult = function(ev){
+        var fin = '', provisoire = '';
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) fin += ev.results[i][0].transcript; else provisoire += ev.results[i][0].transcript;
+        }
+        if (fin) base = (base && !/\s$/.test(base) ? base + ' ' : base) + fin.trim();
+        zone.value = base + (provisoire ? ' ' + provisoire : '');
+      };
+      rec.onerror = function(ev){ msg.textContent = ev.error == 'not-allowed' ? 'Micro refusé par le navigateur.' : 'Dictée interrompue (' + ev.error + ').'; };
+      rec.onend = function(){ dictee = null; micro.classList.remove('ecoute'); micro.textContent = '🎤 Dicter'; zone.value = base; };
+      try { rec.start(); } catch (x) { msg.textContent = 'Dictée impossible sur ce navigateur.'; return; }
+      dictee = rec; micro.classList.add('ecoute'); micro.textContent = '⏹ Arrêter'; msg.textContent = 'J\'écoute… parlez.';
+    });
+  }
+  /* Suivi des demandes envoyées à l'IA depuis cette note. */
+  var ETATS_IA = {attente:'⏳ En attente de l\'IA', en_cours:'🛠 L\'IA prépare et teste la modification…', prete:'✅ Prête : à installer', installation:'📦 Installation en cours…', installee:'✔️ Installée', echec:'❌ Échec', annulee:'Abandonnée'};
+  function suivreDemandes(r){
+    clearTimeout(window._planIa);
+    var boite = document.getElementById('plan-note-demandes'); if (!boite || ouvert !== r) return;
+    fetch('/demandes-ia.json?repere=' + r.id, {credentials:'same-origin'}).then(function(x){ return x.json(); }).then(function(j){
+      boite = document.getElementById('plan-note-demandes'); if (!boite || ouvert !== r) return;
+      var enCours = false;
+      boite.innerHTML = (j.demandes || []).map(function(d){
+        if (['attente','en_cours','installation'].indexOf(d.statut) >= 0) enCours = true;
+        return '<div class="plan-demande"><b>' + esc(ETATS_IA[d.statut] || d.statut) + '</b>' + (d.version ? ' — version ' + esc(d.version) : '') +
+          ' <span class="muted">n° ' + d.id + ', ' + esc(d.cree_le || '') + '</span>' +
+          '<pre>' + esc(d.texte) + '</pre>' +
+          (d.compte_rendu ? '<p><b>Compte rendu de l\'IA :</b></p><pre>' + esc(d.compte_rendu) + '</pre>' : '') +
+          (d.statut == 'prete' ? '<button type="button" data-ia-installer="' + d.id + '">📦 Installer</button> ' : '') +
+          (['attente','prete','echec'].indexOf(d.statut) >= 0 ? '<button type="button" class="ghost" data-ia-abandonner="' + d.id + '">Abandonner</button>' : '') +
+          '</div>';
+      }).join('');
+      boite.querySelectorAll('[data-ia-installer]').forEach(function(b){ b.addEventListener('click', function(){
+        if (!confirm('Installer cette modification ? Le logiciel redémarrera quelques secondes.')) return;
+        poster('/demandes-ia/' + b.dataset.iaInstaller + '/installer').then(function(){ suivreDemandes(r); }).catch(function(x){ alert(x.message); });
+      }); });
+      boite.querySelectorAll('[data-ia-abandonner]').forEach(function(b){ b.addEventListener('click', function(){
+        if (!confirm('Abandonner cette demande ?')) return;
+        poster('/demandes-ia/' + b.dataset.iaAbandonner + '/abandonner').then(function(){ suivreDemandes(r); }).catch(function(x){ alert(x.message); });
+      }); });
+      window._planIa = setTimeout(function(){ suivreDemandes(r); }, enCours ? 10000 : 60000);
+    }).catch(function(){});
+  }
+  function fermer(){ arreterDictee(); clearTimeout(window._planIa); ouvert = null; dernierMessage = null; panneau.classList.remove('ouvert'); }
   function message(t, erreur){ dernierMessage = [t, erreur]; var m = document.getElementById('plan-message'); if (m) { m.textContent = t; m.className = 'plan-message' + (erreur ? ' erreur' : ''); } }
   panneau.querySelector('.fermer').addEventListener('click', fermer);
   panneau.addEventListener('click', function(ev){
@@ -659,7 +754,7 @@
       document.getElementById('plan-choix-compteur').hidden = type.value != 'compteur';
       document.getElementById('plan-choix-camera').hidden = type.value != 'camera';
       document.getElementById('plan-choix-case').hidden = type.value != 'case';
-      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','relais','zigbee','case','compteur','camera'].indexOf(type.value) >= 0;
+      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','note','relais','zigbee','case','compteur','camera'].indexOf(type.value) >= 0;
       document.getElementById('plan-choix-relais').hidden = type.value != 'relais';
       document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
       document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
@@ -681,6 +776,7 @@
       else if (type.value == 'relais') d.ref_id = document.getElementById('plan-relais').value;
       else if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
       else if (type.value == 'texte') d.libelle = document.getElementById('plan-texte').value;
+      else if (type.value == 'note') {}
       else d.ref_id = document.getElementById('plan-salle').value;
       poster('/ambiance/plan/repere', d).then(charger).catch(function(x){ alert(x.message); });
     });

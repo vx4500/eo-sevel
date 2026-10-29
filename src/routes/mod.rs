@@ -35,6 +35,7 @@ mod demo_portal;
 mod departs;
 mod inventaire;
 mod verrats;
+mod demandes_ia;
 mod vaccination;
 pub(crate) mod documents;
 mod factures;
@@ -188,6 +189,11 @@ pub fn router(state: AppState) -> Router {
         .route("/ambiance/plan/cases-salle", post(plan_elevage::cases_salle))
         .route("/ambiance/plan/repere", post(plan_elevage::repere))
         .route("/ambiance/plan/repere/{id}/supprimer", post(plan_elevage::repere_supprimer))
+        .route("/ambiance/plan/repere/{id}/texte", post(plan_elevage::repere_texte))
+        .route("/demandes-ia", post(demandes_ia::envoyer))
+        .route("/demandes-ia.json", get(demandes_ia::liste_json))
+        .route("/demandes-ia/{id}/installer", post(demandes_ia::installer))
+        .route("/demandes-ia/{id}/abandonner", post(demandes_ia::abandonner))
         .route("/ambiance/plan/salle/{id}/reglage", post(plan_elevage::salle_reglage))
         .route("/ambiance/eclairage", get(eclairage::page))
         .route("/ambiance/eclairage/etat.json", get(eclairage::etat_json))

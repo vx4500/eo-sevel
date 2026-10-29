@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.72.2** — corrections verrats (délais d'attente, IA, dates).
+Version actuelle : **2.73.0** — notes sur le plan, dictée et demandes de modification à l'IA.
 
+
+Version Rust 2.73.0 : repère « note » sur le plan de l'élevage (plan_repere.type=note, texte dans libelle, 4 000 caractères) ; POST /ambiance/plan/repere/{id}/texte ; panneau avec zone de texte et dictée (Web Speech API, fr-FR) quand le navigateur la propose. Demandes à l'IA : migration 0032 (demande_ia), routes::demandes_ia (/demandes-ia, réservé à l'admin), bouton « Envoyer à l'IA » et suivi dans le panneau de la note ; le programme serveur /usr/local/sbin/eo-demande-ia (minuterie eo-demande-ia.timer) confie chaque demande à Claude sur une branche demande-<id> (git worktree dans /opt/eo-sevel-demandes), puis la fusionne et met à jour quand l'admin clique sur Installer.
 
 Version Rust 2.72.2 : délais d'attente des verrats dans l'alerte du tableau de bord et le rapport (UNION sur evenement.verrat_id, truie_id NULL) ; traitements des verrats nommés dans le rapport ; IA du verrat retrouvées aussi par le champ produit ; dates futures refusées côté serveur (verrats::date_passee).
 
