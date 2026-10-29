@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.73.0** — notes sur le plan, dictée et demandes de modification à l'IA.
+Version actuelle : **2.73.1** — sevrage d'une salle à la voix (connecteur Claude).
 
+
+Version Rust 2.73.1 : outil MCP sevrer_salle (sevre toutes les portées ouvertes d'une maternité, porcelets répartis par portée entière dans une ou plusieurs cases de post-sevrage, truies vers la verraterie) ; cœur du sevrage de bande extrait en sevrage::sevrer, partagé avec la page ; bouton « Envoyer à l'IA » retiré des notes du plan (pilotage vocal par l'application Claude).
 
 Version Rust 2.73.0 : repère « note » sur le plan de l'élevage (plan_repere.type=note, texte dans libelle, 4 000 caractères) ; POST /ambiance/plan/repere/{id}/texte ; panneau avec zone de texte et dictée (Web Speech API, fr-FR) quand le navigateur la propose. Demandes à l'IA : migration 0032 (demande_ia), routes::demandes_ia (/demandes-ia, réservé à l'admin), bouton « Envoyer à l'IA » et suivi dans le panneau de la note ; le programme serveur /usr/local/sbin/eo-demande-ia (minuterie eo-demande-ia.timer) confie chaque demande à Claude sur une branche demande-<id> (git worktree dans /opt/eo-sevel-demandes), puis la fusionne et met à jour quand l'admin clique sur Installer.
 

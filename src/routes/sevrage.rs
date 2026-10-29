@@ -208,7 +208,20 @@ pub(super) async fn enregistrer(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let pool = &state.pool;
+    let n = sevrer(&state.pool, &session.nom, band_id, &form).await?;
+    Ok(Redirect::to(&format!("/bande/{band_id}/sevrage?ok={n}")).into_response())
+}
+
+/// Sevrage des truies cochées d'une bande (`sel_<truie>`, `nb_<truie>`,
+/// `destination`, `salle_truies`, `date`…), tel que saisi sur la page : sert
+/// aussi au connecteur vocal (mcp::sevrer_salle). Rend le nombre de truies.
+pub(super) async fn sevrer(
+    pool: &SqlitePool,
+    auteur: &str,
+    band_id: i64,
+    form: &HashMap<String, String>,
+) -> AppResult<usize> {
+    let form = form.clone();
     let code: String = sqlx::query_scalar("SELECT code FROM bande WHERE id=?")
         .bind(band_id)
         .fetch_optional(pool)
@@ -510,7 +523,7 @@ pub(super) async fn enregistrer(
     tx.commit().await?;
     db::journal(
         pool,
-        &session.nom,
+        auteur,
         "sevrer",
         "bande",
         &format!(
@@ -520,7 +533,7 @@ pub(super) async fn enregistrer(
         &format!("/bande/{band_id}/sevrage"),
     )
     .await;
-    Ok(Redirect::to(&format!("/bande/{band_id}/sevrage?ok={}", lignes.len())).into_response())
+    Ok(lignes.len())
 }
 
 /// Truie vide : la « mise-bas » enregistrée à 0 né est annulée et la truie

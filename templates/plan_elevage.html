@@ -566,10 +566,10 @@
       '<textarea id="plan-note-texte" maxlength="4000"' + (modifier ? '' : ' readonly') + ' placeholder="Écrivez ici, ou touchez 🎤 et parlez…">' + esc(r.libelle || '') + '</textarea>';
     if (modifier) {
       h += '<div class="rust-actions">' + (SR ? '<button type="button" class="plan-micro" id="plan-note-micro">🎤 Dicter</button>' : '') +
-        '<button type="button" id="plan-note-ok">Enregistrer</button>' +
-        (admin ? '<button type="button" id="plan-note-ia">🤖 Envoyer à l\'IA</button>' : '') + '</div>' +
+        '<button type="button" id="plan-note-ok">Enregistrer</button></div>' +
         '<p class="muted" id="plan-note-msg">' + (SR ? 'Touchez 🎤, parlez, puis touchez de nouveau pour arrêter.' : 'Dictée : utilisez le micro du clavier du téléphone.') + '</p>';
     }
+    // Anciennes demandes envoyées à l'IA (2.73.0) : suivi seulement.
     if (admin) h += '<div id="plan-note-demandes"></div>';
     corps.innerHTML = h + '</div>'; panneau.classList.add('ouvert'); ouvert = r;
     if (admin) suivreDemandes(r);

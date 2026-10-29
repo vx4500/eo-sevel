@@ -59,6 +59,14 @@ fn outils() -> Value {
              "nombre": {"type": "integer"}, "bande": {"type": "string", "description": "facultatif : vérifie que les porcs sont de cette bande"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle_source", "salle_destination", "nombre"]}},
+        {"name": "sevrer_salle",
+         "description": "Sevre toute une salle de maternité d'un coup (ex. « sèvre la Mater 1, porcelets en PS1, truies en verraterie ») : chaque portée ouverte de la salle est sevrée avec ses porcelets présents, les porcelets vont dans la case de post-sevrage indiquée et les truies dans la salle indiquée (verraterie par défaut, sans case précise). Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string", "description": "salle de maternité, ex. « Mater 1 »"},
+             "destination": {"type": "string", "description": "case(s) de post-sevrage pour les porcelets, ex. « PS1 » ou « PS1, PS2 » : les portées entières remplissent la première, puis la suivante"},
+             "salle_truies": {"type": "string", "description": "salle où vont les truies, « Verraterie » par défaut"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
+             "confirme": confirme}, "required": ["salle", "destination"]}},
         {"name": "depart_porcs",
          "description": "Enregistre un départ de porcs à l'abattoir depuis une salle (pris dans les cases les plus pleines). Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
@@ -262,6 +270,87 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                                    "ia_des_sevrees_a_venir": ia_sevrees >= auj}));
             }
             Ok(json!({"aujourdhui": auj.to_string(), "gestation_jours": c.gestation, "sevrage_jours": c.weaning, "bandes": sortie}).to_string())
+        }
+        "sevrer_salle" => {
+            let date = date_ou_aujourdhui(a)?;
+            let salles: Vec<(i64, String)> = sqlx::query_as(
+                "SELECT id,nom FROM salle WHERE lower(nom) LIKE '%'||lower(?1)||'%' AND lower(COALESCE(type,'')||' '||nom) LIKE '%mater%'",
+            ).bind(arg(a, "salle")).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            let (salle_id, salle) = match salles.as_slice() {
+                [une] => une.clone(),
+                [] => return Err(format!("Pas de maternité « {} ».", arg(a, "salle"))),
+                _ => return Err(format!("Plusieurs maternités correspondent : {}. Laquelle ?", salles.iter().map(|s| s.1.as_str()).collect::<Vec<_>>().join(", "))),
+            };
+            // Cases de post-sevrage, dans l'ordre dit : par leur nom (« PS1 », « PS 2 »)
+            // ou par leur salle quand elle n'a qu'une case.
+            let mut cases: Vec<(i64, String, i64, Option<i64>)> = Vec::new();
+            for nom in arg(a, "destination").replace(" et ", ",").replace('+', ",").split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                let d = nom.to_lowercase().replace(' ', "");
+                let trouvees: Vec<(i64, String, Option<i64>)> = sqlx::query_as(
+                    "SELECT c.id,c.nom,c.nb_max_porcs FROM casesalle c JOIN salle s ON s.id=c.salle_id \
+                     WHERE (lower(COALESCE(s.type,'')) LIKE '%sevr%' OR lower(s.nom) LIKE '%sevr%') \
+                     AND (replace(lower(c.nom),' ','')=?1 OR (replace(lower(s.nom),' ','') LIKE '%'||?1||'%' AND (SELECT COUNT(*) FROM casesalle x WHERE x.salle_id=s.id)=1))",
+                ).bind(&d).fetch_all(pool).await.map_err(|e| e.to_string())?;
+                let (id, case, max) = match trouvees.as_slice() {
+                    [une] => une.clone(),
+                    [] => return Err(format!("Pas de case de post-sevrage « {nom} ».")),
+                    _ => return Err(format!("Plusieurs cases correspondent à « {nom} » : {}. Laquelle ?", trouvees.iter().map(|c| c.1.as_str()).collect::<Vec<_>>().join(", "))),
+                };
+                let deja = case_pig_count(pool, id).await.map_err(|e| e.to_string())?.max(0);
+                cases.push((id, case, deja, max.filter(|m| *m > 0)));
+            }
+            if cases.is_empty() {
+                return Err("Dans quelle case de post-sevrage vont les porcelets ?".into());
+            }
+            let st = match arg(a, "salle_truies") { "" => "verrat", s => s };
+            let (salle_truies_id, salle_truies): (i64, String) = sqlx::query_as(
+                "SELECT id,nom FROM salle WHERE lower(COALESCE(type,'')||' '||nom) LIKE '%'||lower(?1)||'%' ORDER BY ordre LIMIT 1",
+            ).bind(st).fetch_optional(pool).await.map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Pas de salle « {st} » pour les truies."))?;
+            // Portées ouvertes de la maternité, par bande.
+            let portees: Vec<(i64, i64, String, i64)> = sqlx::query_as(
+                "SELECT pe.bande_id,t.id,t.num_travail,pe.presents FROM portee_effectif pe JOIN truie t ON t.id=pe.truie_id \
+                 JOIN evenement e ON e.id=pe.id JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) \
+                 WHERE c.salle_id=? AND pe.cloturee=0 AND pe.date<=? ORDER BY pe.bande_id,CAST(t.num_travail AS INTEGER)",
+            ).bind(salle_id).bind(&date).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            if portees.is_empty() {
+                return Err(format!("Aucune portée à sevrer en {salle}."));
+            }
+            // Chaque portée entière va dans la première case qui a encore la place.
+            let mut remplissage: Vec<i64> = cases.iter().map(|c| c.2).collect();
+            let mut affectation = Vec::new();
+            for p in &portees {
+                let i = (0..cases.len()).find(|&i| cases[i].3.is_none_or(|m| remplissage[i] + p.3 <= m))
+                    .ok_or_else(|| format!("Plus de place pour la portée de {} ({} porcelets) : {}. Ajoute une case de post-sevrage.",
+                        p.2, p.3, cases.iter().zip(&remplissage).map(|(c, r)| format!("{} {r}/{}", c.1, c.3.map(|m| m.to_string()).unwrap_or("?".into()))).collect::<Vec<_>>().join(", ")))?;
+                remplissage[i] += p.3;
+                affectation.push(i);
+            }
+            let total: i64 = portees.iter().map(|p| p.3).sum();
+            let repartition = cases.iter().enumerate().filter(|(i, _)| affectation.contains(i)).map(|(i, c)| format!("{} : {} porcelet(s), {}{} après",
+                c.1, remplissage[i] - c.2, remplissage[i], c.3.map(|m| format!("/{m}")).unwrap_or_default())).collect::<Vec<_>>().join(" ; ");
+            let resume = format!(
+                "Sevrage de {salle} le {date} : {} truie(s) ({}), {total} porcelet(s) → {repartition} ; truies → {salle_truies}.",
+                portees.len(), portees.iter().map(|p| format!("{} : {}", p.2, p.3)).collect::<Vec<_>>().join(", "));
+            if a.get("confirme").and_then(Value::as_bool) != Some(true) {
+                return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
+            }
+            let mut bandes: Vec<i64> = portees.iter().map(|p| p.0).collect();
+            bandes.dedup();
+            for bande in bandes {
+                let mut form: HashMap<String, String> = HashMap::from([
+                    ("date".into(), date.clone()),
+                    ("salle_truies".into(), salle_truies_id.to_string()),
+                ]);
+                for (p, i) in portees.iter().zip(&affectation).filter(|(p, _)| p.0 == bande) {
+                    form.insert(format!("sel_{}", p.1), "on".into());
+                    form.insert(format!("nb_{}", p.1), p.3.to_string());
+                    form.insert(format!("case_{}", p.1), cases[*i].0.to_string());
+                }
+                super::sevrage::sevrer(pool, AUTEUR, bande, &form).await.map_err(|e| e.to_string())?;
+            }
+            journaliser(pool, "sevrer_salle", &salle, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
         }
         "deplacer_truie" => {
             let (truie_id, num) = truie_par_numero(pool, arg(a, "numero")).await?;
@@ -601,6 +690,44 @@ mod tests {
         assert!(!e && t.starts_with("Enregistré"));
         let n: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(nombre),0) FROM transfert WHERE case_dest_id IS NULL AND note LIKE 'Départ du%' AND id>(SELECT MAX(id)-5 FROM transfert)").fetch_one(&pool).await?;
         assert_eq!(n, 10);
+        Ok(())
+    }
+
+    /// `EO_TEST_BASE=/var/tmp/copie.db cargo test sevrage_salle_sur_copie -- --ignored --nocapture`
+    /// (la copie est modifiée : la Mater 1 est sevrée).
+    #[tokio::test]
+    #[ignore]
+    async fn sevrage_salle_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).foreign_keys(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(2).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let jeton = "a".repeat(64);
+        crate::sms_free::ecrire_parametre(&pool, "mcp_jeton", &jeton).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: chemin.into(), secure_cookies: false },
+            pool.clone(),
+            crate::templates::build()?,
+        );
+        let ouvertes = |p: &SqlitePool| { let p = p.clone(); async move {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM portee_effectif pe JOIN truie t ON t.id=pe.truie_id JOIN casesalle c ON c.id=t.case_id WHERE c.salle_id=7 AND pe.cloturee=0").fetch_one(&p).await.unwrap() } };
+        let avant = ouvertes(&pool).await;
+        assert!(avant > 0);
+        // Comme la semaine du sevrage : PS1 et PS 2 viennent d'être vidées.
+        sqlx::query("INSERT INTO inventairecase(case_id,date,nombre) SELECT c.id,date('now','localtime'),0 FROM casesalle c WHERE c.nom IN ('PS1','PS 2')")
+            .execute(&pool).await?;
+        let (e, _) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"Mater 9","destination":"PS1"})).await;
+        assert!(e);
+        let (e, _) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"Mater 1","destination":"Engraissement 1"})).await;
+        assert!(e, "la destination doit être du post-sevrage");
+        let (e, t) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"mater 1","destination":"PS1 et PS 2"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("Verraterie"));
+        assert_eq!(ouvertes(&pool).await, avant);
+        let (e, t) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"mater 1","destination":"PS1 et PS 2","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        assert_eq!(ouvertes(&pool).await, 0);
+        let en_mater: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie t JOIN casesalle c ON c.id=t.case_id WHERE c.salle_id=7 AND t.reformee=0").fetch_one(&pool).await?;
+        println!("truies encore rangées dans une case de la Mater 1 : {en_mater}");
         Ok(())
     }
 }
