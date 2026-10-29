@@ -194,11 +194,11 @@
   <h2>Sanitaire</h2>
   <div class="rp-deux">
     <div><h3>Traitements de la période</h3>
-      {% if traitements %}<table><thead><tr><th>Date</th><th>Truie</th><th>Produit</th><th>Motif</th></tr></thead><tbody>
+      {% if traitements %}<table><thead><tr><th>Date</th><th>Animal</th><th>Produit</th><th>Motif</th></tr></thead><tbody>
       {% for t in traitements %}<tr><td>{{ t.date|date_fr }}{% if t.date_fin and t.date_fin != t.date %} → {{ t.date_fin|date_fr }}{% endif %}</td><td><b>{{ t.truie or '—' }}</b></td><td>{{ t.produit or '—' }}</td><td>{{ t.motif or '—' }}</td></tr>{% endfor %}
       </tbody></table>{% else %}<p class="vide">Aucun traitement enregistré.</p>{% endif %}</div>
     <div><h3>Truies sous délai d’attente</h3>
-      {% if delais_attente %}<table><thead><tr><th>Truie</th><th>Produit</th><th>Fin du délai</th></tr></thead><tbody>
+      {% if delais_attente %}<table><thead><tr><th>Animal</th><th>Produit</th><th>Fin du délai</th></tr></thead><tbody>
       {% for d in delais_attente %}<tr class="rouge"><td><b>{{ d.truie }}</b></td><td>{{ d.produit or '—' }}</td><td>{{ d.fin|date_fr }}</td></tr>{% endfor %}
       </tbody></table><p class="note">Ne pas envoyer à l’abattoir avant la fin du délai.</p>{% else %}<p class="vide">Aucune truie sous délai d’attente.</p>{% endif %}</div>
   </div>

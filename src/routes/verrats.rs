@@ -5,6 +5,15 @@
 
 use super::*;
 
+/// Date du formulaire, refusée si elle est dans le futur.
+fn date_passee(form: &HashMap<String, String>, cle: &str) -> AppResult<Option<String>> {
+    let date = form_date(form, cle)?;
+    if date.as_deref().is_some_and(|d| d > today_iso().as_str()) {
+        return Err(AppError::Invalid("La date ne peut pas être dans le futur".into()));
+    }
+    Ok(date)
+}
+
 /// Statuts possibles ; seul `actif` garde `verrat.actif=1`.
 const STATUTS: [&str; 3] = ["actif", "reforme", "mort"];
 
@@ -62,7 +71,7 @@ pub(super) async fn ajouter(
         .bind(form_text(&form, "mere"))
         .bind(form_text(&form, "note"))
         .bind(case_id)
-        .bind(form_date(&form, "date_entree")?)
+        .bind(date_passee(&form, "date_entree")?)
         .execute(&state.pool)
         .await?;
     db::journal(&state.pool, &session.nom, "ajouter", "verrat", &code, "/verrats").await;
@@ -88,7 +97,7 @@ pub(super) async fn modifier(
     let (date_sortie, motif) = if actif {
         (None, None)
     } else {
-        (Some(form_date_or_today(&form, "date_sortie")?), form_text(&form, "motif_sortie"))
+        (Some(date_passee(&form, "date_sortie")?.unwrap_or_else(today_iso)), form_text(&form, "motif_sortie"))
     };
     let fait = sqlx::query(
         "UPDATE verrat SET race=?, pere=?, mere=?, note=?, statut=?, actif=?, case_id=?, date_entree=?, date_sortie=?, motif_sortie=? WHERE id=?",
@@ -100,7 +109,7 @@ pub(super) async fn modifier(
     .bind(&statut)
     .bind(actif)
     .bind(if actif { case_id } else { None })
-    .bind(form_date(&form, "date_entree")?)
+    .bind(date_passee(&form, "date_entree")?)
     .bind(date_sortie)
     .bind(motif)
     .bind(id)
@@ -145,11 +154,14 @@ pub(super) async fn fiche(
         id,
     )
     .await?;
+    // Les formulaires d'IA ne relient pas le verrat : on retrouve aussi les
+    // IA dont le champ « Produit / verrat » contient son numéro.
     let ia = generic_rows_bind_id(
         &state.pool,
         "SELECT e.date, t.id AS truie_id, t.num_travail, b.code AS bande FROM evenement e \
          JOIN truie t ON t.id=e.truie_id LEFT JOIN bande b ON b.id=e.bande_id \
-         WHERE e.verrat_id=? AND e.type='ia' ORDER BY e.date DESC LIMIT 100",
+         WHERE e.type='ia' AND (e.verrat_id=?1 OR (e.verrat_id IS NULL AND instr(COALESCE(e.produit,''), (SELECT code FROM verrat WHERE id=?1))>0)) \
+         ORDER BY e.date DESC LIMIT 100",
         id,
     )
     .await?;
@@ -201,7 +213,7 @@ pub(super) async fn soin(
         "INSERT INTO evenement(type,date,date_fin,verrat_id,produit,motif,delai_attente,note,suivi_actif,created_at) \
          VALUES('traitement',?,?,?,?,?,?,?,0,CURRENT_TIMESTAMP)",
     )
-    .bind(form_date_or_today(&form, "date")?)
+    .bind(date_passee(&form, "date")?.unwrap_or_else(today_iso))
     .bind(form_date(&form, "date_fin")?)
     .bind(id)
     .bind(&produit)
@@ -250,7 +262,7 @@ pub(super) async fn acte(
     verrat_existe(&state.pool, id).await?;
     let acte = form_i64(&form, "acte_id").ok_or_else(|| AppError::Invalid("Acte manquant".into()))?;
     let fait = sqlx::query("INSERT INTO acterealiseverrat(acte_id,verrat_id,date_realise,note) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM acteprotocole WHERE id=? AND actif=1)")
-        .bind(acte).bind(id).bind(form_date_or_today(&form, "date")?).bind(form_text(&form, "note")).bind(acte)
+        .bind(acte).bind(id).bind(date_passee(&form, "date")?.unwrap_or_else(today_iso)).bind(form_text(&form, "note")).bind(acte)
         .execute(&state.pool).await?;
     if fait.rows_affected() == 0 {
         return Err(AppError::Invalid("Acte inconnu".into()));
@@ -272,6 +284,14 @@ pub(super) async fn acte_supprimer(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn date_future_refusee() {
+        let form = |d: &str| std::collections::HashMap::from([("date".to_string(), d.to_string())]);
+        assert!(super::date_passee(&form("2099-01-01"), "date").is_err());
+        assert_eq!(super::date_passee(&form("2026-10-01"), "date").unwrap().as_deref(), Some("2026-10-01"));
+        assert_eq!(super::date_passee(&form(""), "date").unwrap(), None);
+    }
+
     #[test]
     fn la_page_se_rend() {
         let env = crate::templates::build().expect("gabarits");

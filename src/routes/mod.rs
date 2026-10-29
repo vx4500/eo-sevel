@@ -2966,7 +2966,10 @@ async fn dashboard(
     // décalage toujours positif ou nul.
     let delais_attente_truies = generic_rows(
         &state.pool,
-        "SELECT t.num_travail AS reference,e.produit,e.date AS date_traitement,date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day') AS fin_attente FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.type='traitement' AND e.delai_attente IS NOT NULL AND e.delai_attente>0 AND date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day')>=date('now','localtime') ORDER BY fin_attente",
+        // Verrats compris (soins saisis sur leur fiche, sans truie) : un verrat
+        // réformé pendant son délai d'attente ne doit pas partir non plus.
+        "SELECT t.num_travail AS reference,'Truie '||t.num_travail AS animal,e.produit,e.date AS date_traitement,date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day') AS fin_attente FROM evenement e JOIN truie t ON t.id=e.truie_id WHERE e.type='traitement' AND e.delai_attente IS NOT NULL AND e.delai_attente>0 AND date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day')>=date('now','localtime') \
+         UNION ALL SELECT v.code,'Verrat '||v.code,e.produit,e.date,date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day') FROM evenement e JOIN verrat v ON v.id=e.verrat_id WHERE e.truie_id IS NULL AND v.actif=1 AND e.type='traitement' AND e.delai_attente IS NOT NULL AND e.delai_attente>0 AND date(COALESCE(e.date_fin,e.date),'+'||e.delai_attente||' day')>=date('now','localtime') ORDER BY fin_attente",
     )
     .await?;
     let delais_attente_charcutiers = generic_rows(

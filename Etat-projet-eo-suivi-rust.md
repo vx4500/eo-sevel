@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.72.1** — verrat : père et mère.
+Version actuelle : **2.72.2** — corrections verrats (délais d'attente, IA, dates).
 
+
+Version Rust 2.72.2 : délais d'attente des verrats dans l'alerte du tableau de bord et le rapport (UNION sur evenement.verrat_id, truie_id NULL) ; traitements des verrats nommés dans le rapport ; IA du verrat retrouvées aussi par le champ produit ; dates futures refusées côté serveur (verrats::date_passee).
 
 Version Rust 2.72.1 : colonnes verrat.pere et verrat.mere (ensure_column), saisies sur /verrats (ajout, Modifier) et affichées sur la fiche verrat.
 

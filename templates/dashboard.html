@@ -8,7 +8,7 @@
       <strong>{{ alertes.delai_attente_total }} animal(aux) sous délai d'attente</strong>
       <span>Ne pas envoyer à l'abattoir ni en vente directe avant la fin du délai.</span>
       <div class="rust-scroll"><table><thead><tr><th>Animal</th><th>Produit</th><th>Traité le</th><th>Fin d'attente</th></tr></thead><tbody>
-        {% for a in alertes.delai_attente_truies %}<tr><td>Truie {{ a.reference }}</td><td>{{ a.produit or '—' }}</td><td>{{ a.date_traitement|date_fr }}</td><td><b>{{ a.fin_attente|date_fr }}</b></td></tr>{% endfor %}
+        {% for a in alertes.delai_attente_truies %}<tr><td>{{ a.animal }}</td><td>{{ a.produit or '—' }}</td><td>{{ a.date_traitement|date_fr }}</td><td><b>{{ a.fin_attente|date_fr }}</b></td></tr>{% endfor %}
         {% for a in alertes.delai_attente_charcutiers %}<tr><td>{{ a.reference }}</td><td>{{ a.produit or '—' }}</td><td>{{ a.date_traitement|date_fr }}</td><td><b>{{ a.fin_attente|date_fr }}</b></td></tr>{% endfor %}
       </tbody></table></div>
     </div>
