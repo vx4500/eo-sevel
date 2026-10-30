@@ -11,7 +11,7 @@
 
 use super::*;
 
-const TYPES: [&str; 13] = [
+const TYPES: [&str; 15] = [
     "camera",
     "compteur",
     "case",
@@ -25,7 +25,47 @@ const TYPES: [&str; 13] = [
     "eclairage",
     "texte",
     "note",
+    "operations",
+    "a_venir",
 ];
+
+/// Encart « Dernières opérations » : les saisies récentes, regroupées par
+/// jour (déplacements de truies par salle d'arrivée, transferts de porcs,
+/// départs abattoir, mises-bas, sevrages, IA, échographies, soins, morts).
+const OPERATIONS_SQL: &str = "SELECT jour, texte FROM (\
+    SELECT date(t.date) AS jour, MAX(t.id) AS ordre, '🐖 '||COUNT(*)||CASE WHEN COUNT(*)>1 THEN ' truies déplacées' ELSE ' truie déplacée' END||COALESCE(' → '||sd.nom,'') AS texte \
+      FROM transfert t LEFT JOIN salle sd ON sd.id=t.salle_dest_id WHERE t.espece='truie' GROUP BY date(t.date), t.salle_dest_id \
+    UNION ALL SELECT date(t.date), MAX(t.id), '🐷 '||SUM(t.nombre)||' porcs '||COALESCE(ss.nom||' ','')||'→ '||sd.nom \
+      FROM transfert t JOIN salle sd ON sd.id=t.salle_dest_id LEFT JOIN salle ss ON ss.id=t.salle_source_id \
+      WHERE t.espece<>'truie' GROUP BY date(t.date), t.salle_source_id, t.salle_dest_id \
+    UNION ALL SELECT date(t.date), MAX(t.id), '🚚 Départ abattoir : '||SUM(t.nombre)||' porcs' \
+      FROM transfert t WHERE t.espece<>'truie' AND t.salle_dest_id IS NULL GROUP BY date(t.date) \
+    UNION ALL SELECT date(v.date), MAX(v.id), '🚚 Abattoir : '||SUM(v.nb_porcs)||' porcs' FROM venteapport v \
+      WHERE COALESCE(v.nb_porcs,0)>0 AND NOT EXISTS(SELECT 1 FROM transfert t WHERE date(t.date)=date(v.date) \
+      AND t.espece<>'truie' AND t.salle_dest_id IS NULL) GROUP BY date(v.date) \
+    UNION ALL SELECT date(e.date), MAX(e.id), CASE e.type \
+      WHEN 'mise_bas' THEN '🐣 '||COUNT(*)||CASE WHEN COUNT(*)>1 THEN ' mises-bas' ELSE ' mise-bas' END||' · '||COALESCE(SUM(e.nes_vifs),0)||' nés vifs' \
+      WHEN 'sevrage' THEN '🍼 Sevrage : '||COUNT(*)||CASE WHEN COUNT(*)>1 THEN ' truies' ELSE ' truie' END||' · '||COALESCE(SUM(e.nb_sevres),0)||' porcelets' \
+      WHEN 'ia' THEN '❤️ IA : '||COUNT(DISTINCT e.truie_id)||CASE WHEN COUNT(DISTINCT e.truie_id)>1 THEN ' truies' ELSE ' truie' END \
+      ELSE '🔎 Échographie : '||COUNT(*)||' ('||SUM(e.resultat='pleine')||' pleine'||CASE WHEN SUM(e.resultat='pleine')>1 THEN 's' ELSE '' END||')' END \
+      FROM evenement e WHERE e.type IN ('mise_bas','sevrage','ia','echo','echographie') \
+      GROUP BY date(e.date), CASE WHEN e.type='echographie' THEN 'echo' ELSE e.type END \
+    UNION ALL SELECT date(e.date), MAX(e.id), '💊 '||COALESCE(NULLIF(trim(e.produit),''),'Soin')||' ('||COUNT(*)||')' \
+      FROM evenement e WHERE e.type='traitement' GROUP BY date(e.date), e.produit \
+    UNION ALL SELECT date(d.date), MAX(d.id), '✝️ '||SUM(d.nombre)||CASE WHEN SUM(d.nombre)>1 THEN ' morts' ELSE ' mort' END \
+      FROM declarationmort d GROUP BY date(d.date) \
+    ) WHERE jour IS NOT NULL AND jour<=date('now','localtime') ORDER BY jour DESC, ordre DESC LIMIT 15";
+
+async fn operations(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    let lignes: Vec<(String, String)> = sqlx::query_as(OPERATIONS_SQL).fetch_all(pool).await?;
+    Ok(lignes
+        .into_iter()
+        .map(|(jour, texte)| {
+            let quand = jour.get(8..10).zip(jour.get(5..7)).map(|(j, m)| format!("{j}/{m}")).unwrap_or_else(|| jour.clone());
+            json!({"date": jour, "quand": quand, "texte": texte})
+        })
+        .collect())
+}
 
 async fn reperes(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     generic_rows(
@@ -287,7 +327,18 @@ pub(super) async fn etat_json(State(state): State<AppState>) -> AppResult<Respon
             .await?;
     let cameras: serde_json::Map<String, Value> =
         cameras.into_iter().map(|(id, nom)| (id.to_string(), json!(nom))).collect();
+    // Encarts « Dernières opérations » et « À venir » : calculés seulement
+    // s'ils sont posés sur le plan (la page se relit toutes les 30 s).
+    let encarts: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT type FROM plan_repere WHERE type IN ('operations','a_venir')",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let operations = if encarts.iter().any(|t| t == "operations") { operations(&state.pool).await? } else { vec![] };
+    let a_venir = if encarts.iter().any(|t| t == "a_venir") { super::conduite::a_venir(&state.pool, 14).await? } else { vec![] };
     Ok(axum::Json(json!({
+        "operations": operations,
+        "a_venir": a_venir,
         "cameras": cameras,
         "compteurs": compteurs,
         "cases": cases,
@@ -575,7 +626,9 @@ pub(super) async fn repere(
         if type_repere == "texte" && libelle.is_none() {
             return Err(AppError::Invalid("Écrivez le texte du repère".into()));
         }
-        if !matches!(type_repere.as_str(), "texte" | "note" | "zigbee" | "compteur") && ref_id.is_none() {
+        if !matches!(type_repere.as_str(), "texte" | "note" | "zigbee" | "compteur" | "operations" | "a_venir")
+            && ref_id.is_none()
+        {
             return Err(AppError::Invalid(
                 if type_repere == "camera" {
                     "Choisissez la caméra"
@@ -769,5 +822,54 @@ mod tests {
             })
             .unwrap();
         assert!(rendu.contains("Mater 1"));
+    }
+
+    /// Encarts « Dernières opérations » et « À venir » sur une base neuve.
+    #[tokio::test]
+    async fn les_encarts_operations_et_a_venir() -> anyhow::Result<()> {
+        // db::init exige le mode WAL : base dans un fichier temporaire.
+        let chemin = std::env::temp_dir().join(format!("eo-plan-encarts-{}.db", std::process::id()));
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&chemin)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let demain = (chrono::Local::now().date_naive() + chrono::Duration::days(1)).to_string();
+        sqlx::raw_sql(&format!(
+            "INSERT INTO site(id,code) VALUES(1,'S');\
+             INSERT INTO salle(id,site_id,nom,type) VALUES(1,1,'Gestante','gestante'),(2,1,'PS1','ps'),(3,1,'Engraissement 1','engraissement');\
+             INSERT INTO truie(id,num_travail,date_entree,statut,reformee,rang,mere_cochette) VALUES(1,'T1','2025-01-01','active',0,1,0),(2,'T2','2025-01-01','active',0,1,0);\
+             INSERT INTO transfert(date,espece,salle_dest_id,nombre,truie_id) VALUES('2026-10-20','truie',1,1,1),('2026-10-20','truie',1,1,2);\
+             INSERT INTO transfert(date,espece,salle_source_id,salle_dest_id,nombre) VALUES('2026-10-21','porc',2,3,40);\
+             INSERT INTO transfert(date,espece,salle_source_id,nombre) VALUES('2026-10-22','porc',3,30);\
+             INSERT INTO evenement(type,date,truie_id,nes_vifs,suivi_actif) VALUES('mise_bas','2026-10-23',1,14,0),('mise_bas','2026-10-23',2,12,0);\
+             INSERT INTO tache(titre,type,echeance,fait) VALUES('Laver PS1','Rappel','{demain}',0);\
+             INSERT INTO depart_prevu(date_heure,nombre,note,fait) VALUES('{demain}T02:00',66,'Cooperl',0);"
+        ))
+        .execute(&pool)
+        .await?;
+        let ops = super::operations(&pool).await?;
+        let textes: Vec<&str> = ops.iter().filter_map(|o| o["texte"].as_str()).collect();
+        assert_eq!(
+            textes,
+            [
+                "🐣 2 mises-bas · 26 nés vifs",
+                "🚚 Départ abattoir : 30 porcs",
+                "🐷 40 porcs PS1 → Engraissement 1",
+                "🐖 2 truies déplacées → Gestante",
+            ]
+        );
+        assert_eq!(ops[0]["quand"], "23/10");
+        let a_venir = super::super::conduite::a_venir(&pool, 14).await?;
+        let textes: Vec<&str> = a_venir.iter().filter_map(|o| o["texte"].as_str()).collect();
+        assert!(textes.contains(&"📌 Laver PS1"), "{textes:?}");
+        assert!(textes.contains(&"🚚 Départ abattoir : 66 porcs (Cooperl)"), "{textes:?}");
+        assert!(a_venir.iter().all(|o| o["quand"] == "demain"), "{a_venir:?}");
+        pool.close().await;
+        for suffixe in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffixe}", chemin.display()));
+        }
+        Ok(())
     }
 }

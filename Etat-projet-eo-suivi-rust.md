@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.73.3** — GTE : aliment croissance du silo post-sevrage compté au post-sevrage.
+Version actuelle : **2.74.0** — plan de l'élevage : encarts « Dernières opérations » et « À venir ».
 
+
+Version Rust 2.74.0 : repères plan_repere de type operations (OPERATIONS_SQL, plan_elevage.rs : transferts truies/porcs, départs, ventes, mises-bas, sevrages, IA, échos, soins, morts, regroupés par jour) et a_venir (conduite::a_venir : étapes de bandes non réalisées, soins de portée, départs prévus, tâches, entretiens sur 14 jours), calculés dans etat.json seulement s'ils sont posés.
 
 Version Rust 2.73.3 : STADE_EFFECTIF (gte_periode.rs) range au post-sevrage l'aliment croissance « auto » livré dans un silo qui reçoit du 1er âge (ACTI, START, PREM') et jamais de finition, comme la GTE Cooperl (silo 09).
 

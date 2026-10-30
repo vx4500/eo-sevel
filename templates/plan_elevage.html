@@ -46,6 +46,14 @@
 .rep.texte{border-style:dashed;border-color:#64748b;background:rgba(255,255,255,.85)}
 .rep.note{background:#fef9c3;border-color:#ca8a04;color:#3f2d00;text-align:left;white-space:normal;max-width:16em;font-weight:500}
 .rep.note.dim{max-width:none;overflow:hidden}
+.rep.journal{background:#f0f9ff;border-color:#0369a1;color:#0c2a3f;text-align:left;white-space:normal;max-width:22em;font-weight:400}
+.rep.journal.dim{max-width:none;overflow:hidden}
+.rep.journal b.titre{display:block;border-bottom:1px solid #bae6fd;margin-bottom:2px}
+.rep.journal .op{display:block}
+.rep.journal .op i{font-style:normal;color:#0369a1;font-weight:600}
+.plan-journal ul{list-style:none;padding:0;margin:0}
+.plan-journal li{padding:5px 0;border-bottom:1px solid #e5e7eb}
+.plan-journal li i{font-style:normal;color:#0369a1;font-weight:600;margin-right:6px}
 .plan-note textarea{width:100%;min-height:9em;box-sizing:border-box;font:inherit}
 .plan-note .rust-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .plan-micro.ecoute{background:#b42318;color:#fff}
@@ -146,6 +154,8 @@
     <option value="eclairage">💡 Programme d'éclairage</option>
     <option value="texte">🔤 Texte libre</option>
     <option value="note">📝 Note (à écrire ou dicter)</option>
+    <option value="operations">📋 Dernières opérations (déplacements, mises-bas, départs…)</option>
+    <option value="a_venir">📅 À venir (mises-bas, sevrages, vaccins… sur 14 jours)</option>
   </select></label>
   <label id="plan-choix-salle">Salle<select id="plan-salle">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}</select></label>
   <label id="plan-choix-programme" hidden>Programme<select id="plan-programme">{% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% else %}<option value="">Aucun programme d'éclairage</option>{% endfor %}</select></label>
@@ -177,6 +187,8 @@
   var etat = {salles:[], programmes:[], reperes:[], relais:[]}, edition = false, ouvert = null, dernierMessage = null;
   var MODES = {auto:['🔄','Automatique'], securite:['⚠️','Repli de sécurité'], arret:['⏹️','Arrêt'], vide:['⭕','Salle vide'], simulation:['🧪','Simulation (aucune commande envoyée)'], zigbee:['📡','Sondes Zigbee (hors régulation)']};
 
+  function titreJournal(r){ return r.type == 'a_venir' ? '📅 À venir' : '📋 Dernières opérations'; }
+  function lignesJournal(r){ return (r.type == 'a_venir' ? etat.a_venir : etat.operations) || []; }
   function esc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function nb(v, d){ return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d).replace('.', ','); }
   function salle(id){ return etat.salles.find(function(s){ return s.id == id; }); }
@@ -312,6 +324,11 @@
         return p ? (p.allume ? '💡' : '⚫') + ' ' + esc(p.nom) : 'Programme supprimé';
       case 'note':
         return r.libelle ? esc(r.libelle).replace(/\n/g, '<br>') : '📝 <i>Note vide</i>';
+      case 'operations': case 'a_venir':
+        var ops = lignesJournal(r).slice(0, 8).map(function(o){
+          return '<span class="op"><i>' + esc(o.quand) + '</i> ' + esc(o.texte) + '</span>';
+        }).join('');
+        return '<b class="titre">' + titreJournal(r) + '</b>' + (ops || '<span class="petit">Rien</span>');
       default: return esc(r.libelle);
     }
   }
@@ -325,6 +342,7 @@
       if (r.type == 'case') { var cc = casep(r.ref_id); cl += ' rep-case neutre' + (cc && !cc.porcs && !(cc.truies || []).length && !(cc.verrats || []).length ? ' vide' : ''); }
       if (r.type == 'texte') cl += ' texte';
       if (r.type == 'note') cl += ' note';
+      if (r.type == 'operations' || r.type == 'a_venir') cl += ' journal';
       else if (r.type == 'case' || r.type == 'camera' || r.type == 'note') {}
       else if (r.type == 'compteur') { var k = compteur(r.libelle); cl += !k || k.age_s == null || k.age_s > 900 ? ' agee' : ''; }
       else if (r.type == 'zigbee') {
@@ -444,6 +462,13 @@
     ouvert = r; var h = '';
     if (r.type == 'texte') { fermer(); return; }
     if (r.type == 'note') { if (!rafraichir) ouvrirNote(r); return; }
+    if (r.type == 'operations' || r.type == 'a_venir') {
+      h = '<div class="plan-journal"><h2>' + titreJournal(r) + '</h2><ul>' + (lignesJournal(r).map(function(o){
+        return '<li><i>' + esc(o.quand) + '</i>' + esc(o.texte) + '</li>';
+      }).join('') || '<li>Rien</li>') + '</ul><p><a href="' + (r.type == 'a_venir' ? '/conduite/semaine' : '/planning') + '">' +
+        (r.type == 'a_venir' ? 'Travail de la semaine' : 'Planning') + '</a></p></div>';
+      corps.innerHTML = h; panneau.classList.add('ouvert'); ouvert = r; return;
+    }
     if (r.type == 'camera') {
       var nomCam = etat.cameras && etat.cameras[r.ref_id]; if (!nomCam) { fermer(); return; }
       if (rafraichir && ouvert === r) return;
@@ -754,7 +779,7 @@
       document.getElementById('plan-choix-compteur').hidden = type.value != 'compteur';
       document.getElementById('plan-choix-camera').hidden = type.value != 'camera';
       document.getElementById('plan-choix-case').hidden = type.value != 'case';
-      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','note','relais','zigbee','case','compteur','camera'].indexOf(type.value) >= 0;
+      document.getElementById('plan-choix-salle').hidden = ['eclairage','texte','note','operations','a_venir','relais','zigbee','case','compteur','camera'].indexOf(type.value) >= 0;
       document.getElementById('plan-choix-relais').hidden = type.value != 'relais';
       document.getElementById('plan-choix-programme').hidden = type.value != 'eclairage';
       document.getElementById('plan-choix-texte').hidden = type.value != 'texte';
@@ -776,7 +801,7 @@
       else if (type.value == 'relais') d.ref_id = document.getElementById('plan-relais').value;
       else if (type.value == 'eclairage') d.ref_id = document.getElementById('plan-programme').value;
       else if (type.value == 'texte') d.libelle = document.getElementById('plan-texte').value;
-      else if (type.value == 'note') {}
+      else if (['note','operations','a_venir'].indexOf(type.value) >= 0) {}
       else d.ref_id = document.getElementById('plan-salle').value;
       poster('/ambiance/plan/repere', d).then(charger).catch(function(x){ alert(x.message); });
     });

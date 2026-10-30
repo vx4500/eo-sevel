@@ -795,6 +795,58 @@ fn realise(bande: &BandeCycle, etape: &Etape, faits: &HashMap<(i64, i64), String
     }
 }
 
+/// Encart « À venir » du plan de l'élevage : ce qui reste à faire dans les
+/// `jours` prochains jours. Mêmes étapes que « Travail de la semaine »
+/// (mises-bas, sevrages, transferts, départs, vaccins et soins des truies),
+/// plus les soins de portée, les départs annoncés, les tâches et entretiens.
+pub(super) async fn a_venir(pool: &SqlitePool, jours: i64) -> AppResult<Vec<Value>> {
+    let aujourd_hui = Local::now().date_naive();
+    let fin = aujourd_hui + Duration::days(jours);
+    let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
+    let faits = actes_faits(pool).await;
+    let bandes = charger_bandes(pool, 6).await?;
+    let mut lignes: Vec<(NaiveDate, String)> = Vec::new();
+    for bande in bandes.iter().filter(|b| b.active) {
+        let Some(date_mb) = bande.date_mb else {
+            continue;
+        };
+        for etape in &liste_etapes {
+            let date = etape.date(date_mb);
+            if date < aujourd_hui || date > fin || realise(bande, etape, &faits).is_some() {
+                continue;
+            }
+            let code = if etape.bande_ia { bande_sevree(&bandes, bande) } else { bande.code.clone() };
+            // Libellé complet (« Départs abattoir »), sauf pour les soins dont
+            // le libellé court porte déjà 💉/💊 et le nom de l'acte.
+            let texte = if etape.acte_id.is_some() { &etape.court } else { &etape.libelle };
+            lignes.push((date, format!("{code} · {texte}")));
+        }
+    }
+    let bornes = (aujourd_hui.to_string(), fin.to_string());
+    let autres: Vec<(String, String)> = sqlx::query_as(
+        "SELECT date(sp.date_prevue), COALESCE(b.code||' · ','')||'💉 '||a.libelle||' ('||COUNT(*)||' portée'||CASE WHEN COUNT(*)>1 THEN 's' ELSE '' END||')' \
+         FROM soinportee sp JOIN acteprotocole a ON a.id=sp.protocole_id LEFT JOIN bande b ON b.id=sp.bande_id \
+         WHERE sp.date_realisee IS NULL AND date(sp.date_prevue) BETWEEN ?1 AND ?2 GROUP BY date(sp.date_prevue),a.id,sp.bande_id \
+         UNION ALL SELECT date(date_heure), '🚚 Départ abattoir : '||nombre||' porcs'||COALESCE(' ('||note||')','') FROM depart_prevu \
+         WHERE fait=0 AND date(date_heure) BETWEEN ?1 AND ?2 \
+         UNION ALL SELECT date(echeance), '📌 '||titre||COALESCE(' · '||bande_code,'') FROM tache \
+         WHERE fait=0 AND echeance IS NOT NULL AND date(echeance) BETWEEN ?1 AND ?2 \
+         UNION ALL SELECT date(derniere_date,'+'||frequence_jours||' days'), '🔧 '||nom FROM entretien \
+         WHERE derniere_date IS NOT NULL AND date(derniere_date,'+'||frequence_jours||' days') BETWEEN ?1 AND ?2",
+    )
+    .bind(&bornes.0)
+    .bind(&bornes.1)
+    .fetch_all(pool)
+    .await?;
+    lignes.extend(autres.into_iter().filter_map(|(date, texte)| Some((parse_stored_date(&date)?, texte))));
+    lignes.sort_by_key(|(date, _)| *date);
+    Ok(lignes
+        .into_iter()
+        .map(|(date, texte)| json!({"date": date.to_string(), "quand": quand((date - aujourd_hui).num_days(), date), "texte": texte}))
+        .collect())
+}
+
 async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id: i64) -> AppResult<Vec<Value>> {
     // Chaque requête prend les truies de la bande qui ont encore cette étape
     // à faire dans le cycle en cours.
