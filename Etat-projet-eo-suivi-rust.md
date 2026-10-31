@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.74.4** — régulation : alerte de sortie stable, alerte critique si le démon s'arrête.
+Version actuelle : **2.74.5** — régulation : niveau réel du module 0-10 V relu, commande non appliquée renvoyée.
 
+
+Version Rust 2.74.5 : sortie_reelle lit le niveau du module 0-10 V (entrée voisine de la consigne, nom « Voltage Level » vérifié), plus la seule consigne. Une commande non appliquée est renvoyée au plus une fois par minute (valeur voisine puis cible, le module ne réagissant qu'à un changement). Pause de 300 ms après chaque écriture IPX.
 
 Version Rust 2.74.4 : SuiviSortie (regul_core) : alerte sortie_divergente ouverte après 180 s d'écart continu, fermée seulement après 900 s sans écart, pour ne plus clignoter à chaque relance. ambiance::boucle_regulation (serveur web) lit ambiance_heartbeat chaque minute : alerte critique regulation_arretee au-delà de 180 s de silence si une salle est pilotée.
 

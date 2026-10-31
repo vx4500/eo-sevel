@@ -341,6 +341,25 @@ pub fn sortie_divergente(commande: f64, reelle: f64) -> bool {
     (commande - reelle).abs() > TOLERANCE_SORTIE_PCT
 }
 
+/// Adresse du niveau réel d'une consigne de module 0-10 V : sur l'IPX800 V5, il
+/// suit immédiatement la consigne. La consigne dit ce qui a été demandé, le
+/// niveau ce que le module applique.
+pub fn chemin_niveau_ipx(sortie: &str) -> Option<String> {
+    let (base, id) = sortie.trim().rsplit_once('/')?;
+    let id: u64 = id.parse().ok()?;
+    Some(format!("{base}/{}", id + 1))
+}
+
+/// Valeur proche de `cible`, à envoyer d'abord pour renvoyer une commande : le
+/// module ne réagit qu'à un changement, réécrire la même valeur ne ferait rien.
+pub fn valeur_voisine(cible: f64) -> f64 {
+    if cible >= 99.0 {
+        cible - 1.0
+    } else {
+        cible + 1.0
+    }
+}
+
 /// Durée d'écart entre commande et sortie avant l'alerte : laisse le temps à un
 /// variateur Zigbee de répondre, et à l'automate d'appliquer la rampe.
 pub const DIVERGENCE_ALERTE_S: i64 = 180;
@@ -502,6 +521,18 @@ mod tests {
         assert!(!sortie_divergente(40.0, 37.0));
         assert!(sortie_divergente(36.0, 49.0));
         assert!(sortie_divergente(50.0, 41.0));
+    }
+
+    #[test]
+    fn le_niveau_suit_la_consigne_sur_le_module() {
+        assert_eq!(chemin_niveau_ipx("api/core/ana/196620").as_deref(), Some("api/core/ana/196621"));
+        assert_eq!(chemin_niveau_ipx("0xa4c138a52b72cf69/brightness"), None);
+    }
+
+    #[test]
+    fn la_valeur_voisine_reste_dans_la_plage() {
+        assert_eq!(valeur_voisine(35.0), 36.0);
+        assert_eq!(valeur_voisine(100.0), 99.0);
     }
 
     #[test]

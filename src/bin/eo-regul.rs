@@ -67,6 +67,12 @@ struct AccesIpx {
     simulation: bool,
 }
 
+/// Délai minimal entre deux renvois d'une commande non appliquée.
+const RENVOI_SORTIE_S: i64 = 60;
+/// Pause après une écriture sur l'automate : le 31/10, des commandes envoyées à
+/// quelques millisecondes d'intervalle sur le même module n'ont pas été appliquées.
+const PAUSE_ECRITURE_MS: u64 = 300;
+
 const GABARIT_LECTURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
 const GABARIT_ECRITURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
 
@@ -100,6 +106,8 @@ struct Memoire {
     derniere_temperature: Option<(f64, i64)>,
     /// Écart entre la sortie relue et la commande.
     suivi_sortie: regul_core::SuiviSortie,
+    /// Dernier renvoi d'une commande que le module n'a pas appliquée.
+    ts_renvoi: i64,
     /// Dernier *changement* observé par grandeur : valeur et horodatage. Une
     /// lecture réussie ne prouve pas qu'une sonde est vivante — une sonde
     /// débranchée ou gelée répond souvent la même chose indéfiniment. C'est
@@ -752,6 +760,9 @@ async fn traiter_salle(
                         etat.derniere_ecriture = Some(decision.ventil);
                         etat.ts_derniere_ecriture = ts;
                         applique = true;
+                        if hote.trim() != "zigbee" {
+                            tokio::time::sleep(Duration::from_millis(PAUSE_ECRITURE_MS)).await;
+                        }
                     }
                     Err(error) => {
                         echec_ecriture = Some(error.to_string());
@@ -776,6 +787,35 @@ async fn traiter_salle(
     // garde la commande.
     let commande_effective = salle.pilote && !acces.simulation;
     let reelle = sortie_reelle(client, acces, &hote, salle.sortie_ventil.as_deref()).await;
+    // Le module peut garder son ancien niveau alors que la consigne est bonne.
+    // La relance n'y change rien, elle réécrit la même valeur.
+    if let (true, false, Some(reelle), Some(sortie)) =
+        (commande_effective, applique, reelle, salle.sortie_ventil.as_deref())
+    {
+        if hote.trim() != "zigbee"
+            && sortie_divergente(decision.ventil, reelle)
+            && ts - etat.ts_renvoi >= RENVOI_SORTIE_S
+        {
+            etat.ts_renvoi = ts;
+            tracing::warn!(
+                salle = %salle.nom,
+                commande = format!("{:.1}", decision.ventil),
+                reelle = format!("{reelle:.1}"),
+                "commande non appliquée par le module : renvoi"
+            );
+            let voisine = regul_core::valeur_voisine(decision.ventil);
+            let renvoi = match ecrire(client, acces, &hote, sortie, voisine).await {
+                Ok(()) => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    ecrire(client, acces, &hote, sortie, decision.ventil).await
+                }
+                Err(error) => Err(error),
+            };
+            if let Err(error) = renvoi {
+                tracing::error!(salle = %salle.nom, error = %error, "renvoi impossible");
+            }
+        }
+    }
     let mut affichee = decision.clone();
     if let Some(reelle) = reelle {
         affichee.ventil = reelle;
@@ -1214,6 +1254,11 @@ async fn sortie_reelle(
     sortie: Option<&str>,
 ) -> Option<f64> {
     let sortie = sortie?.trim();
+    if hote.trim() != "zigbee" {
+        if let Some(niveau) = niveau_module(client, acces, hote, sortie).await {
+            return Some(niveau);
+        }
+    }
     let valeur = lire(client, acces, hote, Some(sortie)).await.valeur?;
     if hote.trim() != "zigbee" {
         return Some(valeur);
@@ -1223,6 +1268,22 @@ async fn sortie_reelle(
     };
     let etat = lire(client, acces, hote, Some(&format!("{ieee}/state"))).await.valeur;
     Some(if etat == Some(0.0) { 0.0 } else { variateur_vers_pourcent(valeur) })
+}
+
+/// Niveau réellement appliqué par un module 0-10 V. Le nom de l'entrée voisine
+/// est vérifié : une sortie d'un autre type n'a pas de niveau à relire.
+async fn niveau_module(
+    client: &reqwest::Client,
+    acces: &AccesIpx,
+    hote: &str,
+    sortie: &str,
+) -> Option<f64> {
+    let chemin = regul_core::chemin_niveau_ipx(sortie)?;
+    let adresse = url(&acces.gabarit_lecture, hote, &chemin, &acces.cle);
+    let corps: serde_json::Value =
+        client.get(&adresse).send().await.ok()?.error_for_status().ok()?.json().await.ok()?;
+    corps.get("name")?.as_str()?.contains("Voltage Level").then_some(())?;
+    extraire_nombre(&corps, acces.champ_valeur.as_str())
 }
 
 /// Lecture d'une entrée. Toute erreur se traduit par une absence de mesure —
