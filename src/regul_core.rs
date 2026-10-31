@@ -310,6 +310,37 @@ pub fn salle_vide(ventil_vide: f64) -> Decision {
     }
 }
 
+/// Âge retenu pour une mesure : le plus ancien entre « la valeur n'a pas bougé
+/// depuis » (mémoire du démon, perdue à chaque redémarrage) et l'âge réel donné
+/// par la source. Sans cela, une sonde Zigbee muette depuis des semaines
+/// repassait pour neuve après chaque redémarrage du démon.
+pub fn age_le_plus_ancien(calculee: Lecture, source: Lecture) -> Lecture {
+    Lecture {
+        age_s: calculee.age_s.max(source.age_s),
+        ..calculee
+    }
+}
+
+/// Pourcentage de régulation → échelle d'un variateur Zigbee (0 à 254).
+pub fn pourcent_vers_variateur(pourcent: f64) -> f64 {
+    borner(pourcent, 0.0, 100.0) * 254.0 / 100.0
+}
+
+/// Échelle d'un variateur Zigbee (0 à 254) → pourcentage.
+pub fn variateur_vers_pourcent(valeur: f64) -> f64 {
+    (borner(valeur, 0.0, 254.0) / 254.0 * 100.0).round()
+}
+
+/// Écart toléré entre la commande et la sortie relue : l'automate n'affiche que
+/// des entiers, et les arrondis ne doivent pas lever d'alerte.
+pub const TOLERANCE_SORTIE_PCT: f64 = 3.0;
+
+/// La sortie relue n'est pas celle commandée : quelque chose d'autre écrit
+/// dessus, ou le variateur n'a pas obéi.
+pub fn sortie_divergente(commande: f64, reelle: f64) -> bool {
+    (commande - reelle).abs() > TOLERANCE_SORTIE_PCT
+}
+
 /// Faut-il réécrire la sortie sur l'automate ?
 ///
 /// Écrire à chaque cycle sur treize salles, c'est saturer l'IPX pour rien et
@@ -406,6 +437,35 @@ mod tests {
         let d = salle_vide(8.0);
         assert_eq!((d.ventil, d.mode, d.mode.code()), (8.0, Mode::Vide, "vide"));
         assert_eq!(salle_vide(150.0).ventil, 100.0);
+    }
+
+    #[test]
+    fn une_sonde_muette_garde_son_age_reel_apres_un_redemarrage() {
+        let source = Lecture {
+            valeur: Some(21.0),
+            age_s: 90_000,
+        };
+        let memoire = Lecture::neuve(21.0);
+        let lecture = age_le_plus_ancien(memoire, source);
+        assert_eq!(lecture.age_s, 90_000);
+        let decision = calculer(&Reglages::default(), 22.0, lecture, Lecture::absente(), 0.0);
+        assert_eq!(decision.mode, Mode::Securite);
+    }
+
+    #[test]
+    fn le_variateur_zigbee_se_convertit_dans_les_deux_sens() {
+        assert_eq!(pourcent_vers_variateur(20.0), 50.8);
+        assert_eq!(pourcent_vers_variateur(150.0), 254.0);
+        assert_eq!(variateur_vers_pourcent(51.0), 20.0);
+        assert_eq!(variateur_vers_pourcent(180.0), 71.0);
+    }
+
+    #[test]
+    fn seule_une_vraie_difference_de_sortie_compte() {
+        assert!(!sortie_divergente(35.8, 36.0));
+        assert!(!sortie_divergente(40.0, 37.0));
+        assert!(sortie_divergente(36.0, 49.0));
+        assert!(sortie_divergente(50.0, 41.0));
     }
 
     #[test]

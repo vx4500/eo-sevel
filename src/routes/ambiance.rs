@@ -135,8 +135,8 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     let mut resultat = Vec::with_capacity(lignes.len());
     for ligne in lignes {
         let salle_id: i64 = ligne.try_get("id")?;
-        let courbe_id: Option<i64> = ligne.try_get("courbe_id").ok();
-        let jour_bande: Option<i64> = ligne.try_get("jour_bande").ok();
+        let courbe_id = ligne.try_get::<Option<i64>, _>("courbe_id").ok().flatten();
+        let jour_bande = ligne.try_get::<Option<i64>, _>("jour_bande").ok().flatten();
         let t_cible_fixe: f64 = ligne.try_get("t_cible_fixe").unwrap_or(22.0);
         let ts: Option<i64> = ligne.try_get::<Option<i64>, _>("ts").ok().flatten();
         let age = ts.map(|ts| instant - ts);
@@ -1391,8 +1391,8 @@ pub(super) async fn sorties_commandables(
                         .ok()
                         .flatten()
                         .unwrap_or_default(),
-                    debut: ligne.try_get("id_debut").ok(),
-                    fin: ligne.try_get("id_fin").ok(),
+                    debut: ligne.try_get::<Option<i64>, _>("id_debut").ok().flatten(),
+                    fin: ligne.try_get::<Option<i64>, _>("id_fin").ok().flatten(),
                 },
             )
         })
@@ -1907,8 +1907,8 @@ async fn carte(
                     .ok()
                     .flatten()
                     .unwrap_or_default(),
-                debut: ligne.try_get("id_debut").ok(),
-                fin: ligne.try_get("id_fin").ok(),
+                debut: ligne.try_get::<Option<i64>, _>("id_debut").ok().flatten(),
+                fin: ligne.try_get::<Option<i64>, _>("id_fin").ok().flatten(),
             },
             commandable: ligne.try_get::<i64, _>("commandable").unwrap_or(0) != 0,
             ordre: ligne.try_get("ordre").unwrap_or(0),

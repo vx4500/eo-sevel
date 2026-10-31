@@ -47,8 +47,9 @@ mod formule;
 mod zigbee_pont;
 
 use regul_core::{
-    calculer, consigne_courbe, depuis_dixiemes, doit_ecrire, doit_enregistrer, en_dixiemes,
+    age_le_plus_ancien, calculer, consigne_courbe, depuis_dixiemes, doit_ecrire, doit_enregistrer, en_dixiemes,
     Decision, Lecture, Mode, PointCourbe, Reglages,
+    pourcent_vers_variateur, sortie_divergente, variateur_vers_pourcent,
 };
 
 /// Gabarits d'accès à l'automate. Ils vivent dans la table `parametre` plutôt
@@ -65,6 +66,10 @@ struct AccesIpx {
     cle: String,
     simulation: bool,
 }
+
+/// Durée d'écart entre commande et sortie avant l'alerte : laisse le temps à un
+/// variateur Zigbee de répondre, et à l'automate d'appliquer la rampe.
+const DIVERGENCE_ALERTE_S: i64 = 180;
 
 const GABARIT_LECTURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
 const GABARIT_ECRITURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
@@ -97,6 +102,8 @@ struct Memoire {
     ts_derniere_ecriture: i64,
     derniere_mesure: HashMap<String, (f64, i64)>,
     derniere_temperature: Option<(f64, i64)>,
+    /// Depuis quand la sortie relue diffère de la commande.
+    divergence_depuis: Option<i64>,
     /// Dernier *changement* observé par grandeur : valeur et horodatage. Une
     /// lecture réussie ne prouve pas qu'une sonde est vivante — une sonde
     /// débranchée ou gelée répond souvent la même chose indéfiniment. C'est
@@ -418,18 +425,18 @@ async fn charger_salles(pool: &SqlitePool) -> Result<Vec<SalleRegulee>> {
             salle_id: ligne.try_get("salle_id")?,
             nom: ligne.try_get("nom")?,
             pilote: ligne.try_get::<i64, _>("pilote").unwrap_or(0) != 0,
-            ipx_hote: ligne.try_get("ipx_hote").ok(),
-            entree_t: ligne.try_get("entree_t").ok(),
-            entree_h: ligne.try_get("entree_h").ok(),
-            entree_lux: ligne.try_get("entree_lux").ok(),
-            sortie_ventil: ligne.try_get("sortie_ventil").ok(),
-            courbe_id: ligne.try_get("courbe_id").ok(),
+            ipx_hote: texte_renseigne(&ligne, "ipx_hote"),
+            entree_t: texte_renseigne(&ligne, "entree_t"),
+            entree_h: texte_renseigne(&ligne, "entree_h"),
+            entree_lux: texte_renseigne(&ligne, "entree_lux"),
+            sortie_ventil: texte_renseigne(&ligne, "sortie_ventil"),
+            courbe_id: ligne.try_get::<Option<i64>, _>("courbe_id").ok().flatten(),
             t_cible_fixe: ligne.try_get("t_cible_fixe")?,
             reglages: Reglages {
                 plage: ligne.try_get("plage")?,
                 ventil_min: ligne.try_get("ventil_min")?,
                 ventil_max: ligne.try_get("ventil_max")?,
-                hygro_cible: ligne.try_get("hygro_cible").ok(),
+                hygro_cible: ligne.try_get::<Option<f64>, _>("hygro_cible").ok().flatten(),
                 hygro_influence: ligne.try_get("hygro_influence")?,
                 anticipation: ligne.try_get("anticipation")?,
                 t_plausible_min: ligne.try_get("t_plausible_min")?,
@@ -439,9 +446,9 @@ async fn charger_salles(pool: &SqlitePool) -> Result<Vec<SalleRegulee>> {
                 fraicheur_max_s: ligne.try_get("fraicheur_max_s")?,
                 ventil_securite: ligne.try_get("ventil_securite")?,
             },
-            t_alerte_min: ligne.try_get("t_alerte_min").ok(),
-            t_alerte_max: ligne.try_get("t_alerte_max").ok(),
-            h_alerte_max: ligne.try_get("h_alerte_max").ok(),
+            t_alerte_min: ligne.try_get::<Option<f64>, _>("t_alerte_min").ok().flatten(),
+            t_alerte_max: ligne.try_get::<Option<f64>, _>("t_alerte_max").ok().flatten(),
+            h_alerte_max: ligne.try_get::<Option<f64>, _>("h_alerte_max").ok().flatten(),
             deadband_pct: ligne.try_get("deadband_pct")?,
             relance_s: ligne.try_get("relance_s")?,
         });
@@ -529,6 +536,16 @@ async fn preconditionnement_en_attente(
         return Ok(None);
     };
     Ok(Some((ligne.try_get("bande_id")?, 0)))
+}
+
+/// Colonne de texte facultative : vide ou NULL valent « non renseigné ». Une
+/// sortie à l'adresse vide ne doit jamais être écrite.
+fn texte_renseigne(ligne: &sqlx::sqlite::SqliteRow, colonne: &str) -> Option<String> {
+    ligne
+        .try_get::<Option<String>, _>(colonne)
+        .ok()
+        .flatten()
+        .filter(|texte| !texte.trim().is_empty())
 }
 
 async fn points_courbe(pool: &SqlitePool, courbe_id: i64) -> Result<Vec<PointCourbe>> {
@@ -674,8 +691,8 @@ async fn traiter_salle(
 
     // L'âge d'une mesure se compte depuis son dernier changement, pas depuis
     // la dernière requête réussie.
-    let temperature = etat.age_mesure("t", brut_t.valeur, ts);
-    let humidite = etat.age_mesure("h", brut_h.valeur, ts);
+    let temperature = age_le_plus_ancien(etat.age_mesure("t", brut_t.valeur, ts), brut_t);
+    let humidite = age_le_plus_ancien(etat.age_mesure("h", brut_h.valeur, ts), brut_h);
     let luminosite = brut_lux;
 
     // Gradient en °C/h, calculé sur la mesure précédente gardée en mémoire.
@@ -758,24 +775,38 @@ async fn traiter_salle(
         );
     }
 
-    // Sans commande envoyée (simulation ou observation), l'écran et
-    // l'historique montrent la ventilation réellement en place sur
-    // l'automate : afficher notre calcul faisait croire que la salle tournait
-    // à 40 % alors que la sortie était réglée à la main à 15 %.
+    // L'écran et l'historique montrent toujours la ventilation réellement en
+    // place, jamais la seule intention : une sortie reprise par l'automate ou
+    // un variateur qui n'obéit pas doit se voir. Sans relecture possible, on
+    // garde la commande.
+    let commande_effective = salle.pilote && !acces.simulation;
+    let reelle = sortie_reelle(client, acces, &hote, salle.sortie_ventil.as_deref()).await;
     let mut affichee = decision.clone();
-    if !(salle.pilote && !acces.simulation) && hote.trim() != "zigbee" {
-        if let Some(reelle) = lire(client, acces, &hote, salle.sortie_ventil.as_deref())
-            .await
-            .valeur
-        {
-            let calcul = format!("calcul EO_Sevel {:.0} % (non envoyé)", decision.ventil);
-            affichee.ventil = reelle;
+    if let Some(reelle) = reelle {
+        affichee.ventil = reelle;
+        let note = if commande_effective {
+            sortie_divergente(decision.ventil, reelle)
+                .then(|| format!("commande EO_Sevel {:.0} %, sortie réelle {reelle:.0} %", decision.ventil))
+        } else {
+            Some(format!("calcul EO_Sevel {:.0} % (non envoyé)", decision.ventil))
+        };
+        if let Some(note) = note {
             affichee.message = Some(match decision.message.as_deref() {
-                Some(texte) => format!("{texte} · {calcul}"),
-                None => calcul,
+                Some(texte) => format!("{texte} · {note}"),
+                None => note,
             });
         }
     }
+    let divergence = match reelle {
+        Some(reelle) if commande_effective && sortie_divergente(decision.ventil, reelle) => {
+            let depuis = *etat.divergence_depuis.get_or_insert(ts);
+            (ts - depuis >= DIVERGENCE_ALERTE_S).then_some(reelle)
+        }
+        _ => {
+            etat.divergence_depuis = None;
+            None
+        }
+    };
 
     enregistrer_mesures(
         pool,
@@ -805,13 +836,29 @@ async fn traiter_salle(
     )
     .await?;
 
-    // La consigne n'atteint réellement l'automate que sur une salle pilotée,
-    // hors simulation. Sinon la ventilation réelle suit la régulation en place
-    // et juger « l'effet » de notre commande n'a aucun sens.
-    let commande_effective = salle.pilote && !acces.simulation;
     // Salle vide : pas d'alerte de température ni d'hygrométrie (personne à
     // protéger, et une salle vide qui refroidit est normale).
     let vide = decision.mode == Mode::Vide;
+    match divergence {
+        Some(reelle) => {
+            let _ = ouvrir_alerte(
+                pool,
+                salle.salle_id,
+                "sortie_divergente",
+                "alerte",
+                &format!(
+                    "Ventilation commandée à {:.0} % mais sortie à {reelle:.0} % : \
+                     l'automate écrit dessus, ou le variateur ne répond pas",
+                    decision.ventil
+                ),
+            )
+            .await;
+        }
+        None if etat.divergence_depuis.is_none() => {
+            let _ = fermer_alerte(pool, salle.salle_id, "sortie_divergente").await;
+        }
+        None => {}
+    }
     surveiller(
         pool,
         salle,
@@ -819,6 +866,7 @@ async fn traiter_salle(
         if vide { None } else { humidite.valeur },
         &decision,
         commande_effective,
+        echec_ecriture.is_none(),
     )
     .await;
 
@@ -952,6 +1000,7 @@ async fn surveiller(
     humidite: Option<f64>,
     decision: &Decision,
     commande_effective: bool,
+    ecriture_ok: bool,
 ) {
     if decision.mode == Mode::Securite {
         let _ = ouvrir_alerte(
@@ -967,6 +1016,10 @@ async fn surveiller(
         .await;
     } else {
         let _ = fermer_alerte(pool, salle.salle_id, "sonde").await;
+    }
+    // Fermée seulement si l'écriture a réussi : sinon l'alerte se fermait puis
+    // se rouvrait à chaque cycle tant que l'automate refusait la consigne.
+    if ecriture_ok {
         let _ = fermer_alerte(pool, salle.salle_id, "liaison").await;
     }
 
@@ -1054,7 +1107,7 @@ async fn detecter_ventilation_inefficace(
     .bind(depuis)
     .fetch_optional(pool)
     .await?;
-    let mini_ventil: Option<i64> = ligne.and_then(|ligne| ligne.try_get("mini_ventil").ok());
+    let mini_ventil: Option<i64> = ligne.and_then(|ligne| ligne.try_get::<Option<i64>, _>("mini_ventil").ok().flatten());
     // Il faut que la commande soit restée à fond sur toute la fenêtre, sinon
     // on observe un simple à-coup de régulation — ou une charge de chaleur
     // que la ventilation n'a pas encore fini de compenser — pas une panne.
@@ -1158,6 +1211,26 @@ fn url(gabarit: &str, hote: &str, id: &str, cle: &str) -> String {
         .replace("{cle}", cle)
 }
 
+/// Ventilation réellement en place, en %. Un variateur Zigbee éteint vaut 0 %,
+/// quelle que soit la luminosité qu'il a gardée en mémoire.
+async fn sortie_reelle(
+    client: &reqwest::Client,
+    acces: &AccesIpx,
+    hote: &str,
+    sortie: Option<&str>,
+) -> Option<f64> {
+    let sortie = sortie?.trim();
+    let valeur = lire(client, acces, hote, Some(sortie)).await.valeur?;
+    if hote.trim() != "zigbee" {
+        return Some(valeur);
+    }
+    let Some(ieee) = sortie.strip_suffix("/brightness") else {
+        return Some(valeur);
+    };
+    let etat = lire(client, acces, hote, Some(&format!("{ieee}/state"))).await.valeur;
+    Some(if etat == Some(0.0) { 0.0 } else { variateur_vers_pourcent(valeur) })
+}
+
 /// Lecture d'une entrée. Toute erreur se traduit par une absence de mesure —
 /// jamais par une valeur par défaut, qui serait indiscernable d'une vraie
 /// lecture et pourrait faire réguler dans le vide.
@@ -1257,7 +1330,7 @@ async fn ecrire(
         // Variateur Zigbee : la régulation raisonne en %, la luminosité va
         // de 0 à 254.
         let valeur = if id.trim().ends_with("/brightness") {
-            valeur.clamp(0.0, 100.0) * 254.0 / 100.0
+            pourcent_vers_variateur(valeur)
         } else {
             valeur
         };
