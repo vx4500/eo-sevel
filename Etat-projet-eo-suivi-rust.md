@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.74.1** — ambiance : la ventilation affichée est celle réellement en place sur l'automate.
+Version actuelle : **2.74.2** — régulation : variateurs Zigbee pilotables, limites de courbe vides respectées.
 
+
+Version Rust 2.74.2 : eo-regul lit ventil_min/ventil_max des points de courbe en Option<f64> (un NULL donnait 0 % le 31/10) ; écriture vers un variateur Zigbee (chemin …/brightness) convertie de % en 0–254.
 
 Version Rust 2.74.1 : eo-regul, hors commande effective (simulation ou salle non pilotée), relit la sortie sortie_ventil de l'automate et enregistre cette valeur réelle dans ambiance_etat et ambiance_mesure ; le calcul non envoyé passe dans le message, affiché dans le panneau de salle du plan.
 

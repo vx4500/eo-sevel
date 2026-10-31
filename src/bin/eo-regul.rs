@@ -544,8 +544,10 @@ async fn points_courbe(pool: &SqlitePool, courbe_id: i64) -> Result<Vec<PointCou
         .map(|ligne| PointCourbe {
             jour: ligne.try_get("jour").unwrap_or(0),
             t_cible: ligne.try_get("t_cible").unwrap_or(20.0),
-            ventil_min: ligne.try_get("ventil_min").ok(),
-            ventil_max: ligne.try_get("ventil_max").ok(),
+            // Un NULL lu en f64 donne 0 avec SQLite : passer par Option, sinon
+            // un point sans limites imposait 0 % de ventilation (31/10).
+            ventil_min: ligne.try_get::<Option<f64>, _>("ventil_min").ok().flatten(),
+            ventil_max: ligne.try_get::<Option<f64>, _>("ventil_max").ok().flatten(),
         })
         .collect())
 }
@@ -1252,6 +1254,13 @@ async fn ecrire(
     valeur: f64,
 ) -> Result<()> {
     if hote.trim() == "zigbee" {
+        // Variateur Zigbee : la régulation raisonne en %, la luminosité va
+        // de 0 à 254.
+        let valeur = if id.trim().ends_with("/brightness") {
+            valeur.clamp(0.0, 100.0) * 254.0 / 100.0
+        } else {
+            valeur
+        };
         return zigbee_pont::commander(&acces.pool, id, valeur).await;
     }
     let adresse = url(&acces.gabarit_ecriture, hote, id.trim(), &acces.cle);
