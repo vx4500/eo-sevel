@@ -756,6 +756,25 @@ async fn traiter_salle(
         );
     }
 
+    // Sans commande envoyée (simulation ou observation), l'écran et
+    // l'historique montrent la ventilation réellement en place sur
+    // l'automate : afficher notre calcul faisait croire que la salle tournait
+    // à 40 % alors que la sortie était réglée à la main à 15 %.
+    let mut affichee = decision.clone();
+    if !(salle.pilote && !acces.simulation) && hote.trim() != "zigbee" {
+        if let Some(reelle) = lire(client, acces, &hote, salle.sortie_ventil.as_deref())
+            .await
+            .valeur
+        {
+            let calcul = format!("calcul EO_Sevel {:.0} % (non envoyé)", decision.ventil);
+            affichee.ventil = reelle;
+            affichee.message = Some(match decision.message.as_deref() {
+                Some(texte) => format!("{texte} · {calcul}"),
+                None => calcul,
+            });
+        }
+    }
+
     enregistrer_mesures(
         pool,
         salle,
@@ -765,7 +784,7 @@ async fn traiter_salle(
         temperature.valeur,
         humidite.valeur,
         luminosite.valeur,
-        &decision,
+        &affichee,
         consigne,
     )
     .await?;
@@ -778,7 +797,7 @@ async fn traiter_salle(
         humidite.valeur,
         luminosite.valeur,
         consigne,
-        &decision,
+        &affichee,
         bande,
         acces.simulation,
     )

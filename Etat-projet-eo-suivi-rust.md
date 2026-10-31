@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.74.0** — plan de l'élevage : encarts « Dernières opérations » et « À venir ».
+Version actuelle : **2.74.1** — ambiance : la ventilation affichée est celle réellement en place sur l'automate.
 
+
+Version Rust 2.74.1 : eo-regul, hors commande effective (simulation ou salle non pilotée), relit la sortie sortie_ventil de l'automate et enregistre cette valeur réelle dans ambiance_etat et ambiance_mesure ; le calcul non envoyé passe dans le message, affiché dans le panneau de salle du plan.
 
 Version Rust 2.74.0 : repères plan_repere de type operations (OPERATIONS_SQL, plan_elevage.rs : transferts truies/porcs, départs, ventes, mises-bas, sevrages, IA, échos, soins, morts, regroupés par jour) et a_venir (conduite::a_venir : étapes de bandes non réalisées, soins de portée, départs prévus, tâches, entretiens sur 14 jours), calculés dans etat.json seulement s'ils sont posés.
 

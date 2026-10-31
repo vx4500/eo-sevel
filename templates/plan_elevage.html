@@ -523,6 +523,7 @@
       h += '<div class="plan-mesures"><div>Temp.<b>' + nb(s.t, 1) + '°</b></div><div>Hygro<b>' + nb(s.h, 0) + ' %</b></div><div>Ventil.<b>' + nb(s.ventil, 0) + ' %</b></div></div>';
       h += '<p>' + m[0] + ' ' + esc(m[1]) + (s.consigne != null ? ' — consigne appliquée ' + nb(s.consigne, 1) + ' °C' : '') +
         (s.mesure_age_texte ? ' <span class="muted">(mesure ' + esc(s.mesure_age_texte) + ')</span>' : '') + '</p>';
+      if (s.message) h += '<p class="muted">' + esc(s.message) + '</p>';
       (s.alertes || []).forEach(function(a){ h += '<p class="plan-message erreur">⚠️ ' + esc(a.message) + '</p>'; });
       if (!s.configuree) {
         h += '<p class="muted">Salle pas encore raccordée à la régulation.</p>';
