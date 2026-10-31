@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.74.3** — régulation : sortie réelle relue et comparée à la commande, âge réel des sondes, réglages vides respectés.
+Version actuelle : **2.74.4** — régulation : alerte de sortie stable, alerte critique si le démon s'arrête.
 
+
+Version Rust 2.74.4 : SuiviSortie (regul_core) : alerte sortie_divergente ouverte après 180 s d'écart continu, fermée seulement après 900 s sans écart, pour ne plus clignoter à chaque relance. ambiance::boucle_regulation (serveur web) lit ambiance_heartbeat chaque minute : alerte critique regulation_arretee au-delà de 180 s de silence si une salle est pilotée.
 
 Version Rust 2.74.3 : eo-regul lit courbe_id, hygro_cible, t_alerte_min, t_alerte_max et h_alerte_max en Option (un NULL valait 0 : fausse alerte « seuil 0 % » sur les salles sans seuil). Sortie relue à chaque cycle (sortie_reelle, Zigbee converti en %) : ambiance_etat et ambiance_mesure portent la valeur réelle, alerte sortie_divergente après 180 s d'écart de plus de 3 %. age_le_plus_ancien garde l'âge réel d'une sonde Zigbee. Alerte liaison fermée seulement si l'écriture a réussi. Textes vides d'adressage traités comme non renseignés.
 

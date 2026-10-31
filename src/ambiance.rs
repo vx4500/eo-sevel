@@ -137,6 +137,56 @@ pub async fn replier(pool: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Au-delà de ce délai sans battement, la régulation est tenue pour arrêtée.
+const REGULATION_MUETTE_S: i64 = 180;
+
+/// Vérifie que la régulation vit tant qu'elle a des salles à piloter. Si elle
+/// s'arrête, rien ne reprend la main : les sorties restent figées à leur
+/// dernière valeur, d'où l'alerte critique.
+pub async fn verifier_regulation(pool: &SqlitePool, maintenant: i64) -> anyhow::Result<()> {
+    let pilotees: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM ambiance_salle WHERE actif=1 AND pilote=1")
+            .fetch_one(pool)
+            .await?;
+    let battement: Option<i64> = sqlx::query_scalar("SELECT ts FROM ambiance_heartbeat WHERE id=1")
+        .fetch_optional(pool)
+        .await?;
+    let arretee = pilotees > 0
+        && battement.is_none_or(|ts| maintenant - ts > REGULATION_MUETTE_S);
+    if arretee {
+        sqlx::query(
+            "INSERT INTO ambiance_alerte(salle_id,type,gravite,debut,message) \
+             SELECT NULL,'regulation_arretee','critique',CURRENT_TIMESTAMP,? \
+             WHERE NOT EXISTS(SELECT 1 FROM ambiance_alerte \
+                              WHERE type='regulation_arretee' AND fin IS NULL)",
+        )
+        .bind("Régulation de ventilation arrêtée : les sorties restent figées à leur dernière valeur")
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "UPDATE ambiance_alerte SET fin=CURRENT_TIMESTAMP \
+             WHERE type='regulation_arretee' AND fin IS NULL",
+        )
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Surveillance de la régulation, lancée au démarrage du serveur. La première
+/// passe attend que le démon ait redémarré lui aussi après une mise à jour.
+pub async fn boucle_regulation(pool: SqlitePool) {
+    tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+    loop {
+        let maintenant = chrono::Utc::now().timestamp();
+        if let Err(error) = verifier_regulation(&pool, maintenant).await {
+            tracing::error!(error = %error, "surveillance de la régulation impossible");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
+}
+
 /// Boucle d'entretien, lancée au démarrage du serveur. Une passe par heure
 /// suffit largement, et un échec n'interrompt jamais la boucle.
 pub async fn boucle_entretien(pool: SqlitePool) {
@@ -165,6 +215,50 @@ mod tests {
             .execute(&pool)
             .await?;
         Ok(pool)
+    }
+
+    async fn alertes_regulation(pool: &SqlitePool) -> anyhow::Result<(i64, i64)> {
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ambiance_alerte WHERE type='regulation_arretee'",
+        )
+        .fetch_one(pool)
+        .await?;
+        let ouvertes: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ambiance_alerte WHERE type='regulation_arretee' AND fin IS NULL",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok((total, ouvertes))
+    }
+
+    #[tokio::test]
+    async fn une_regulation_muette_alerte_une_seule_fois_puis_se_ferme() -> anyhow::Result<()> {
+        let pool = base().await?;
+        sqlx::query("INSERT INTO site(id,code) VALUES(1,'S1')").execute(&pool).await?;
+        sqlx::query("INSERT INTO salle(id,site_id,nom) VALUES(1,1,'Salle')").execute(&pool).await?;
+        sqlx::query("INSERT INTO ambiance_salle(salle_id,actif,pilote) VALUES(1,1,1)")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO ambiance_heartbeat(id,ts) VALUES(1,1000)").execute(&pool).await?;
+
+        verifier_regulation(&pool, 1180).await?;
+        assert_eq!(alertes_regulation(&pool).await?, (0, 0));
+        verifier_regulation(&pool, 1181).await?;
+        verifier_regulation(&pool, 1241).await?;
+        assert_eq!(alertes_regulation(&pool).await?, (1, 1));
+
+        sqlx::query("UPDATE ambiance_heartbeat SET ts=1300").execute(&pool).await?;
+        verifier_regulation(&pool, 1310).await?;
+        assert_eq!(alertes_regulation(&pool).await?, (1, 0));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sans_salle_pilotee_le_silence_de_la_regulation_est_normal() -> anyhow::Result<()> {
+        let pool = base().await?;
+        verifier_regulation(&pool, 100_000).await?;
+        assert_eq!(alertes_regulation(&pool).await?, (0, 0));
+        Ok(())
     }
 
     #[tokio::test]

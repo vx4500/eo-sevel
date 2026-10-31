@@ -121,6 +121,12 @@ async fn main() -> anyhow::Result<()> {
         crate::ambiance::boucle_entretien(ambiance_pool).await;
     });
 
+    // Régulation de ventilation : alerte critique si le démon se tait.
+    let regulation_pool = pool.clone();
+    tokio::spawn(async move {
+        crate::ambiance::boucle_regulation(regulation_pool).await;
+    });
+
     // Alertes SMS (Free Mobile) et SMS au retour du courant.
     let sms_pool = pool.clone();
     tokio::spawn(async move {

@@ -67,10 +67,6 @@ struct AccesIpx {
     simulation: bool,
 }
 
-/// Durée d'écart entre commande et sortie avant l'alerte : laisse le temps à un
-/// variateur Zigbee de répondre, et à l'automate d'appliquer la rampe.
-const DIVERGENCE_ALERTE_S: i64 = 180;
-
 const GABARIT_LECTURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
 const GABARIT_ECRITURE_DEFAUT: &str = "http://{hote}/{id}?ApiKey={cle}";
 
@@ -102,8 +98,8 @@ struct Memoire {
     ts_derniere_ecriture: i64,
     derniere_mesure: HashMap<String, (f64, i64)>,
     derniere_temperature: Option<(f64, i64)>,
-    /// Depuis quand la sortie relue diffère de la commande.
-    divergence_depuis: Option<i64>,
+    /// Écart entre la sortie relue et la commande.
+    suivi_sortie: regul_core::SuiviSortie,
     /// Dernier *changement* observé par grandeur : valeur et horodatage. Une
     /// lecture réussie ne prouve pas qu'une sonde est vivante — une sonde
     /// débranchée ou gelée répond souvent la même chose indéfiniment. C'est
@@ -216,9 +212,7 @@ async fn main() -> Result<()> {
             }
             Err(error) => {
                 erreurs += 1;
-                // Une erreur de cycle ne doit jamais arrêter la régulation :
-                // la salle concernée retombera d'elle-même en repli côté
-                // automate si la situation dure.
+                // Une erreur de cycle ne doit jamais arrêter la régulation.
                 tracing::error!(error = %error, cycles, erreurs, "cycle en échec");
             }
         }
@@ -229,7 +223,8 @@ async fn main() -> Result<()> {
     }
 }
 
-/// Enregistre le battement de cœur. C'est ce signal que l'automate surveille.
+/// Enregistre le battement de cœur. C'est ce signal que le serveur web
+/// surveille : sans lui, une alerte critique part (voir `ambiance::verifier_regulation`).
 async fn battement(pool: &SqlitePool, cycles: i64, erreurs: i64) -> Result<()> {
     sqlx::query(
         "INSERT INTO ambiance_heartbeat(id,ts,version,cycles,erreurs) VALUES(1,?,?,?,?) \
@@ -797,16 +792,15 @@ async fn traiter_salle(
             });
         }
     }
-    let divergence = match reelle {
-        Some(reelle) if commande_effective && sortie_divergente(decision.ventil, reelle) => {
-            let depuis = *etat.divergence_depuis.get_or_insert(ts);
-            (ts - depuis >= DIVERGENCE_ALERTE_S).then_some(reelle)
-        }
-        _ => {
-            etat.divergence_depuis = None;
-            None
-        }
-    };
+    if !commande_effective {
+        etat.suivi_sortie = Default::default();
+    }
+    let divergence = reelle.filter(|reelle| {
+        commande_effective && sortie_divergente(decision.ventil, *reelle)
+    });
+    if commande_effective && reelle.is_some() {
+        etat.suivi_sortie.observer(divergence.is_some(), ts);
+    }
 
     enregistrer_mesures(
         pool,
@@ -840,7 +834,7 @@ async fn traiter_salle(
     // protéger, et une salle vide qui refroidit est normale).
     let vide = decision.mode == Mode::Vide;
     match divergence {
-        Some(reelle) => {
+        Some(reelle) if etat.suivi_sortie.alerte => {
             let _ = ouvrir_alerte(
                 pool,
                 salle.salle_id,
@@ -854,10 +848,10 @@ async fn traiter_salle(
             )
             .await;
         }
-        None if etat.divergence_depuis.is_none() => {
+        _ if !etat.suivi_sortie.alerte => {
             let _ = fermer_alerte(pool, salle.salle_id, "sortie_divergente").await;
         }
-        None => {}
+        _ => {}
     }
     surveiller(
         pool,

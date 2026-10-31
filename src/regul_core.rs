@@ -341,6 +341,42 @@ pub fn sortie_divergente(commande: f64, reelle: f64) -> bool {
     (commande - reelle).abs() > TOLERANCE_SORTIE_PCT
 }
 
+/// Durée d'écart entre commande et sortie avant l'alerte : laisse le temps à un
+/// variateur Zigbee de répondre, et à l'automate d'appliquer la rampe.
+pub const DIVERGENCE_ALERTE_S: i64 = 180;
+
+/// Durée d'accord sans le moindre écart avant de fermer l'alerte. Plus longue
+/// que la relance de la sortie (5 min) : quand un autre régulateur écrit
+/// dessus, chaque relance remet la sortie d'accord pendant quelques instants,
+/// et ce répit ne doit pas fermer l'alerte pour la rouvrir ensuite.
+pub const ACCORD_FERMETURE_S: i64 = 900;
+
+/// Suivi de l'écart entre commande et sortie, d'un cycle à l'autre.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SuiviSortie {
+    debut_ecart: Option<i64>,
+    dernier_ecart: Option<i64>,
+    pub alerte: bool,
+}
+
+impl SuiviSortie {
+    /// Prend en compte la relecture du cycle.
+    pub fn observer(&mut self, ecart: bool, ts: i64) {
+        if ecart {
+            let debut = *self.debut_ecart.get_or_insert(ts);
+            self.dernier_ecart = Some(ts);
+            if ts - debut >= DIVERGENCE_ALERTE_S {
+                self.alerte = true;
+            }
+        } else {
+            self.debut_ecart = None;
+            if self.dernier_ecart.is_none_or(|dernier| ts - dernier >= ACCORD_FERMETURE_S) {
+                self.alerte = false;
+            }
+        }
+    }
+}
+
 /// Faut-il réécrire la sortie sur l'automate ?
 ///
 /// Écrire à chaque cycle sur treize salles, c'est saturer l'IPX pour rien et
@@ -466,6 +502,47 @@ mod tests {
         assert!(!sortie_divergente(40.0, 37.0));
         assert!(sortie_divergente(36.0, 49.0));
         assert!(sortie_divergente(50.0, 41.0));
+    }
+
+    #[test]
+    fn un_ecart_bref_ne_declenche_pas_d_alerte() {
+        let mut suivi = SuiviSortie::default();
+        suivi.observer(true, 0);
+        suivi.observer(true, 150);
+        suivi.observer(false, 180);
+        suivi.observer(true, 210);
+        suivi.observer(true, 240);
+        assert!(!suivi.alerte);
+    }
+
+    #[test]
+    fn l_alerte_reste_ouverte_quand_la_sortie_fait_le_yoyo() {
+        let mut suivi = SuiviSortie::default();
+        // Un autre régulateur reprend la sortie 30 s après chaque relance.
+        for relance in 0..6 {
+            let debut = relance * 300;
+            suivi.observer(false, debut);
+            if relance > 0 {
+                assert!(suivi.alerte, "fermée à la relance {relance}");
+            }
+            for ts in (debut + 30..debut + 300).step_by(30) {
+                suivi.observer(true, ts);
+            }
+        }
+        assert!(suivi.alerte);
+    }
+
+    #[test]
+    fn l_alerte_se_ferme_apres_un_accord_durable() {
+        let mut suivi = SuiviSortie::default();
+        suivi.observer(true, 0);
+        suivi.observer(true, 180);
+        assert!(suivi.alerte);
+        suivi.observer(false, 210);
+        suivi.observer(false, 1050);
+        assert!(suivi.alerte);
+        suivi.observer(false, 1080);
+        assert!(!suivi.alerte);
     }
 
     #[test]
