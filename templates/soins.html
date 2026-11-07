@@ -1,0 +1,117 @@
+{% extends "base.html" %}{% block title %}Soins · EO_Sevel{% endblock %}{% block content %}
+<style>
+.soins-tete{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.soins-nav{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+.soins-nav a{padding:6px 12px;border-radius:99px;background:#e8efeb;color:#244a3c;text-decoration:none;font-weight:600}
+.soins-faire{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 0;border-top:1px solid var(--line,#dfe7e2)}
+.soins-faire:first-of-type{border-top:0}
+.soins-faire .quoi{flex:1 1 260px}
+.soins-faire .quoi small{display:block;color:var(--muted,#667)}
+.soins-faire form{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.soins-faire label{font-size:12px}
+.soins-faire input[type=number]{width:80px}
+.soins-retard{color:#b42318;font-weight:700}
+.soins-etape{border:0;padding:0;margin:0 0 16px}
+.soins-etape legend{font-weight:800;font-size:1.05rem;margin-bottom:6px}
+.soins-etape legend span{display:inline-flex;width:26px;height:26px;border-radius:50%;background:#173f32;color:#fff;align-items:center;justify-content:center;margin-right:6px;font-size:.9rem}
+.soins-qui{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.soins-qui label{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:2px solid #cfdcd4;border-radius:10px;cursor:pointer;font-weight:600}
+.soins-qui input{margin:0}
+.soins-qui label:has(input:checked){border-color:#173f32;background:#e6f2eb}
+.soins-ligne{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.soins-info{font-size:13px;color:var(--muted,#667);margin:4px 0 0}
+.soins-info.bas{color:#b42318;font-weight:700}
+.soins-stock-bas td.stock{color:#b42318;font-weight:800}
+.soins-stock form{display:flex;gap:6px;flex-wrap:wrap;align-items:end}
+.soins-stock input[type=text]{width:80px}
+</style>
+<div class="soins-tete"><h1>Soins</h1>{% if session.peut_modifier %}<a href="/sanitaire/plan">Régler le plan sanitaire →</a>{% endif %}</div>
+<nav class="soins-nav"><a href="#a-faire">À faire</a>{% if session.peut_modifier %}<a href="#enregistrer">Enregistrer un soin</a>{% endif %}<a href="#pharmacie">Pharmacie</a><a href="#historique">Derniers soins</a></nav>
+{% if ok == 'fait' %}<p class="card" style="border-left:4px solid #2f7a55">Soin du plan marqué fait.</p>{% elif ok == 'stock' %}<p class="card" style="border-left:4px solid #2f7a55">Stock mis à jour.</p>{% elif ok == 'annule' %}<p class="card" style="border-left:4px solid #2f7a55">Soin annulé, doses remises en stock.</p>{% elif ok %}<p class="card" style="border-left:4px solid #2f7a55">Soin enregistré.</p>{% endif %}
+
+<section class="card" id="a-faire"><h2>1. À faire</h2>
+<p class="muted">Vaccins et soins du plan sanitaire en retard ou prévus dans les 7 prochains jours.</p>
+{% for f in a_faire %}<div class="soins-faire"><div class="quoi"><b>{{ f.libelle }}</b><small>Bande {{ f.bande }} · {{ f.detail }} · <span class="{% if f.en_retard %}soins-retard{% endif %}">{{ f.date|date_fr }} ({{ f.quand }}){% if f.en_retard %} · en retard{% endif %}</span></small></div>
+{% if session.peut_modifier %}<form method="post" action="/soins/fait"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="acte_id" value="{{ f.acte_id }}"><input type="hidden" name="bande_id" value="{{ f.bande_id }}"><input type="hidden" name="qui" value="{{ f.qui }}"><label>Date<input type="date" name="date" value="{{ today }}"></label><label>Doses sorties du stock<input type="number" name="doses" min="0" step="1" value="{% if f.qui == 'truies' %}{{ f.nombre }}{% endif %}" placeholder="0"></label><button>Fait</button></form>{% endif %}</div>
+{% else %}<p>Rien à faire d’après le plan sanitaire.{% if session.peut_modifier %} <a href="/sanitaire/plan">Régler le plan</a>{% endif %}</p>{% endfor %}
+</section>
+
+{% if session.peut_modifier %}<section class="card" id="enregistrer"><h2>2. Enregistrer un soin</h2>
+<form method="post" action="/soins/enregistrer" id="soin-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<fieldset class="soins-etape"><legend><span>1</span>Qui ?</legend>
+<div class="soins-qui"><label><input type="radio" name="qui" value="truie" checked> Truie</label><label><input type="radio" name="qui" value="bande"> Bande</label><label><input type="radio" name="qui" value="verrat"> Verrat</label><label><input type="radio" name="qui" value="porc"> Porc</label></div>
+<label><span id="soin-numero-lib">Numéro de la truie</span><input name="numero" id="soin-numero" list="soin-liste-truie" required autocomplete="off"></label>
+<datalist id="soin-liste-truie">{% for t in truies %}<option value="{{ t.code }}">{% endfor %}</datalist>
+<datalist id="soin-liste-bande">{% for b in bandes %}<option value="{{ b.code }}">{% endfor %}</datalist>
+<datalist id="soin-liste-verrat">{% for v in verrats %}<option value="{{ v.code }}">{% endfor %}</datalist>
+</fieldset>
+<fieldset class="soins-etape"><legend><span>2</span>Quel produit ?</legend>
+<label>Produit<input name="produit" id="soin-produit" list="soin-produits" required autocomplete="off" placeholder="Choisir dans la pharmacie"></label>
+<datalist id="soin-produits">{% for p in produits %}<option value="{{ p.produit }}">{% if p.id %}stock {{ p.stock }} {{ p.unite }}{% endif %}</option>{% endfor %}</datalist>
+<p class="soins-info" id="soin-stock"></p>
+</fieldset>
+<fieldset class="soins-etape"><legend><span>3</span>Combien ?</legend>
+<div class="soins-ligne"><label><span id="soin-doses-lib">Doses par animal et par jour</span><input type="number" name="nb_doses" id="soin-doses" min="1" step="1" value="1"></label><label>Nombre de jours<input type="number" name="jours" id="soin-jours" min="1" max="365" step="1" value="1"></label></div>
+<p class="soins-info" id="soin-total">1 dose sortira du stock.</p>
+</fieldset>
+<fieldset class="soins-etape"><legend><span>4</span>Pourquoi ?</legend>
+<div class="soins-ligne"><label>Motif<input name="motif" id="soin-motif" list="soin-motifs" autocomplete="off"></label><label>Délai d’attente (jours)<input type="number" name="delai_attente" id="soin-delai" min="0" step="1"></label></div>
+<datalist id="soin-motifs">{% for m in motifs %}<option value="{{ m }}">{% endfor %}</datalist>
+</fieldset>
+<details><summary>Date et note</summary><div class="soins-ligne"><label>Date (début)<input type="date" name="date" value="{{ today }}"></label><label>Note<input name="note"></label></div></details>
+<p><button>Enregistrer le soin</button></p>
+</form></section>{% endif %}
+
+<section class="card" id="pharmacie"><h2>3. Pharmacie</h2>
+<p class="muted">Chaque soin enregistré sort ses doses du stock. Un stock en rouge est bas ou négatif : faites l’inventaire.</p>
+<div class="rust-scroll"><table class="soins-stock"><thead><tr><th>Produit</th><th>Stock</th>{% if gere_stock %}<th>J’ai reçu</th><th>J’ai compté</th>{% endif %}</tr></thead><tbody>
+{% for p in produits %}{% if p.id %}<tr{% if p.alerte %} class="soins-stock-bas"{% endif %}><td>{{ p.produit }}</td><td class="stock">{{ p.stock }} {{ p.unite }}{% if p.alerte %} · à commander{% endif %}</td>
+{% if gere_stock %}<td><form method="post" action="/pharmacie/mouvement"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="soins"><input type="hidden" name="produit" value="{{ p.produit }}"><input type="hidden" name="type" value="entree"><input type="hidden" name="date" value="{{ today }}"><input type="text" name="quantite" inputmode="decimal" required placeholder="{{ p.unite }}"><button class="ghost">Ajouter</button></form></td>
+<td><form method="post" action="/pharmacie/mouvement"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="soins"><input type="hidden" name="produit" value="{{ p.produit }}"><input type="hidden" name="type" value="inventaire"><input type="hidden" name="date" value="{{ today }}"><input type="text" name="quantite" inputmode="decimal" required placeholder="{{ p.unite }}"><button class="ghost">Corriger</button></form></td>{% endif %}</tr>{% endif %}
+{% else %}<tr><td colspan="4" class="rust-empty">Aucun produit en pharmacie.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if gere_stock %}<p><a href="/pharmacie/scan">Ajouter une boîte par scan →</a> · <a href="/pharmacie">Nouveau produit, seuils d’alerte et mouvements →</a></p>{% endif %}
+</section>
+
+<section class="card" id="historique"><h2>4. Derniers soins</h2>
+<label>Afficher<select id="soin-filtre"><option value="">Tous</option><option value="truie">Truies</option><option value="bande">Bandes</option><option value="verrat">Verrats</option><option value="porc">Porcs</option></select></label>
+<div class="rust-scroll"><table id="soin-hist"><thead><tr><th>Date</th><th>Qui</th><th>Produit</th><th>Doses</th><th>Motif</th><th>Attente</th><th>Note</th><th></th></tr></thead><tbody>
+{% for h in historique %}<tr data-qui="{{ h.qui }}"><td>{{ h.date|date_fr }}{% if h.date_fin %} → {{ h.date_fin|date_fr }}{% endif %}</td><td>{% if h.lien %}<a href="{{ h.lien }}">{{ h.animal }}</a>{% else %}{{ h.animal }}{% endif %}</td><td>{{ h.produit or '—' }}</td><td>{{ h.doses if h.doses is not none else '—' }}</td><td>{{ h.motif or '—' }}</td><td>{% if h.delai_attente is not none %}{{ h.delai_attente }} j{% else %}—{% endif %}</td><td>{{ h.note or '—' }}</td>
+<td>{% if h.annuler and session.peut_modifier %}<form method="post" action="/soins/annuler" onsubmit="return confirm('Annuler ce soin et remettre les doses en stock ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="id" value="{{ h.annuler }}"><button class="ghost danger">Annuler</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="rust-empty">Aucun soin enregistré.</td></tr>{% endfor %}
+</tbody></table></div>
+<p><button type="button" class="ghost" id="soin-plus" hidden>Voir plus</button></p>
+<p class="muted"><a href="/sanitaire">Protocoles détaillés et actes du plan réalisés →</a></p>
+</section>
+<script type="application/json" id="soin-produits-data">{{ produits|tojson }}</script>
+<script>(function(){
+var form=document.getElementById('soin-form');
+if(form){
+ var produits={};JSON.parse(document.getElementById('soin-produits-data').textContent).forEach(function(p){produits[p.produit.toLowerCase()]=p});
+ var num=form.querySelector('#soin-numero'),lib=document.getElementById('soin-numero-lib');
+ var libelles={truie:['Numéro de la truie','soin-liste-truie',''],bande:['Code de la bande','soin-liste-bande',''],verrat:['Code du verrat','soin-liste-verrat',''],porc:['RFID du porc (ou #numéro interne)','','RFID']};
+ function qui(){var c=form.querySelector('input[name=qui]:checked');return c?c.value:'truie'}
+ function majQui(){var l=libelles[qui()];lib.textContent=l[0];if(l[1])num.setAttribute('list',l[1]);else num.removeAttribute('list');num.placeholder=l[2];document.getElementById('soin-doses-lib').textContent=qui()==='bande'?'Doses pour toute la bande, par jour':'Doses par animal et par jour';total()}
+ form.querySelectorAll('input[name=qui]').forEach(function(r){r.addEventListener('change',function(){num.value='';majQui();num.focus()})});
+ var prod=form.querySelector('#soin-produit'),info=document.getElementById('soin-stock'),doses=form.querySelector('#soin-doses'),jours=form.querySelector('#soin-jours'),delai=form.querySelector('#soin-delai'),motif=form.querySelector('#soin-motif'),tot=document.getElementById('soin-total');
+ function total(){var d=Math.max(1,parseInt(doses.value,10)||1),j=Math.max(1,parseInt(jours.value,10)||1),n=d*j;var p=produits[(prod.value||'').trim().toLowerCase()];
+  var t=n+' dose'+(n>1?'s':'')+(qui()==='bande'?' en tout':'')+' sortir'+(n>1?'ont':'a')+' du stock';
+  if(j>1)t+=' ('+d+' par jour pendant '+j+' jours)';
+  if(p&&p.id){var reste=Math.round((p.stock-n)*100)/100;t+=' · il restera '+reste+' '+p.unite;tot.className='soins-info'+(reste<0?' bas':'')}else tot.className='soins-info';
+  tot.textContent=t+'.'}
+ function majProduit(){var p=produits[(prod.value||'').trim().toLowerCase()];
+  if(!p){info.textContent=prod.value?'Produit nouveau : il sera ajouté à la pharmacie.':'';info.className='soins-info';total();return}
+  info.textContent=p.id?('Stock : '+p.stock+' '+p.unite+(p.alerte?' · stock bas':'')):'Pas encore en pharmacie : il sera ajouté.';info.className='soins-info'+(p.alerte?' bas':'');
+  if(p.doses&&!doses.dataset.touche)doses.value=p.doses;
+  if(p.delai!==null&&p.delai!==undefined&&!delai.dataset.touche)delai.value=p.delai;
+  if(p.motif&&!motif.value)motif.value=p.motif;
+  total()}
+ [doses,delai].forEach(function(c){c.addEventListener('input',function(){c.dataset.touche='1'})});
+ prod.addEventListener('input',majProduit);prod.addEventListener('change',majProduit);doses.addEventListener('input',total);jours.addEventListener('input',total);
+ majQui();majProduit();
+}
+var filtre=document.getElementById('soin-filtre'),plus=document.getElementById('soin-plus'),lignes=[].slice.call(document.querySelectorAll('#soin-hist tbody tr[data-qui]')),limite=30;
+function applique(){var v=filtre.value,n=0;lignes.forEach(function(tr){var ok=!v||tr.dataset.qui===v;if(ok)n++;tr.hidden=!ok||n>limite});plus.hidden=n<=limite}
+filtre.addEventListener('change',function(){limite=30;applique()});plus.addEventListener('click',function(){limite+=50;applique()});applique();
+})();</script>
+{% endblock %}

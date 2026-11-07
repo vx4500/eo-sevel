@@ -30,6 +30,7 @@ mod ameliorations;
 mod automate;
 mod cameras;
 mod conduite;
+mod soins;
 mod eclairage;
 mod demo_portal;
 mod departs;
@@ -734,6 +735,10 @@ pub fn router(state: AppState) -> Router {
         .route("/taches/{id}/fait", post(tache_fait))
         .route("/taches/{id}/supprimer", post(tache_supprimer))
         .route("/sanitaire", get(sanitaire))
+        .route("/soins", get(soins::page))
+        .route("/soins/enregistrer", post(soins::enregistrer))
+        .route("/soins/fait", post(soins::fait))
+        .route("/soins/annuler", post(soins::annuler))
         .route("/sanitaire/plan", get(vaccination::page).post(vaccination::enregistrer))
         .route("/resolution-problemes", get(resolution_problemes))
         .route("/pharmacie", get(pharmacie))
@@ -4168,6 +4173,8 @@ async fn truie_detail(
     ctx.insert("performances_rang".into(), Value::Array(performances));
     ctx.insert("ia_probable".into(), probable_ia.unwrap_or(Value::Null));
     ctx.insert("soins_portee".into(), Value::Array(soins_portee));
+    ctx.insert("produits_soin".into(), Value::Array(generic_rows(&state.pool, soins::PRODUITS).await?));
+    ctx.insert("motifs_soin".into(), json!(soins::MOTIFS));
     ctx.insert("motifs_sortie".into(), json!(SOW_EXIT_REASONS));
     let schedule = load_band_schedule(&state.pool).await?;
     ctx.insert(
@@ -5066,9 +5073,14 @@ async fn evenement_modifier(
         ));
     }
     let product = form_text(&form, "produit");
-    let changed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evenement WHERE id=? AND type='traitement' AND (date IS NOT ? OR date_fin IS NOT ? OR produit IS NOT ?)")
-        .bind(id).bind(&date).bind(&date_fin).bind(&product).fetch_one(&mut *tx).await?;
+    let doses_saisies = form.contains_key("nb_doses");
+    let doses = form_i64(&form, "nb_doses").filter(|d| *d > 0);
+    let changed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM evenement WHERE id=? AND type='traitement' AND (date IS NOT ? OR date_fin IS NOT ? OR produit IS NOT ? OR (? AND nb_doses IS NOT ?))")
+        .bind(id).bind(&date).bind(&date_fin).bind(&product).bind(doses_saisies).bind(doses).fetch_one(&mut *tx).await?;
     let stock_manuel = form.contains_key("stock_manuel");
+    // Un ancien soin d'un seul jour n'avait pas de sortie de stock : le
+    // corriger ne doit pas en créer une après coup.
+    let etait_lie = traitement_stock::lie(&mut tx, id).await?;
     if changed > 0 {
         if stock_manuel {
             sqlx::query("DELETE FROM traitementstock WHERE evenement_id=?")
@@ -5079,13 +5091,13 @@ async fn evenement_modifier(
             traitement_stock::annuler(&mut tx, id).await?;
         }
     }
-    sqlx::query("UPDATE evenement SET date=?,date_fin=?,resultat=?,produit=?,motif=?,delai_attente=CASE WHEN ? THEN ? ELSE delai_attente END,note=?,nb_doses=CASE WHEN type='ia' THEN ? ELSE nb_doses END,creneaux_ia=CASE WHEN type='ia' THEN ? ELSE creneaux_ia END WHERE id=?")
-        .bind(date).bind(date_fin).bind(form_text(&form,"resultat"))
+    sqlx::query("UPDATE evenement SET date=?,date_fin=?,resultat=?,produit=?,motif=?,delai_attente=CASE WHEN ? THEN ? ELSE delai_attente END,note=?,nb_doses=CASE WHEN type='ia' THEN ? WHEN type='traitement' AND ? THEN ? ELSE nb_doses END,creneaux_ia=CASE WHEN type='ia' THEN ? ELSE creneaux_ia END WHERE id=?")
+        .bind(date).bind(&date_fin).bind(form_text(&form,"resultat"))
         .bind(form_text(&form,"produit")).bind(form_text(&form,"motif"))
         .bind(form.contains_key("delai_attente")).bind(form_i64(&form,"delai_attente")).bind(form_text(&form,"note"))
-        .bind(slots.len() as i64).bind((!slots.is_empty()).then(||slots.join(","))).bind(id)
+        .bind(slots.len() as i64).bind(doses_saisies).bind(doses).bind((!slots.is_empty()).then(||slots.join(","))).bind(id)
         .execute(&mut *tx).await?;
-    if changed > 0 && !stock_manuel {
+    if changed > 0 && !stock_manuel && (etait_lie || date_fin.is_some()) {
         traitement_stock::appliquer(&mut tx, id).await?;
     }
     tx.commit().await?;
@@ -7975,10 +7987,13 @@ async fn charcutier_traitement_supprimer(
             .fetch_optional(&state.pool)
             .await?
             .flatten();
+    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    soins::rendre_doses_porc(&mut tx, id).await?;
     sqlx::query("DELETE FROM traitementcharcutier WHERE id=?")
         .bind(id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(Redirect::to(
         &animal
             .map(|animal| format!("/charcutier/{animal}"))
@@ -13245,7 +13260,8 @@ async fn pharmacie_mouvement(
     sqlx::query("UPDATE produitpharmacie SET stock_actuel=?,maj=CURRENT_TIMESTAMP WHERE lower(produit)=lower(?)").bind(new_stock).bind(&product).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO mouvementpharmacie(produit,date,type,quantite,note,bande_code) VALUES(?,?,?,?,?,?)").bind(&product).bind(form_date(&form,"date")?).bind(kind).bind(quantity).bind(form_text(&form,"note")).bind(form_text(&form,"bande_code")).execute(&mut *tx).await?;
     tx.commit().await?;
-    Ok(Redirect::to("/pharmacie").into_response())
+    let retour = if form.get("retour").map(String::as_str) == Some("soins") { "/soins?ok=stock#pharmacie" } else { "/pharmacie" };
+    Ok(Redirect::to(retour).into_response())
 }
 
 async fn pharmacie_regler(

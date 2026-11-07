@@ -87,7 +87,8 @@ async fn traitement_stock_insuffisant_ne_restitue_pas_des_doses_inexistantes() -
         Form(treatment("A", "2026-09-18")),
     )
     .await?;
-    assert_eq!(stock(&state, "A").await, 0.0);
+    // Le stock passe sous zéro au lieu de perdre la consommation.
+    assert_eq!(stock(&state, "A").await, -16.0);
     evenement_supprimer(
         State(state.clone()),
         Extension(session()),
@@ -403,5 +404,92 @@ async fn supprimer_une_case_occupee_envoie_tout_vers_la_case_choisie() -> anyhow
     assert_eq!(pertes, 1, "l'historique suit");
     let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM casesalle WHERE id=1").fetch_one(&state.pool).await?;
     assert_eq!(reste, 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn page_soins_sort_doses_par_jour_pour_chaque_animal() -> anyhow::Result<()> {
+    let state = farm().await;
+    sqlx::raw_sql("INSERT INTO verrat(id,code,actif) VALUES(1,'V1',1); INSERT INTO porccharcutier(id,rfid,bande_code) VALUES(1,'250001','B');")
+        .execute(&state.pool).await?;
+    // Truie : un seul jour, 2 doses → 2 doses sorties (avant : rien).
+    soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&[
+        ("qui", "truie"), ("numero", "T1"), ("produit", "a"), ("nb_doses", "2"), ("date", "2026-09-01"),
+    ]))).await?;
+    assert_eq!(stock(&state, "A").await, 98.0);
+    let (truie, fin): (i64, Option<String>) = sqlx::query_as("SELECT truie_id,date_fin FROM evenement WHERE type='traitement'").fetch_one(&state.pool).await?;
+    assert_eq!((truie, fin), (1, None));
+    // Verrat : 1 dose pendant 3 jours.
+    soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&[
+        ("qui", "verrat"), ("numero", "V1"), ("produit", "A"), ("jours", "3"), ("date", "2026-09-01"),
+    ]))).await?;
+    assert_eq!(stock(&state, "A").await, 95.0);
+    // Bande : 10 doses × 2 jours, puis annulation.
+    soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&[
+        ("qui", "bande"), ("numero", "B"), ("produit", "B"), ("nb_doses", "10"), ("jours", "2"), ("motif", "Digestif"),
+    ]))).await?;
+    assert_eq!(stock(&state, "B").await, 80.0);
+    let mouvement: i64 = sqlx::query_scalar("SELECT id FROM mouvementpharmacie WHERE note LIKE 'Soin de bande%'").fetch_one(&state.pool).await?;
+    soins::annuler(State(state.clone()), Extension(session()), Form(form(&[("id", &mouvement.to_string())]))).await?;
+    assert_eq!(stock(&state, "B").await, 100.0);
+    // Porc par RFID, puis suppression depuis sa fiche : doses rendues.
+    soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&[
+        ("qui", "porc"), ("numero", "250001"), ("produit", "B"), ("nb_doses", "3"),
+    ]))).await?;
+    assert_eq!(stock(&state, "B").await, 97.0);
+    charcutier_traitement_supprimer(State(state.clone()), Extension(session()), Path(1), Form(form(&[]))).await?;
+    assert_eq!(stock(&state, "B").await, 100.0);
+    // Erreurs claires : animal inconnu, doses non entières, produit vide.
+    for champs in [
+        vec![("qui", "truie"), ("numero", "T9"), ("produit", "A")],
+        vec![("qui", "truie"), ("numero", "T1"), ("produit", "A"), ("nb_doses", "1,5")],
+        vec![("qui", "truie"), ("numero", "T1")],
+        vec![("numero", "T1"), ("produit", "A")],
+    ] {
+        assert!(soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&champs))).await.is_err());
+    }
+    assert_eq!(stock(&state, "A").await, 95.0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn soin_ancien_sans_stock_corrige_sans_sortie_apres_coup() -> anyhow::Result<()> {
+    let state = farm().await;
+    // Traitement importé d'un seul jour, jamais relié au stock.
+    sqlx::query("INSERT INTO evenement(id,type,date,truie_id,produit,suivi_actif) VALUES(1,'traitement','2026-06-01',1,'A',0)")
+        .execute(&state.pool).await?;
+    let mut edit = treatment("A", "");
+    edit.insert("date".into(), "2026-06-02".into());
+    evenement_modifier(State(state.clone()), Extension(session()), Path(1), Form(edit)).await?;
+    assert_eq!(stock(&state, "A").await, 100.0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn page_soins_fait_du_plan_marque_la_bande_et_sort_les_doses() -> anyhow::Result<()> {
+    let state = farm().await;
+    sqlx::query("INSERT INTO acteprotocole(id,libelle,cible,reference,jour,produit,actif,rappel) VALUES(1,'Parvo','toutes_femelles','gestation',86,'A',1,0)")
+        .execute(&state.pool).await?;
+    soins::fait(State(state.clone()), Extension(session()), Form(form(&[
+        ("acte_id", "1"), ("bande_id", "1"), ("qui", "truies"), ("doses", "2"), ("date", "2026-09-01"),
+    ]))).await?;
+    assert_eq!(stock(&state, "A").await, 98.0);
+    let faits: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM acterealise WHERE acte_id=1 AND bande_id=1").fetch_one(&state.pool).await?;
+    assert_eq!(faits, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn page_soins_s_affiche_avec_a_faire_stock_et_historique() -> anyhow::Result<()> {
+    let state = farm().await;
+    soins::enregistrer(State(state.clone()), Extension(session()), Form(form(&[
+        ("qui", "bande"), ("numero", "B"), ("produit", "A"), ("nb_doses", "4"), ("motif", "Digestif"),
+    ]))).await?;
+    let Html(page) = soins::page(State(state.clone()), Extension(session()), Query(HashMap::new())).await?;
+    assert!(page.contains("1. À faire"));
+    assert!(page.contains("Enregistrer le soin"));
+    assert!(page.contains("96 doses"));
+    assert!(page.contains("Bande B"));
+    assert!(page.contains("Digestif"));
     Ok(())
 }

@@ -299,6 +299,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
         "structure.html",
         include_str!("../templates/structure.html"),
     )?;
+    env.add_template("soins.html", include_str!("../templates/soins.html"))?;
     env.add_template(
         "sanitaire.html",
         include_str!("../templates/sanitaire.html"),

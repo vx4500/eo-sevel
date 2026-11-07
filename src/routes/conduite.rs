@@ -847,6 +847,77 @@ pub(super) async fn a_venir(pool: &SqlitePool, jours: i64) -> AppResult<Vec<Valu
         .collect())
 }
 
+/// Partie « À faire » de la page Soins : vaccins et soins du plan sanitaire
+/// en retard (jusqu'à `retard_max` jours) ou prévus dans les `jours`
+/// prochains jours. Truies : actes placés depuis l'IA, la mise-bas ou le
+/// sevrage, comme dans le travail de la semaine. Porcelets : soins de portée.
+pub(super) async fn soins_a_faire(pool: &SqlitePool, jours: i64, retard_max: i64) -> AppResult<Vec<Value>> {
+    let aujourd_hui = Local::now().date_naive();
+    let debut = aujourd_hui - Duration::days(retard_max);
+    let fin = aujourd_hui + Duration::days(jours);
+    let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
+    let faits = actes_faits(pool).await;
+    let bandes = charger_bandes(pool, 6).await?;
+    let mut lignes: Vec<(NaiveDate, Value)> = Vec::new();
+    for bande in bandes.iter().filter(|b| b.active) {
+        let Some(date_mb) = bande.date_mb else {
+            continue;
+        };
+        for etape in liste_etapes.iter().filter(|e| e.acte_id.is_some()) {
+            let date = etape.date(date_mb);
+            if date < debut || date > fin || realise(bande, etape, &faits).is_some() {
+                continue;
+            }
+            let acte_id = etape.acte_id.unwrap_or(0);
+            let truies = truies_etape(pool, bande, &etape.code, acte_id).await?;
+            if truies.is_empty() {
+                continue;
+            }
+            lignes.push((date, json!({
+                "date": date.to_string(),
+                "quand": quand((date - aujourd_hui).num_days(), date),
+                "en_retard": date < aujourd_hui,
+                "qui": "truies",
+                "bande": if etape.bande_ia { bande_sevree(&bandes, bande) } else { bande.code.clone() },
+                "bande_id": bande.id,
+                "acte_id": acte_id,
+                "libelle": &etape.libelle,
+                "nombre": truies.len(),
+                "detail": format!("{} truie{}", truies.len(), if truies.len() > 1 { "s" } else { "" }),
+            })));
+        }
+    }
+    let portees: Vec<(Option<String>, i64, i64, String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT MIN(date(sp.date_prevue)),a.id,COALESCE(sp.bande_id,0),a.libelle||COALESCE(' ('||a.produit||')',''),b.code,COUNT(*) \
+         FROM soinportee sp JOIN acteprotocole a ON a.id=sp.protocole_id LEFT JOIN bande b ON b.id=sp.bande_id \
+         WHERE sp.date_realisee IS NULL AND date(sp.date_prevue) BETWEEN ? AND ? GROUP BY a.id,sp.bande_id",
+    )
+    .bind(debut.to_string())
+    .bind(fin.to_string())
+    .fetch_all(pool)
+    .await?;
+    for (date, acte_id, bande_id, libelle, bande, nombre) in portees {
+        let Some(date) = date.as_deref().and_then(parse_stored_date) else {
+            continue;
+        };
+        lignes.push((date, json!({
+            "date": date.to_string(),
+            "quand": quand((date - aujourd_hui).num_days(), date),
+            "en_retard": date < aujourd_hui,
+            "qui": "portees",
+            "bande": bande.unwrap_or_else(|| "—".into()),
+            "bande_id": bande_id,
+            "acte_id": acte_id,
+            "libelle": format!("Porcelets : {libelle}"),
+            "nombre": nombre,
+            "detail": format!("{nombre} portée{}", if nombre > 1 { "s" } else { "" }),
+        })));
+    }
+    lignes.sort_by_key(|(date, _)| *date);
+    Ok(lignes.into_iter().map(|(_, ligne)| ligne).collect())
+}
+
 async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id: i64) -> AppResult<Vec<Value>> {
     // Chaque requête prend les truies de la bande qui ont encore cette étape
     // à faire dans le cycle en cours.

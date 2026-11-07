@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.74.5** — régulation : niveau réel du module 0-10 V relu, commande non appliquée renvoyée.
+Version actuelle : **2.75.0** — soins : une seule page « Soins » (à faire, enregistrer un soin, pharmacie, derniers soins).
 
+
+Version Rust 2.75.0 : page /soins (routes/soins.rs) qui réunit le plan sanitaire à faire, la saisie d'un soin pour une truie, une bande, un verrat ou un porc, la pharmacie et l'historique. Chaque soin sort doses par jour × jours du stock (y compris un soin d'un seul jour) ; le stock peut devenir négatif. Onglet Soins sur la fiche truie, entrée de menu unique.
 
 Version Rust 2.74.5 : sortie_reelle lit le niveau du module 0-10 V (entrée voisine de la consigne, nom « Voltage Level » vérifié), plus la seule consigne. Une commande non appliquée est renvoyée au plus une fois par minute (valeur voisine puis cible, le module ne réagissant qu'à un changement). Pause de 300 ms après chaque écriture IPX.
 

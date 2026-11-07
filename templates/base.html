@@ -267,8 +267,7 @@
       <a href="/eau"><b>Consommation d’eau</b><small>Semaine, mois, année</small></a>{% endif %}
     </div>
     <div class="rust-sub-groupe"><h3>Sanitaire et papiers</h3>
-      {% if 'sanitaire' in session.pages %}<a href="/sanitaire/plan"><b>Plan sanitaire</b><small>Vaccins et soins par cycle, rappels, historique</small></a>
-      <a href="/pharmacie"><b>Pharmacie</b><small>Stock de produits et ordonnances</small></a>
+      {% if 'sanitaire' in session.pages %}<a href="/soins"><b>Soins</b><small>À faire, enregistrer un soin, pharmacie</small></a>
       <a href="/resolution-problemes"><b>Résolution de problèmes</b><small>Conduite à tenir devant un symptôme</small></a>{% endif %}
       {% if 'documents' in session.pages %}<a href="/documents-obligatoires"><b>Documents obligatoires</b><small>Registre d’élevage, contrôles</small></a>{% endif %}
     </div>
@@ -358,7 +357,7 @@
   {% elif 'charcutiers' in session.pages %}<a href="/abattoir" data-pouce="/gte"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.4V4.6M4 19.4h15.6"/><path d="m7.4 15.4 3.4-4.2 3 2.4 4.2-5.6"/></svg>Résultats</a>{% endif %}
   {% if 'economique' in session.pages %}<a href="/economique" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>
   {% elif 'stock' in session.pages %}<a href="/stock" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>
-  {% elif 'sanitaire' in session.pages %}<a href="/sanitaire" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>
+  {% elif 'sanitaire' in session.pages %}<a href="/soins" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>
   {% elif 'documents' in session.pages %}<a href="/documents-obligatoires" data-pouce="/economique"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 6.6c0-.9.7-1.6 1.6-1.6h3.4l1.8 2.2h8.4c.9 0 1.6.7 1.6 1.6v8.6c0 .9-.7 1.6-1.6 1.6H5.2c-.9 0-1.6-.7-1.6-1.6V6.6Z"/></svg>Gestion</a>{% endif %}
 </nav>{% endif %}
 {% if session and session.peut_modifier %}
