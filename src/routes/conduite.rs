@@ -1303,6 +1303,7 @@ pub(super) async fn flux(
             "depart": depart.to_string(),
             "semaines_depart": (depart - aujourd_hui).num_days().div_euclid(7),
             "jours_depart": (depart - aujourd_hui).num_days(),
+            "jours_retard": (aujourd_hui - depart).num_days().max(0),
             "premiere_vente": premiere_vente,
         }));
     }
@@ -1752,6 +1753,31 @@ mod tests {
         assert!(page.contains("class=\"acc-frise\""));
         assert!(page.contains("B9.01</a>"));
         assert!(page.contains("seg maternite"));
+    }
+
+    #[tokio::test]
+    async fn flux_supporte_une_bande_en_retard_de_depart() {
+        // Une bande encore pleine après sa date de départ prévue affichait une
+        // erreur 500 (négation dans le template).
+        let state = super::super::documents::tests::state().await;
+        let mb = (Local::now().date_naive() - Duration::days(400)).to_string();
+        let id = sqlx::query("INSERT INTO bande(code,date_mb,active) VALUES('B9.02',?,1)")
+            .bind(&mb)
+            .execute(&state.pool)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO evenement(type,date,bande_id,nb_sevres,suivi_actif) VALUES('sevrage',?,?,40,0)")
+            .bind(&mb)
+            .bind(id)
+            .execute(&state.pool)
+            .await
+            .unwrap();
+        let Html(page) = flux(State(state), Extension(super::super::documents::tests::session()))
+            .await
+            .unwrap();
+        assert!(page.contains("B9.02"));
+        assert!(page.contains("dépassé de"), "la bande en retard doit l'afficher");
     }
 
     #[test]

@@ -1,6 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.75.0** — soins : une seule page « Soins » (à faire, enregistrer un soin, pharmacie, derniers soins).
+Version actuelle : **2.75.1** — page Flux : plus d'erreur quand une bande dépasse sa date de départ prévue.
+
+
+Version Rust 2.75.1 : conduite::flux fournit jours_retard (jours après le départ prévu, 0 au plus tôt) ; flux.html ne fait plus de négation dans le template (« -s.jours_depart » donnait « invalid operation », erreur 500 dès qu'une bande encore pleine dépassait son départ). Test flux_supporte_une_bande_en_retard_de_depart.
 
 
 Version Rust 2.75.0 : page /soins (routes/soins.rs) qui réunit le plan sanitaire à faire, la saisie d'un soin pour une truie, une bande, un verrat ou un porc, la pharmacie et l'historique. Chaque soin sort doses par jour × jours du stock (y compris un soin d'un seul jour) ; le stock peut devenir négatif. Onglet Soins sur la fiche truie, entrée de menu unique.

@@ -58,7 +58,7 @@
 {% for s in sorties %}<tr class="{% if s.jours_depart < 0 and s.porcs > 0 %}orange{% endif %}"><td><a href="/bande/{{ s.id }}"><b>{{ s.code }}</b></a>{% if s.site %}<br><small class="note">{{ s.site }}</small>{% endif %}</td>
 <td>{{ s.stade }}<br><small class="note">J{{ s.age }}</small></td>
 <td class="n"><b>{{ s.porcs }}</b>{% if s.reel %}<br><small class="note">{{ s.sevres }} sevrés − {{ s.morts }} morts − {{ s.vendus }} vendus</small>{% else %}<br><small class="note">prévus</small>{% endif %}</td>
-<td>{{ s.depart|date_fr }}<br><small class="note">{% if s.jours_depart < 0 %}{% if s.porcs > 0 %}dépassé de {{ -s.jours_depart }} j{% else %}terminé{% endif %}{% elif s.semaines_depart == 0 %}cette semaine{% else %}dans {{ s.semaines_depart }} sem.{% endif %}{% if s.premiere_vente %} · 1re vente {{ s.premiere_vente|date_fr }}{% endif %}</small></td></tr>{% endfor %}
+<td>{{ s.depart|date_fr }}<br><small class="note">{% if s.jours_depart < 0 %}{% if s.porcs > 0 %}dépassé de {{ s.jours_retard }} j{% else %}terminé{% endif %}{% elif s.semaines_depart == 0 %}cette semaine{% else %}dans {{ s.semaines_depart }} sem.{% endif %}{% if s.premiere_vente %} · 1re vente {{ s.premiere_vente|date_fr }}{% endif %}</small></td></tr>{% endfor %}
 </tbody></table>{% else %}<p class="vide">Aucune bande en post-sevrage ou engraissement.</p>{% endif %}
 </section>
 </div>
