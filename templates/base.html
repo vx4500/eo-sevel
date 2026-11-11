@@ -220,7 +220,9 @@
     </div>{% endif %}
     <div class="rust-sub-groupe"><h3>Bâtiments et mouvements</h3>
       {% if 'bandes' in session.pages %}<a href="/flux"><b>Places et flux</b><small>Occupation des salles, sevrages, sorties d’engraissement</small></a>{% endif %}
-      {% if 'structure' in session.pages %}<a href="/structure"><b>Structure</b><small>Sites, salles, cases, capacités</small></a>{% endif %}
+      {% if 'structure' in session.pages %}<a href="/salles"><b>Mes salles</b><small>Bande, animaux, ambiance, éclairage : tout par salle</small></a>
+      <a href="/structure"><b>Structure</b><small>Sites, salles, cases, capacités</small></a>
+      <a href="/inventaire"><b>Inventaire</b><small>Feuille à imprimer pour compter les animaux, puis écarts</small></a>{% endif %}
       {% if 'transferts' in session.pages %}<a href="/transferts"><b>Transferts</b><small>Déplacements entre cases</small></a>{% endif %}
       {% if session.recoit_achats and 'reception' in session.pages %}<a href="/reception"><b>Réception</b><small>Animaux achetés à l’entrée</small></a>{% endif %}
       {% if 'archives' in session.pages %}<a href="/archives"><b>Archives</b><small>Bandes terminées</small></a>{% endif %}
@@ -238,12 +240,10 @@
 
   {% if 'economique' in session.pages or 'stock' in session.pages or 'energie' in session.pages or 'sanitaire' in session.pages or 'documents' in session.pages or 'imports' in session.pages or 'structure' in session.pages or 'productivite' in session.pages or 'ifip' in session.pages or 'charcutiers' in session.pages or 'engraissement' in session.pages %}
   <div class="rust-menu" data-rubrique="Ma gestion"><button type="button" aria-expanded="false">Ma gestion <span class="chevron" aria-hidden="true">▾</span></button><div class="rust-sub large">
-    {% if session.a_truies and 'productivite' in session.pages %}<div class="rust-sub-groupe"><h3>Résultats techniques</h3>
-      <a href="/gttt"><b>GTTT</b><small>Résultats de reproduction : portées, sevrés</small></a>
+    {% if (session.a_truies and 'productivite' in session.pages) or 'economique' in session.pages or 'ifip' in session.pages %}<div class="rust-sub-groupe"><h3>Résultats</h3>
+      {% if session.a_truies and 'productivite' in session.pages %}<a href="/gttt"><b>GTTT</b><small>Résultats de reproduction : portées, sevrés</small></a>
       <a href="/productivite"><b>Productivité</b><small>Porcs produits par truie et par an</small></a>
-      <a href="/analyse-bandes"><b>Analyse des bandes</b><small>Comparer B1, B2, B3 et repérer les truies faibles</small></a>
-    </div>{% endif %}
-    {% if 'economique' in session.pages or 'ifip' in session.pages %}<div class="rust-sub-groupe"><h3>Résultats économiques</h3>
+      <a href="/analyse-bandes"><b>Analyse des bandes</b><small>Comparer B1, B2, B3 et repérer les truies faibles</small></a>{% endif %}
       {% if 'economique' in session.pages %}<a href="/gte"><b>GTE</b><small>Coûts, marges et indice de consommation</small></a>{% endif %}
       {% if 'ifip' in session.pages %}<a href="/ifip"><b>Références IFIP</b><small>Comparaison à la moyenne nationale</small></a>{% endif %}
     </div>{% endif %}
@@ -252,14 +252,8 @@
       {% if session.engraisse and session.module_charcutiers_rfid and 'charcutiers' in session.pages %}<a href="/charcutiers"><b>Charcutiers RFID</b><small>Suivi individuel des porcs bagués</small></a>{% endif %}
       {% if session.engraisse and session.module_prestataires and 'engraissement' in session.pages %}<a href="/engraissement"><b>Prestataire</b><small>Engraissement confié à un tiers</small></a>{% endif %}
     </div>{% endif %}
-    {% if 'structure' in session.pages %}<div class="rust-sub-groupe"><h3>Bâtiments</h3>
-      <a href="/salles"><b>Mes salles</b><small>Bande, animaux, ambiance, éclairage : tout par salle</small></a>
-      <a href="/inventaire"><b>Inventaire</b><small>Feuille à imprimer pour compter les animaux, puis écarts</small></a>
-    </div>{% endif %}
-    <div class="rust-sub-groupe"><h3>Achats et ventes</h3>
+    <div class="rust-sub-groupe"><h3>Achats, stocks et consommations</h3>
       {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>{% endif %}
-    </div>
-    <div class="rust-sub-groupe"><h3>Stocks et consommations</h3>
       {% if 'stock' in session.pages %}<a href="/aliment-previsions"><b>Aliment</b><small>Livraisons, silos, prévisions de commande</small></a>
       <a href="/stock"><b>Stocks</b><small>Inventaires et consommables</small></a>{% endif %}
       {% if 'energie' in session.pages %}<a href="/energie"><b>Eau et électricité</b><small>Relevés de compteurs</small></a>

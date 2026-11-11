@@ -178,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
         .nest_service("/static", ServeDir::new(dossier_static()))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(entetes_securite))
         .layer(middleware::from_fn_with_state(state, auth::guard));
 
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
@@ -186,6 +187,19 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
+}
+
+/// En-têtes de sécurité sur chaque réponse : pas d'affichage dans un cadre
+/// d'un autre site (vol de clic), pas de devinette du type de contenu, et
+/// l'adresse de la page n'est pas transmise aux sites extérieurs.
+async fn entetes_securite(request: axum::extract::Request, next: middleware::Next) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    let entetes = response.headers_mut();
+    use axum::http::HeaderValue;
+    entetes.entry("x-frame-options").or_insert(HeaderValue::from_static("SAMEORIGIN"));
+    entetes.entry("x-content-type-options").or_insert(HeaderValue::from_static("nosniff"));
+    entetes.entry("referrer-policy").or_insert(HeaderValue::from_static("same-origin"));
+    response
 }
 
 async fn shutdown_signal() {

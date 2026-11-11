@@ -49,7 +49,7 @@
 {% if sevrages %}<table><thead><tr><th>Bande</th><th>Sevrage</th><th class="n">Porcelets</th><th>Post-sevrage ce jour-là</th></tr></thead><tbody>
 {% for s in sevrages %}<tr class="{% if s.occupation.etat == 'deborde' %}rouge{% elif s.occupation.etat == 'limite' %}orange{% endif %}"><td><b>{{ s.code }}</b></td><td>{{ s.date|date_fr }}</td><td class="n">{{ s.prevus }}{% if not s.reel %} <small class="note">prévus</small>{% endif %}</td>
 <td><span class="occ-{{ s.occupation.etat }}">{{ s.occupation.valeur }}{% if s.occupation.capacite %} / {{ s.occupation.capacite }}{% endif %}</span> <small class="note">{{ s.bandes|join(', ') }}</small>
-{% if s.occupation.etat == 'deborde' %}<br><span class="cd-badge rouge">Manque {{ s.occupation.valeur - s.occupation.capacite }} places</span>{% endif %}</td></tr>{% endfor %}
+{% if s.occupation.etat == 'deborde' %}<br><span class="cd-badge rouge">Manque {{ (s.occupation.valeur or 0) - (s.occupation.capacite or 0) }} places</span>{% endif %}</td></tr>{% endfor %}
 </tbody></table>{% else %}<p class="vide">Aucun sevrage à venir.</p>{% endif %}
 </section>
 

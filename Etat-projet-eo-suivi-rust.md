@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.75.3** — les connexions survivent aux mises à jour et aux redémarrages.
+Version actuelle : **2.75.4** — audit du 11/11 : en-têtes de sécurité, menu regroupé, sondes muettes dans les alertes, reste de case après transfert.
 
+
+Version Rust 2.75.4 : suites de l'audit du 11/11. main.rs ajoute le middleware entetes_securite (X-Frame-Options SAMEORIGIN, X-Content-Type-Options nosniff, Referrer-Policy same-origin). farm_alerts signale les sondes Zigbee muettes (disponible=0, vu_le non nul) et les piles sous 25 %. transferts_porcs redirige vers /transferts?reste=<case>&n=<N> quand il reste 1 à 9 porcs dans la case de départ ; la page affiche alors la question « que sont devenus ces porcs ? » (morts, déplacés aussi, inventaire, encore là) et présélectionne la case. Menu : Mes salles et Inventaire rejoignent « Bâtiments et mouvements », un seul groupe « Résultats », « Achats, stocks et consommations » ; 13 groupes → 8. Calculs protégés par `or 0` dans flux.html, commande_client_modifier.html, documents_obligatoires.html. Test un_petit_reste_apres_transfert_est_signale.
 
 Version Rust 2.75.3 : les sessions de connexion sont conservées en base (table session_web, migration 0033, module routes::session_web). La DashMap reste le cache ; quand le cookie eo_session n'est plus en mémoire, auth::guard recharge la session depuis la base (utilisateur encore actif, nouveau jeton CSRF). Inactivité de 30 jours appliquée aussi en base, vu_le réécrit au plus une fois par minute ; déconnexion, changement de mot de passe, de droits ou désactivation du compte suppriment les lignes. Tests session_* dans session_web.rs.
 

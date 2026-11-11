@@ -1,10 +1,13 @@
 {% extends "base.html" %}{% block content %}
 <h1>Transferts et occupation des cases</h1>
+{% if reste_n %}<section class="card" role="status" style="border-left:4px solid #e0b84a;background:#fff8e6"><h2 style="margin-top:0">Il reste {{ reste_n }} porc(s) dans {{ reste_nom }}</h2>
+<p>Le transfert est enregistré. Que sont devenus les {{ reste_n }} porc(s) restants ?</p>
+<p style="display:flex;flex-wrap:wrap;gap:8px"><a class="button" href="/quotidien">Ils sont morts : le déclarer</a> <a class="button ghost" href="#deplacer-porcs">Ils ont été déplacés aussi</a> <a class="button ghost" href="/inventaire">Le compte était faux : refaire l’inventaire</a> <a class="button ghost" href="/transferts">Ils sont encore là</a></p></section>{% endif %}
 <p>Les effectifs sont calculés à partir des entrées, sorties et mortalités déclarées. Un transfert est refusé si la source est insuffisante ou si la capacité de la destination est dépassée.</p>
 
 {% if session.peut_modifier %}
 <div class="rust-grid">
-  <form class="card" method="post" action="/transferts/porcs">
+  <form class="card" method="post" action="/transferts/porcs" id="deplacer-porcs">
     <h2>Déplacer des porcs</h2>
     <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
     <label>Source<select name="source" required>
@@ -13,7 +16,7 @@
       {% for b in bandes %}{% if b.restant > 0 %}<option value="bande:{{ b.id }}">Bande {{ b.code }} — {{ b.restant }} disponible(s)</option>{% endif %}{% endfor %}
       </optgroup>
       <optgroup label="Cases occupées">
-      {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
+      {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
       </optgroup>
     </select></label>
     <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>

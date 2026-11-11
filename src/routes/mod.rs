@@ -1704,6 +1704,25 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
     if let Ok(n) = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'").fetch_one(pool).await {
         push_farm_alert(&mut alerts, n, "Nouvelles commandes clients à valider", "/vente-directe/commandes", "attention");
     }
+    // Sondes Zigbee muettes ou à pile faible : une salle régulée sans sonde
+    // passe en repli, et une pile vide se voit trop tard dans les alertes
+    // d'ambiance seules.
+    if let Ok(muettes) = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM zigbee_appareil WHERE categorie='sonde' AND COALESCE(disponible,1)=0 AND vu_le IS NOT NULL",
+    )
+    .fetch_one(pool)
+    .await
+    {
+        push_farm_alert(&mut alerts, muettes, "Sondes Zigbee muettes : plus de mesure dans la salle", "/ambiance/zigbee", "attention");
+    }
+    if let Ok(piles) = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM zigbee_appareil WHERE categorie='sonde' AND COALESCE(disponible,1)=1 AND batterie IS NOT NULL AND batterie<25",
+    )
+    .fetch_one(pool)
+    .await
+    {
+        push_farm_alert(&mut alerts, piles, "Sondes Zigbee à pile faible (moins de 25 %)", "/ambiance/zigbee", "information");
+    }
     let case_anomalies = cases_incoherentes(pool).await?.len() as i64;
     push_farm_alert(
         &mut alerts,
@@ -7963,6 +7982,7 @@ async fn charcutier_traitement_supprimer(
 async fn transferts(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
     let cases = generic_rows(
         &state.pool,
@@ -8000,6 +8020,22 @@ async fn transferts(
     ctx.insert("bandes".into(), Value::Array(bands));
     ctx.insert("truies".into(), Value::Array(sows));
     ctx.insert("historique".into(), Value::Array(history));
+    // Reste d'une case après un transfert (voir `transferts_porcs`).
+    if let (Some(case_id), Some(n)) = (
+        query.get("reste").and_then(|v| v.parse::<i64>().ok()),
+        query.get("n").and_then(|v| v.parse::<i64>().ok()).filter(|n| *n > 0),
+    ) {
+        let nom: Option<(String, String)> =
+            sqlx::query_as("SELECT s.nom,c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE c.id=?")
+                .bind(case_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        if let Some((salle, case_nom)) = nom {
+            ctx.insert("reste_case".into(), json!(case_id));
+            ctx.insert("reste_n".into(), json!(n));
+            ctx.insert("reste_nom".into(), json!(format!("{salle} · {case_nom}")));
+        }
+    }
     ctx.insert(
         "today".into(),
         json!(Local::now().date_naive().format("%Y-%m-%d").to_string()),
@@ -8218,6 +8254,45 @@ mod transfert_maternite_tests {
         Ok(())
     }
 
+    /// Un petit reste dans la case de départ renvoie vers la page Transferts
+    /// avec la question « que sont devenus ces porcs ? » ; une case vidée
+    /// entièrement n'y a pas droit.
+    #[tokio::test]
+    async fn un_petit_reste_apres_transfert_est_signale() -> anyhow::Result<()> {
+        let (state, _maternity_pen, dest_pen) = test_state().await?;
+        let room: i64 = sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
+            .bind(dest_pen)
+            .fetch_one(&state.pool)
+            .await?;
+        let source_pen = sqlx::query("INSERT INTO casesalle(salle_id,nom,nb_max_porcs) VALUES(?,'PS 2',100)")
+            .bind(room)
+            .execute(&state.pool)
+            .await?
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO inventairecase(case_id,date,nombre) VALUES(?,'2026-08-01',10)")
+            .bind(source_pen)
+            .execute(&state.pool)
+            .await?;
+        let reponse = transferts_porcs(
+            State(state.clone()),
+            Extension(session()),
+            Form(movement_form(source_pen, dest_pen, "7")),
+        )
+        .await?;
+        let cible = reponse.headers().get("location").and_then(|v| v.to_str().ok()).unwrap_or("");
+        assert_eq!(cible, format!("/transferts?reste={source_pen}&n=3"));
+
+        let reponse = transferts_porcs(
+            State(state.clone()),
+            Extension(session()),
+            Form(movement_form(source_pen, dest_pen, "3")),
+        )
+        .await?;
+        let cible = reponse.headers().get("location").and_then(|v| v.to_str().ok()).unwrap_or("");
+        assert_eq!(cible, "/transferts");
+        Ok(())
+    }
+
     /// Toujours refuser un déplacement au-delà de la portée réellement
     /// présente, avec le vrai effectif plutôt qu'un compte de case figé à 0.
     #[tokio::test]
@@ -8407,6 +8482,14 @@ async fn transferts_porcs(
         .bind(form_text(&form, "note"))
         .execute(&state.pool)
         .await?;
+    // Un petit reste dans la case de départ (vu le 10/11 : 7 porcs « oubliés »
+    // en PS1, 1 en PS3) : la page suivante demande ce qu'ils sont devenus.
+    if let Some(case_id) = source_case {
+        let reste = case_pig_count(&state.pool, case_id).await?;
+        if (1..=9).contains(&reste) {
+            return Ok(Redirect::to(&format!("/transferts?reste={case_id}&n={reste}")).into_response());
+        }
+    }
     Ok(Redirect::to("/transferts").into_response())
 }
 
