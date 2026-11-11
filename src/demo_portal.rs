@@ -226,6 +226,10 @@ pub async fn prune(pool: &SqlitePool) -> anyhow::Result<()> {
         .await?;
     sqlx::query("UPDATE controlequotidien SET utilisateur='Ancien testeur' WHERE utilisateur IN (SELECT u.nom FROM utilisateur u JOIN demo_acces d ON d.utilisateur_id=u.id WHERE d.cree<?)").bind(cutoff).execute(&mut *tx).await?;
     sqlx::query("UPDATE utilisateur SET actif=0,nom='Ancien testeur',prenom=NULL,identifiant='expire-'||id,hash_mdp='' WHERE id IN(SELECT utilisateur_id FROM demo_acces WHERE cree<?)").bind(cutoff).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM session_web WHERE uid IN(SELECT utilisateur_id FROM demo_acces WHERE cree<?)")
+        .bind(cutoff)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM demo_acces WHERE cree<?")
         .bind(cutoff)
         .execute(&mut *tx)

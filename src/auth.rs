@@ -306,22 +306,15 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
         // Connecteur Claude : authentifié par le jeton contenu dans l'adresse.
         || path.starts_with("/mcp/");
     let session_id = cookie_value(request.headers(), "eo_session");
-    let session = session_id
-        .as_ref()
-        .and_then(|sid| state.sessions.get(sid).map(|entry| entry.value().clone()));
+    // En mémoire, sinon en base (après une mise à jour ou un redémarrage) ;
+    // la règle d'inactivité et l'horodatage `vu_le` sont gérés là-bas.
+    let mut session = None;
+    if let Some(sid) = session_id.as_ref() {
+        session = crate::routes::session_web::retrouver(&state, sid, chrono::Utc::now().timestamp()).await;
+    }
 
     if !public && session.is_none() {
         return Redirect::to("/login").into_response();
-    }
-
-    if let (Some(_), Some(sid)) = (session.as_ref(), session_id.as_ref()) {
-        let maintenant = chrono::Utc::now().timestamp();
-        let derniere = state.sessions_vues.insert(sid.clone(), maintenant);
-        if derniere.is_some_and(|vue| maintenant - vue > INACTIVITE_MAX_S) {
-            state.sessions.remove(sid);
-            state.sessions_vues.remove(sid);
-            return Redirect::to("/login").into_response();
-        }
     }
 
     if let Some(session) = session {
@@ -330,7 +323,7 @@ pub async fn guard(State(state): State<AppState>, mut request: Request, next: Ne
                 .await
             {
                 if let Some(sid) = session_id.as_ref() {
-                    state.sessions.remove(sid);
+                    crate::routes::session_web::fermer(&state, sid).await;
                 }
                 return Redirect::to("/login?err=expire").into_response();
             }

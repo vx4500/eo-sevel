@@ -1,6 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.75.2** — caméra injoignable : plus d'attente ni de 502 en série sur la page Caméras.
+Version actuelle : **2.75.3** — les connexions survivent aux mises à jour et aux redémarrages.
+
+
+Version Rust 2.75.3 : les sessions de connexion sont conservées en base (table session_web, migration 0033, module routes::session_web). La DashMap reste le cache ; quand le cookie eo_session n'est plus en mémoire, auth::guard recharge la session depuis la base (utilisateur encore actif, nouveau jeton CSRF). Inactivité de 30 jours appliquée aussi en base, vu_le réécrit au plus une fois par minute ; déconnexion, changement de mot de passe, de droits ou désactivation du compte suppriment les lignes. Tests session_* dans session_web.rs.
 
 
 Version Rust 2.75.2 : cameras.rs a un coupe-circuit en mémoire (PANNES, 60 s après un échec ffmpeg) ; pendant la pause /salles/camera/{id}/image répond 200 avec un SVG « Caméra hors ligne depuis HH:MM », un seul WARN par épisode de panne (ensuite debug), cameras.html affiche « hors ligne depuis HH:MM ». Test le_coupe_circuit_garde_la_premiere_heure_et_ne_previent_qu_une_fois.

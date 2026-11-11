@@ -23,6 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 mod accueil;
+pub mod session_web;
 mod adoptions;
 mod acces;
 mod ambiance;
@@ -2294,50 +2295,7 @@ async fn login_post(
                 .bind(user.id)
                 .execute(&state.pool)
                 .await?;
-            let session_id = auth::new_secure_token();
-            let full_name = format!(
-                "{} {}",
-                user.prenom.clone().unwrap_or_default(),
-                user.nom.clone().unwrap_or_else(|| user.identifiant.clone())
-            )
-            .trim()
-            .to_string();
-            let sections = user
-                .sections
-                .as_deref()
-                .unwrap_or("")
-                .split(',')
-                .filter(|value| !value.is_empty())
-                .map(str::to_string)
-                .collect();
-            let type_elevage = type_elevage_actif(&state.pool).await?;
-            let module_genetique = module_actif(&state.pool, "module_genetique", false).await?;
-            let module_prestataires =
-                module_actif(&state.pool, "module_prestataires", true).await?;
-            let module_charcutiers_rfid =
-                module_actif(&state.pool, "module_charcutiers_rfid", false).await?;
-            let module_vente_directe =
-                module_actif(&state.pool, "module_vente_directe", true).await?;
-            let module_equipements =
-                module_actif(&state.pool, "module_equipements", true).await?;
-            state.sessions.insert(
-                session_id.clone(),
-                SessionData {
-                    uid: user.id,
-                    identifiant: user.identifiant,
-                    nom: full_name,
-                    role: user.role.clone(),
-                    sections,
-                    csrf: auth::new_csrf(),
-                    doit_changer_mdp: user.doit_changer_mdp,
-                    type_elevage,
-                    module_genetique,
-                    module_prestataires,
-                    module_charcutiers_rfid,
-                    module_vente_directe,
-                    module_equipements,
-                },
-            );
+            let session_id = session_web::ouvrir(&state, &user).await?;
             let cookie = Cookie::build(("eo_session", session_id))
                 .path("/")
                 .http_only(true)
@@ -2368,7 +2326,7 @@ async fn login_post(
 
 async fn logout(State(state): State<AppState>, jar: CookieJar) -> Response {
     if let Some(cookie) = jar.get("eo_session") {
-        state.sessions.remove(cookie.value());
+        session_web::fermer(&state, cookie.value()).await;
     }
     let cookie = Cookie::build(("eo_session", ""))
         .path("/")
@@ -2412,7 +2370,7 @@ async fn password_post(
     // Un changement de mot de passe doit rendre inutilisable tout cookie de
     // session éventuellement volé. L'utilisateur se reconnecte ensuite avec
     // son nouveau mot de passe.
-    state.sessions.retain(|_, active| active.uid != session.uid);
+    session_web::fermer_utilisateur(&state, session.uid).await;
     Ok(Redirect::to("/login").into_response())
 }
 
@@ -12056,7 +12014,7 @@ async fn utilisateur_actif(
     }
     verify_csrf(&session, &form)?;
     sqlx::query("UPDATE utilisateur SET actif=CASE actif WHEN 1 THEN 0 ELSE 1 END WHERE id=? AND identifiant<>'admin'").bind(id).execute(&state.pool).await?;
-    state.sessions.retain(|_, active| active.uid != id);
+    session_web::fermer_utilisateur(&state, id).await;
     Ok(Redirect::to("/utilisateurs").into_response())
 }
 
@@ -12106,7 +12064,7 @@ async fn utilisateur_sections(
         .await?;
     // Les sections sont mises en cache dans SessionData : forcer une nouvelle
     // connexion évite de conserver les anciens droits.
-    state.sessions.retain(|_, active| active.uid != id);
+    session_web::fermer_utilisateur(&state, id).await;
     Ok(Redirect::to("/utilisateurs").into_response())
 }
 
@@ -12132,7 +12090,7 @@ async fn utilisateur_mdp(
         .bind(id)
         .execute(&state.pool)
         .await?;
-    state.sessions.retain(|_, active| active.uid != id);
+    session_web::fermer_utilisateur(&state, id).await;
     Ok(Redirect::to("/utilisateurs").into_response())
 }
 

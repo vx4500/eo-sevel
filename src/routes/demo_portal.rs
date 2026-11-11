@@ -76,7 +76,7 @@ pub(super) async fn revoquer(
     }
     verify_csrf(&session, &form)?;
     sqlx::query("UPDATE utilisateur SET actif=0 WHERE id=? AND id IN(SELECT utilisateur_id FROM demo_acces)").bind(id).execute(&state.pool).await?;
-    state.sessions.retain(|_, s| s.uid != id);
+    super::session_web::fermer_utilisateur(&state, id).await;
     Ok(Redirect::to("/demo/acces").into_response())
 }
 pub(super) async fn suggestion(

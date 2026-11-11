@@ -411,6 +411,11 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0032_demande_ia.sql"))
         .execute(pool)
         .await?;
+    // Sessions de connexion conservées entre deux redémarrages (voir
+    // routes::session_web).
+    sqlx::raw_sql(include_str!("../migrations/0033_session_web.sql"))
+        .execute(pool)
+        .await?;
     // Ventilation d'une salle vide (économie) : NULL = réglage désactivé.
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
     // Plan de l'élevage pivoté par quarts de tour (voir routes::plan_elevage).
