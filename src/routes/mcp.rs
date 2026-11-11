@@ -92,6 +92,35 @@ fn outils() -> Value {
              "salle_truies": {"type": "string", "description": "salle où vont les truies, « Verraterie » par défaut"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle", "destination"]}},
+        {"name": "diagnostiquer_portees",
+         "description": "À lancer D'ABORD quand un sevrage est refusé ou qu'un effectif de porcelets paraît faux : pour chaque portée ouverte d'une salle de maternité (ou d'une truie), nés totaux et vivants, morts-nés, adoptés, retirés, pertes, présents calculés, et les anomalies en français avec la correction proposée (truie réformée avec portée ouverte → cloturer_portee ; présents négatifs → corriger_mise_bas ; pertes datées avant la mise-bas → corriger_perte ; retirés au-delà des nés vivants ; sevrage sans nombre de sevrés). Lecture seule : propose à l'éleveur, puis applique chaque correction avec l'outil indiqué après son accord.",
+         "input_schema": {"type": "object", "properties": {"salle": {"type": "string", "description": "maternité, ex. « Mater 2 »"}, "truie": {"type": "string", "description": "ou un numéro de truie"}}}},
+        {"name": "cloturer_portee",
+         "description": "Clôture la portée ouverte d'une truie sans passer par le sevrage de bande (truie réformée ou partie, porcelets déjà comptés ailleurs) : un événement sevrage à nb_sevres (0 par défaut). Ex. après diagnostiquer_portees : « clôture la portée de 500371 ». Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "truie": {"type": "string"}, "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
+             "nb_sevres": {"type": "integer", "description": "0 par défaut"}, "note": {"type": "string", "description": "raison"},
+             "confirme": confirme}, "required": ["truie"]}},
+        {"name": "corriger_mise_bas",
+         "description": "Corrige les chiffres de la dernière mise-bas d'une truie : nés vivants, nés totaux, morts-nés, éventuellement la date. La note (raison) est obligatoire et s'ajoute à la mise-bas. Ex. « +2 nés vivants sur 500371, pertes saisies avant la mise-bas ». Le résumé donne avant/après. Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "truie": {"type": "string"},
+             "nes_vifs": {"type": "integer"}, "nes_totaux": {"type": "integer"}, "mort_nes": {"type": "integer"},
+             "date": {"type": "string", "description": "nouvelle date AAAA-MM-JJ (facultatif)"},
+             "note": {"type": "string", "description": "raison, obligatoire"},
+             "confirme": confirme}, "required": ["truie", "note"]}},
+        {"name": "corriger_perte",
+         "description": "Change la date d'une perte de porcelets (numéro donné par diagnostiquer_portees) ou la supprime. Ex. « mets la perte 62 au 14/10 ». Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "id": {"type": "integer"}, "date": {"type": "string", "description": "nouvelle date AAAA-MM-JJ"},
+             "supprimer": {"type": "boolean"}, "note": {"type": "string", "description": "raison"},
+             "confirme": confirme}, "required": ["id"]}},
+        {"name": "inventaire_case",
+         "description": "Enregistre un comptage réel de porcs dans une case (inventaire) : à partir de là, EO_Sevel repart de ce nombre. Ex. « il y a 100 porcelets en PS2 ». Salle en nom abrégé, case facultative si la salle n'en a qu'une. Deux temps comme deplacer_truie.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string"}, "case": {"type": "string"}, "nombre": {"type": "integer"},
+             "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"}, "note": {"type": "string"},
+             "confirme": confirme}, "required": ["salle", "nombre"]}},
         {"name": "enregistrer_achat",
          "description": "Enregistre un achat (facture) dans l'économie, comme la saisie à la main de la page Économie : semence, vétérinaire, génétique ou aliment. Ex. « ajoute 510 € de semence LB-CIA à la B3.14 ». Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
@@ -137,7 +166,8 @@ fn outils() -> Value {
 
 const CONSIGNES: &str = "Outils de l'élevage EO_Sevel. Réponds brièvement, en français parlé (l'éleveur est souvent à la voix, dans le bâtiment). \
 Avant toute écriture, appelle l'outil sans confirme, répète en une phrase ce qui va être fait et attends un « oui » ; seulement ensuite rappelle avec confirme=true. \
-N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Les salles se disent en abrégé (Engr2, PS1, Mater 1) : passe le nom tel quel, les outils le reconnaissent. Pour « mets la salle à X % », utilise forcer_ventilation (retour automatique) ; pour l'état d'une salle, etat_salle. Pour une date relative aux IA, utilise calendrier_ia. \
+N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Les salles se disent en abrégé (Engr2, PS1, Mater 1) : passe le nom tel quel, les outils le reconnaissent. Pour « mets la salle à X % », utilise forcer_ventilation (retour automatique) ; pour l'état d'une salle, etat_salle. \
+Quand une action est refusée, cherche la cause (diagnostiquer_portees pour un sevrage ou un effectif), explique-la, propose la correction, et ne l'applique qu'après accord. Pour une date relative aux IA, utilise calendrier_ia. \
 Ce qui a été retenu est listé ci-dessous (pas besoin d'appeler memoire). Quand l'éleveur explique quelque chose de durable, retiens-le en une phrase courte (outil retenir).";
 
 async fn table_memoire(pool: &SqlitePool) -> Result<(), String> {
@@ -181,6 +211,22 @@ async fn truie_par_numero(pool: &SqlitePool, numero: &str) -> Result<(i64, Strin
         [une] => Ok(une.clone()),
         [une, ..] if une.1 == n => Ok(une.clone()),
         plusieurs => Err(format!("Plusieurs truies correspondent : {}. Lequel ?", plusieurs.iter().map(|l| l.1.as_str()).collect::<Vec<_>>().join(", "))),
+    }
+}
+
+/// Comme `truie_par_numero`, mais les truies réformées comptent aussi : une
+/// portée ouverte peut rester sur une truie partie.
+async fn truie_par_numero_toute(pool: &SqlitePool, numero: &str) -> Result<(i64, String), String> {
+    let n = numero.replace([' ', '.'], "");
+    if n.is_empty() { return Err("Quel numéro de truie ?".into()); }
+    let lignes: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT id,num_travail FROM truie WHERE num_travail=?1 OR replace(num_travail,' ','')=?1 OR num_national=?1 OR num_travail LIKE '%'||?1 ORDER BY num_travail=?1 DESC, reformee, id DESC LIMIT 5",
+    ).bind(&n).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    match lignes.as_slice() {
+        [] => Err(format!("Aucune truie ne porte le numéro {numero}.")),
+        [une] => Ok(une.clone()),
+        [une, ..] if une.1 == n => Ok(une.clone()),
+        plusieurs => Err(format!("Plusieurs truies correspondent : {}. Laquelle ?", plusieurs.iter().map(|l| l.1.as_str()).collect::<Vec<_>>().join(", "))),
     }
 }
 
@@ -423,7 +469,8 @@ async fn etat_salle(pool: &SqlitePool, salle_id: i64, nom: &str, type_salle: Opt
 
 const FAMILLES: &str = "\
 Truies : chercher_truie, deplacer_truie (vers une case), sevrer_salle (toute une maternité).\n\
-Porcs : transferer_porcs (salle à salle, noms abrégés acceptés), declarer_mort, depart_porcs (abattoir), cases_salle.\n\
+Porcs : transferer_porcs (salle à salle, noms abrégés acceptés), declarer_mort, depart_porcs (abattoir), cases_salle, inventaire_case (comptage réel).\n\
+Portées : diagnostiquer_portees (anomalies et corrections proposées), cloturer_portee, corriger_mise_bas, corriger_perte.\n\
 Ambiance : etat_salle (température, ventilation, porcs, bande), forcer_ventilation (X % pendant N min, retour automatique), arreter_forcage, regler_ambiance (consigne, plage, ventil mini/maxi).\n\
 Économie : enregistrer_achat (semence, véto, génétique, aliment).\n\
 Organisation : rappels, creer_rappel, calendrier_ia.\n\
@@ -616,6 +663,15 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
             if portees.is_empty() {
                 return Err(format!("Aucune portée à sevrer en {salle}."));
             }
+            for p in &portees {
+                let reformee: i64 = sqlx::query_scalar("SELECT reformee FROM truie WHERE id=?").bind(p.1).fetch_one(pool).await.unwrap_or(0);
+                if reformee != 0 {
+                    return Err(format!("Truie {} réformée mais sa portée est encore ouverte ({} présents) : lance diagnostiquer_portees sur {salle}, puis cloturer_portee après accord.", p.2, p.3));
+                }
+                if p.3 < 0 {
+                    return Err(format!("Truie {} : portée à {} présents, chiffres incohérents : lance diagnostiquer_portees sur {salle} et corrige avant de sevrer.", p.2, p.3));
+                }
+            }
             // Chaque portée entière va dans la première case qui a encore la place.
             let mut remplissage: Vec<i64> = cases.iter().map(|c| c.2).collect();
             let mut affectation = Vec::new();
@@ -650,6 +706,146 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                 super::sevrage::sevrer(pool, AUTEUR, bande, &form).await.map_err(|e| e.to_string())?;
             }
             journaliser(pool, "sevrer_salle", &salle, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "diagnostiquer_portees" => {
+            let (filtre, nom) = match (arg(a, "truie"), arg(a, "salle")) {
+                (t, _) if !t.is_empty() => { let (id, num) = truie_par_numero_toute(pool, t).await?; (format!("t.id={id}"), format!("truie {num}")) }
+                (_, s) if !s.is_empty() => { let (id, nom, _) = salle_par_nom(pool, s).await?; (format!("c.salle_id={id}"), nom) }
+                _ => return Err("Indique une salle de maternité ou une truie.".into()),
+            };
+            let portees: Vec<(i64, i64, String, i64, String, i64, i64, i64, i64, i64, i64, i64, i64, Option<i64>, Option<i64>)> = sqlx::query_as(&format!(
+                "SELECT pe.id,t.id,t.num_travail,t.reformee,pe.date,COALESCE(e.nes_totaux,0),pe.nes_vifs_calc,COALESCE(e.mort_nes,0),pe.adoptes,pe.retires,pe.pertes,pe.presents,pe.cloturee,pe.sevrage_id,pe.nb_sevres \
+                 FROM (SELECT p.*,COALESCE((SELECT nes_vifs FROM evenement WHERE id=p.id),0) AS nes_vifs_calc FROM portee_effectif p) pe \
+                 JOIN truie t ON t.id=pe.truie_id JOIN evenement e ON e.id=pe.id LEFT JOIN casesalle c ON c.id=COALESCE(e.case_id,t.case_id) \
+                 WHERE {filtre} AND pe.date<=date('now','localtime') AND (pe.cloturee=0 OR pe.date>=date('now','localtime','-60 day')) ORDER BY pe.cloturee,t.num_travail,pe.date DESC"
+            )).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            if portees.is_empty() { return Ok(format!("Aucune portée récente pour {nom}.")); }
+            let mut sortie = Vec::new();
+            let mut total_anomalies = 0;
+            for (mb_id, _truie_id, num, reformee, date_mb, nt, nv, mn, adoptes, retires, pertes, presents, cloturee, sevrage_id, nb_sevres) in portees {
+                let mut anomalies = Vec::new();
+                if cloturee == 0 && reformee != 0 {
+                    anomalies.push(format!("truie réformée avec portée ouverte → cloturer_portee truie {num} (nb_sevres 0 si ses porcelets sont déjà comptés ailleurs)"));
+                }
+                if cloturee == 0 && presents < 0 {
+                    anomalies.push(format!("présents négatifs ({presents}) → corriger_mise_bas truie {num} nes_vifs {} (et nes_totaux {})", nv - presents, nt - presents));
+                }
+                let avant: Vec<(i64, String, i64)> = sqlx::query_as("SELECT id,date,nb FROM perteporcelet WHERE evenement_id=? AND date<? ORDER BY date,id")
+                    .bind(mb_id).bind(&date_mb).fetch_all(pool).await.unwrap_or_default();
+                if !avant.is_empty() {
+                    anomalies.push(format!("pertes datées avant la mise-bas du {date_mb} : {} → corriger_perte id {} date {date_mb} (ou corriger_mise_bas date si c'est la mise-bas qui est mal datée)",
+                        avant.iter().map(|(id, d, n)| format!("n° {id} le {d} ({n})")).collect::<Vec<_>>().join(", "),
+                        avant.iter().map(|(id, _, _)| id.to_string()).collect::<Vec<_>>().join(", ")));
+                }
+                if retires > nv + adoptes {
+                    anomalies.push(format!("retirés ({retires}) au-delà des nés vivants + adoptés ({}) → vérifier les adoptions ou corriger_mise_bas nes_vifs", nv + adoptes));
+                }
+                if sevrage_id.is_some() && nb_sevres.is_none() {
+                    anomalies.push("sevrage enregistré sans nombre de sevrés → corriger dans EO_Sevel (page de la truie)".to_string());
+                }
+                total_anomalies += anomalies.len();
+                sortie.push(json!({"truie": num, "reformee": reformee != 0, "mise_bas": date_mb, "mise_bas_id": mb_id,
+                    "nes_totaux": nt, "nes_vifs": nv, "mort_nes": mn, "adoptes": adoptes, "retires": retires, "pertes": pertes,
+                    "presents": presents, "ouverte": cloturee == 0, "nb_sevres": nb_sevres, "anomalies": anomalies}));
+            }
+            Ok(json!({"objet": nom, "anomalies": total_anomalies, "portees": sortie,
+                "conseil": if total_anomalies == 0 { "Rien d'anormal." } else { "Propose chaque correction à l'éleveur, puis applique-la avec l'outil indiqué après son accord." }}).to_string())
+        }
+        "cloturer_portee" => {
+            let (truie_id, num) = truie_par_numero_toute(pool, arg(a, "truie")).await?;
+            let date = date_ou_aujourdhui(a)?;
+            let nb = a.get("nb_sevres").and_then(Value::as_i64).unwrap_or(0);
+            if nb < 0 { return Err("nb_sevres ne peut pas être négatif.".into()); }
+            let portee: Option<(i64, Option<i64>, String, i64)> = sqlx::query_as(
+                "SELECT id,bande_id,date,presents FROM portee_effectif WHERE truie_id=? AND cloturee=0 AND date<=date('now','localtime') ORDER BY date DESC,id DESC LIMIT 1",
+            ).bind(truie_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            let (_, bande_id, date_mb, presents) = portee.ok_or_else(|| format!("Truie {num} : aucune portée ouverte."))?;
+            if date < date_mb { return Err(format!("La clôture ({date}) ne peut pas précéder la mise-bas ({date_mb}).")); }
+            let raison = arg(a, "note");
+            let resume = format!("Portée de {num} (mise-bas du {date_mb}, {presents} présents calculés) clôturée le {date} avec {nb} sevré(s){}.", if raison.is_empty() { String::new() } else { format!(" — {raison}") });
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}")); }
+            sqlx::query("INSERT INTO evenement(type,date,truie_id,bande_id,nb_sevres,note,suivi_actif) VALUES('sevrage',?,?,?,?,?,0)")
+                .bind(&date).bind(truie_id).bind(bande_id).bind(nb).bind(format!("Clôture (Claude){}", if raison.is_empty() { String::new() } else { format!(" : {raison}") }))
+                .execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "cloturer_portee", &num, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "corriger_mise_bas" => {
+            let (truie_id, num) = truie_par_numero_toute(pool, arg(a, "truie")).await?;
+            let raison = arg(a, "note");
+            if raison.is_empty() { return Err("La note (raison de la correction) est obligatoire.".into()); }
+            let mb: Option<(i64, String, Option<i64>, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(
+                "SELECT id,date,nes_totaux,nes_vifs,mort_nes,note FROM evenement WHERE truie_id=? AND type='mise_bas' AND date<=date('now','localtime') ORDER BY date DESC,id DESC LIMIT 1",
+            ).bind(truie_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            let (mb_id, date0, nt0, nv0, mn0, note0) = mb.ok_or_else(|| format!("Truie {num} : aucune mise-bas."))?;
+            let entier = |k: &str| a.get(k).and_then(Value::as_i64);
+            let (nt, nv, mn) = (entier("nes_totaux").or(nt0), entier("nes_vifs").or(nv0), entier("mort_nes").or(mn0));
+            let date = match arg(a, "date") { "" => date0.clone(), d => { chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| "Date attendue au format AAAA-MM-JJ".to_string())?; d.to_string() } };
+            if [nt, nv, mn].iter().flatten().any(|v| *v < 0) { return Err("Les chiffres ne peuvent pas être négatifs.".into()); }
+            if let (Some(nt), Some(nv)) = (nt, nv) { if nv > nt { return Err(format!("Nés vivants ({nv}) supérieurs aux nés totaux ({nt}).")); } }
+            let mut changements = Vec::new();
+            let aff = |v: Option<i64>| v.map(|v| v.to_string()).unwrap_or("—".into());
+            if nv != nv0 { changements.push(format!("nés vivants {} → {}", aff(nv0), aff(nv))); }
+            if nt != nt0 { changements.push(format!("nés totaux {} → {}", aff(nt0), aff(nt))); }
+            if mn != mn0 { changements.push(format!("morts-nés {} → {}", aff(mn0), aff(mn))); }
+            if date != date0 { changements.push(format!("date {date0} → {date}")); }
+            if changements.is_empty() { return Err(format!("Rien à changer sur la mise-bas de {num} du {date0} ({} nés totaux, {} vivants, {} morts-nés).", aff(nt0), aff(nv0), aff(mn0))); }
+            let presents0: i64 = sqlx::query_scalar("SELECT presents FROM portee_effectif WHERE id=?").bind(mb_id).fetch_one(pool).await.unwrap_or(0);
+            let resume = format!("Mise-bas de {num} du {date0} : {} — {raison}. Présents avant : {presents0}, après : {}.", changements.join(", "), presents0 + nv.unwrap_or(0) - nv0.unwrap_or(0));
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}")); }
+            let note = format!("{}Corrigé (Claude) : {} — {raison}", note0.map(|n| format!("{n} · ")).unwrap_or_default(), changements.join(", "));
+            sqlx::query("UPDATE evenement SET nes_totaux=?,nes_vifs=?,mort_nes=?,date=?,note=? WHERE id=?")
+                .bind(nt).bind(nv).bind(mn).bind(&date).bind(note).bind(mb_id).execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "corriger_mise_bas", &num, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "corriger_perte" => {
+            let id = a.get("id").and_then(Value::as_i64).ok_or("Numéro de perte manquant (voir diagnostiquer_portees).")?;
+            let perte: Option<(Option<i64>, i64, Option<String>, Option<String>, Option<i64>)> = sqlx::query_as("SELECT truie_id,nb,date,cause,evenement_id FROM perteporcelet WHERE id=?")
+                .bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            let (truie_id, nb, date0, cause, mb_id) = perte.ok_or_else(|| format!("Pas de perte n° {id}."))?;
+            let num: String = match truie_id { Some(t) => sqlx::query_scalar("SELECT num_travail FROM truie WHERE id=?").bind(t).fetch_optional(pool).await.ok().flatten().unwrap_or("?".into()), None => "?".into() };
+            let supprimer = a.get("supprimer").and_then(Value::as_bool) == Some(true);
+            let raison = arg(a, "note");
+            let date = arg(a, "date");
+            if !supprimer && date.is_empty() { return Err("Indique la nouvelle date, ou supprimer=true.".into()); }
+            if !date.is_empty() { chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| "Date attendue au format AAAA-MM-JJ".to_string())?; }
+            if let (false, Some(mb)) = (supprimer, mb_id) {
+                let date_mb: Option<String> = sqlx::query_scalar("SELECT date FROM evenement WHERE id=?").bind(mb).fetch_optional(pool).await.ok().flatten();
+                if date_mb.as_deref().is_some_and(|d| date < d) { return Err(format!("La perte resterait avant la mise-bas du {}.", date_mb.unwrap_or_default())); }
+            }
+            let resume = if supprimer { format!("Perte n° {id} de {num} ({nb} porcelet(s), {}, le {}) supprimée{}.", cause.as_deref().unwrap_or("sans cause"), date0.as_deref().unwrap_or("?"), if raison.is_empty() { String::new() } else { format!(" — {raison}") }) }
+                else { format!("Perte n° {id} de {num} ({nb} porcelet(s)) : date {} → {date}{}.", date0.as_deref().unwrap_or("?"), if raison.is_empty() { String::new() } else { format!(" — {raison}") }) };
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}")); }
+            if supprimer { sqlx::query("DELETE FROM perteporcelet WHERE id=?").bind(id).execute(pool).await.map_err(|e| e.to_string())?; }
+            else {
+                sqlx::query("UPDATE perteporcelet SET date=?, age_j=CASE WHEN ? IS NOT NULL THEN CAST(julianday(?)-julianday((SELECT date FROM evenement WHERE id=?)) AS INTEGER) ELSE age_j END WHERE id=?")
+                    .bind(date).bind(mb_id).bind(date).bind(mb_id).bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+            }
+            journaliser(pool, "corriger_perte", &num, &format!("(Claude) {resume}")).await;
+            Ok(format!("Enregistré : {resume}"))
+        }
+        "inventaire_case" => {
+            let date = date_ou_aujourdhui(a)?;
+            let nombre = a.get("nombre").and_then(Value::as_i64).filter(|n| *n >= 0).ok_or("Nombre manquant (0 ou plus).")?;
+            let (salle_id, nom, _) = salle_par_nom(pool, arg(a, "salle")).await?;
+            let cases: Vec<(i64, String)> = sqlx::query_as(
+                "SELECT id,nom FROM casesalle WHERE salle_id=?1 AND (?2='' OR num_vanne=?2 OR lower(nom)=lower(?2) OR replace(lower(nom),' ','')=replace(lower(?2),' ','')) ORDER BY id",
+            ).bind(salle_id).bind(arg(a, "case").trim_start_matches(['v', 'V']).trim()).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            let (case_id, case) = match cases.as_slice() {
+                [une] => une.clone(),
+                [] => return Err(format!("Pas de case « {} » en {nom}.", arg(a, "case"))),
+                plusieurs => return Err(format!("{nom} a plusieurs cases, précise : {}.", plusieurs.iter().map(|c| c.1.as_str()).collect::<Vec<_>>().join(", "))),
+            };
+            let avant = case_pig_count(pool, case_id).await.map_err(|e| e.to_string())?;
+            let raison = arg(a, "note");
+            let resume = format!("Inventaire de {nom}, case {case}, le {date} : {nombre} porcs comptés (EO_Sevel en calculait {avant}){}.", if raison.is_empty() { String::new() } else { format!(" — {raison}") });
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}")); }
+            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre,note,cree_par,dernier_transfert_id) VALUES(?,?,?,?,?,(SELECT MAX(id) FROM transfert))")
+                .bind(case_id).bind(&date).bind(nombre).bind(format!("(Claude){}", if raison.is_empty() { String::new() } else { format!(" {raison}") })).bind(AUTEUR)
+                .execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "inventaire_case", &nom, &resume).await;
             Ok(format!("Enregistré : {resume}"))
         }
         "enregistrer_achat" => {
@@ -1081,6 +1277,86 @@ mod tests {
         let (_, v) = rpc(&state, &jeton, json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
         let noms: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
         for n in ["forcer_ventilation", "arreter_forcage", "etat_salle", "regler_ambiance", "que_sais_tu_faire"] { assert!(noms.contains(&n), "{n}"); }
+        Ok(())
+    }
+
+    /// Le cas du 11/11 : en Mater 2, la truie 500371 est réformée avec une
+    /// portée ouverte et des pertes saisies avant la mise-bas (portée à −2) ;
+    /// le sevrage est refusé, le diagnostic explique, les corrections passent,
+    /// puis le sevrage, puis l'inventaire de PS2.
+    #[tokio::test]
+    async fn un_sevrage_refuse_se_diagnostique_et_se_corrige() -> anyhow::Result<()> {
+        let (state, pool, jeton) = etat_test().await?;
+        sqlx::query("INSERT INTO salle(id,site_id,nom,type,nb_cases,ordre) VALUES(8,1,'Mater 2','maternite',1,0),(12,1,'Post-sevrage 2','Post-sevrage',1,2),(1,1,'Verraterie','verraterie',1,-1)").execute(&pool).await?;
+        sqlx::query("INSERT INTO casesalle(id,salle_id,nom,nb_max_porcs) VALUES(61,8,'Case 1',NULL),(135,12,'PS 2',120),(1,1,'Case 1',NULL)").execute(&pool).await?;
+        sqlx::query("INSERT INTO bande(id,code,active,date_mb) VALUES(2,'B2.11',1,'2026-10-14')").execute(&pool).await?;
+        sqlx::query("INSERT INTO truie(id,num_travail,reformee,case_id,salle_id,bande_code) VALUES(61,'500371',1,61,8,'B2.11'),(82,'500696',0,61,8,'B2.11')").execute(&pool).await?;
+        sqlx::query("INSERT INTO evenement(id,type,date,truie_id,bande_id,nes_totaux,nes_vifs,mort_nes,case_id,suivi_actif) VALUES(108,'mise_bas','2026-10-14',61,2,1,1,0,61,0),(109,'mise_bas','2026-10-14',82,2,13,11,1,61,0)").execute(&pool).await?;
+        sqlx::query("INSERT INTO perteporcelet(id,truie_id,bande_id,nb,cause,date,evenement_id) VALUES(60,61,2,2,'Écrasé','2026-10-12',108),(61,61,2,1,'Chétif','2026-10-13',108),(63,82,2,1,'Chétif','2026-10-15',109)").execute(&pool).await?;
+        let presents = |p: &SqlitePool, id: i64| { let p = p.clone(); async move { sqlx::query_scalar::<_, i64>("SELECT presents FROM portee_effectif WHERE id=?").bind(id).fetch_one(&p).await.unwrap() } };
+        assert_eq!(presents(&pool, 108).await, -2);
+        assert_eq!(presents(&pool, 109).await, 10);
+
+        // Refus explicite.
+        let (e, t) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"mater 2","destination":"PS 2"})).await;
+        assert!(e && t.contains("500371") && t.contains("diagnostiquer_portees"), "{t}");
+
+        // Diagnostic : les trois anomalies et leurs corrections.
+        let (e, t) = outil(&state, &jeton, "diagnostiquer_portees", json!({"salle":"mater 2"})).await;
+        assert!(!e, "{t}");
+        let v: Value = serde_json::from_str(&t)?;
+        assert_eq!(v["anomalies"], 2 + 0 + 1, "{t}");
+        let p371 = v["portees"].as_array().unwrap().iter().find(|p| p["truie"] == "500371").unwrap().clone();
+        let anomalies = p371["anomalies"].to_string();
+        assert!(anomalies.contains("réformée") && anomalies.contains("cloturer_portee"), "{anomalies}");
+        assert!(anomalies.contains("négatifs (-2)") && anomalies.contains("nes_vifs 3"), "{anomalies}");
+        assert!(anomalies.contains("avant la mise-bas") && anomalies.contains("n° 60") && anomalies.contains("corriger_perte id 60, 61"), "{anomalies}");
+        let (e, t) = outil(&state, &jeton, "diagnostiquer_portees", json!({"truie":"500696"})).await;
+        assert!(!e && t.contains("\"anomalies\":0"), "{t}");
+
+        // Corrections, chacune en deux temps.
+        let (e, t) = outil(&state, &jeton, "corriger_perte", json!({"id":60,"date":"2026-10-14"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("2026-10-12 → 2026-10-14"), "{t}");
+        let (e, _) = outil(&state, &jeton, "corriger_perte", json!({"id":60,"date":"2026-10-10","confirme":true})).await;
+        assert!(e, "pas avant la mise-bas");
+        for id in [60, 61] {
+            let (e, t) = outil(&state, &jeton, "corriger_perte", json!({"id":id,"date":"2026-10-14","note":"saisie avant la mise-bas","confirme":true})).await;
+            assert!(!e && t.starts_with("Enregistré"), "{t}");
+        }
+        let age: i64 = sqlx::query_scalar("SELECT age_j FROM perteporcelet WHERE id=60").fetch_one(&pool).await?;
+        assert_eq!(age, 0);
+        let (e, _) = outil(&state, &jeton, "corriger_mise_bas", json!({"truie":"500371","nes_vifs":3,"confirme":true})).await;
+        assert!(e, "note obligatoire");
+        let (e, t) = outil(&state, &jeton, "corriger_mise_bas", json!({"truie":"500371","nes_vifs":3,"nes_totaux":3,"note":"pertes comptées avant la mise-bas"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("nés vivants 1 → 3") && t.contains("après : 0"), "{t}");
+        assert_eq!(presents(&pool, 108).await, -2);
+        let (e, t) = outil(&state, &jeton, "corriger_mise_bas", json!({"truie":"500371","nes_vifs":3,"nes_totaux":3,"note":"pertes comptées avant la mise-bas","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        assert_eq!(presents(&pool, 108).await, 0);
+        let note: String = sqlx::query_scalar("SELECT note FROM evenement WHERE id=108").fetch_one(&pool).await?;
+        assert!(note.contains("(Claude)") && note.contains("pertes comptées"), "{note}");
+        let (e, t) = outil(&state, &jeton, "cloturer_portee", json!({"truie":"500371","note":"truie réformée"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("0 sevré"), "{t}");
+        let (e, t) = outil(&state, &jeton, "cloturer_portee", json!({"truie":"500371","note":"truie réformée","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        let cloturee: i64 = sqlx::query_scalar("SELECT cloturee FROM portee_effectif WHERE id=108").fetch_one(&pool).await?;
+        assert_eq!(cloturee, 1);
+        let (e, t) = outil(&state, &jeton, "diagnostiquer_portees", json!({"salle":"mater 2"})).await;
+        assert!(!e && t.contains("\"anomalies\":0"), "{t}");
+
+        // Le sevrage passe : 500696 avec ses 10 porcelets vers PS 2.
+        let (e, t) = outil(&state, &jeton, "sevrer_salle", json!({"salle":"mater 2","destination":"PS 2","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré") && t.contains("10 porcelet"), "{t}");
+        assert_eq!(case_pig_count(&pool, 135).await?, 10);
+
+        // Comptage réel : 100 en PS2.
+        let (e, t) = outil(&state, &jeton, "inventaire_case", json!({"salle":"PS2","nombre":100,"note":"comptage du 11/11"})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("calculait 10"), "{t}");
+        let (e, t) = outil(&state, &jeton, "inventaire_case", json!({"salle":"PS2","nombre":100,"note":"comptage du 11/11","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        assert_eq!(case_pig_count(&pool, 135).await?, 100);
+        let dernier: Option<i64> = sqlx::query_scalar("SELECT dernier_transfert_id FROM inventairecase ORDER BY id DESC LIMIT 1").fetch_one(&pool).await?;
+        assert_eq!(dernier, sqlx::query_scalar("SELECT MAX(id) FROM transfert").fetch_one(&pool).await?);
         Ok(())
     }
 
