@@ -16,8 +16,54 @@ const FRAICHEUR: StdDuration = StdDuration::from_secs(2);
 /// Au-delà, la caméra est considérée injoignable.
 const DELAI_CAPTURE: StdDuration = StdDuration::from_secs(10);
 
+/// Après un échec, la caméra n'est pas réinterrogée pendant ce délai.
+const PAUSE_PANNE: StdDuration = StdDuration::from_secs(60);
+
 type Capture = Arc<Mutex<Option<(Instant, Vec<u8>)>>>;
 static CAPTURES: LazyLock<DashMap<i64, Capture>> = LazyLock::new(DashMap::new);
+/// Dernière panne connue par caméra (coupe-circuit, en mémoire seulement).
+static PANNES: LazyLock<DashMap<i64, Panne>> = LazyLock::new(DashMap::new);
+
+/// Épisode de panne d'une caméra.
+#[derive(Clone, Debug, PartialEq)]
+struct Panne {
+    /// Heure locale (HH:MM) du premier échec de l'épisode.
+    depuis: String,
+    /// Moment du dernier échec : la pause de 60 s part de là.
+    dernier_echec: Instant,
+}
+
+impl Panne {
+    /// Vrai tant qu'on ne doit pas réinterroger la caméra.
+    fn en_pause(&self, maintenant: Instant) -> bool {
+        maintenant.saturating_duration_since(self.dernier_echec) < PAUSE_PANNE
+    }
+}
+
+/// Note un échec. Renvoie la panne à mémoriser et `true` s'il s'agit du
+/// premier échec de l'épisode (seul cas où l'on écrit un WARN).
+fn noter_echec(avant: Option<&Panne>, maintenant: Instant, heure: &str) -> (Panne, bool) {
+    match avant {
+        Some(p) => (Panne { depuis: p.depuis.clone(), dernier_echec: maintenant }, false),
+        None => (Panne { depuis: heure.to_string(), dernier_echec: maintenant }, true),
+    }
+}
+
+/// Heure de début de panne à afficher sur la page, si la caméra est en pause.
+fn hors_ligne_depuis(id: i64) -> Option<String> {
+    PANNES.get(&id).filter(|p| p.en_pause(Instant::now())).map(|p| p.depuis.clone())
+}
+
+/// Petite image SVG « caméra hors ligne », générée à la volée.
+fn image_hors_ligne(depuis: &str) -> Response {
+    let svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"360\" viewBox=\"0 0 640 360\">\
+<rect width=\"640\" height=\"360\" fill=\"#2b2f36\"/>\
+<text x=\"320\" y=\"170\" fill=\"#e6e8eb\" font-family=\"sans-serif\" font-size=\"28\" text-anchor=\"middle\">Caméra hors ligne</text>\
+<text x=\"320\" y=\"210\" fill=\"#aab0b8\" font-family=\"sans-serif\" font-size=\"18\" text-anchor=\"middle\">depuis {depuis}</text></svg>"
+    );
+    ([(header::CONTENT_TYPE, "image/svg+xml"), (header::CACHE_CONTROL, "no-store")], svg).into_response()
+}
 
 /// Retire d'une adresse `rtsp://user:pass@hote/...` les identifiants qu'on y
 /// aurait collés, pour les ranger à part.
@@ -101,18 +147,37 @@ pub(super) async fn image(State(state): State<AppState>, Path(id): Path<i64>) ->
             .fetch_optional(&state.pool)
             .await?;
     let (url, user, pass) = camera.ok_or(AppError::NotFound)?;
+    if let Some(depuis) = hors_ligne_depuis(id) {
+        return Ok(image_hors_ligne(&depuis));
+    }
     let verrou = CAPTURES.entry(id).or_default().clone();
     let mut derniere = verrou.lock().await;
+    // Une autre requête a pu constater la panne pendant qu'on attendait le verrou.
+    if let Some(depuis) = hors_ligne_depuis(id) {
+        return Ok(image_hors_ligne(&depuis));
+    }
     let jpeg = match derniere.as_ref() {
         Some((prise, jpeg)) if prise.elapsed() < FRAICHEUR => jpeg.clone(),
         _ => match capturer(&url_complete(&url, user.as_deref(), pass.as_deref()), pass.as_deref()).await {
             Ok(jpeg) => {
+                if PANNES.remove(&id).is_some() {
+                    tracing::info!(camera = id, "caméra de nouveau joignable");
+                }
                 *derniere = Some((Instant::now(), jpeg.clone()));
                 jpeg
             }
             Err(message) => {
-                tracing::warn!(camera = id, %message, "image de caméra indisponible");
-                return Ok((StatusCode::BAD_GATEWAY, [(header::CACHE_CONTROL, "no-store")], format!("Caméra injoignable : {message}")).into_response());
+                let heure = Local::now().format("%H:%M").to_string();
+                let avant = PANNES.get(&id).map(|p| p.clone());
+                let (panne, premiere) = noter_echec(avant.as_ref(), Instant::now(), &heure);
+                let depuis = panne.depuis.clone();
+                PANNES.insert(id, panne);
+                if premiere {
+                    tracing::warn!(camera = id, %message, "image de caméra indisponible (nouvelle panne, silence pendant 60 s entre deux essais)");
+                } else {
+                    tracing::debug!(camera = id, %message, "image de caméra toujours indisponible");
+                }
+                return Ok(image_hors_ligne(&depuis));
             }
         },
     };
@@ -126,18 +191,20 @@ pub(super) async fn page(
 ) -> AppResult<Html<String>> {
     let pool = &state.pool;
     let mut ctx = context(&session);
-    ctx.insert(
-        "cameras".into(),
-        Value::Array(
-            generic_rows(
-                pool,
-                "SELECT c.id, c.nom, c.url, c.identifiant, \
-                 (c.mot_de_passe IS NOT NULL AND c.mot_de_passe<>'') AS mdp, c.salle_id, c.actif, s.nom AS salle \
-                 FROM camera c LEFT JOIN salle s ON s.id=c.salle_id ORDER BY s.ordre, s.nom, c.nom",
-            )
-            .await?,
-        ),
-    );
+    let mut cameras = generic_rows(
+        pool,
+        "SELECT c.id, c.nom, c.url, c.identifiant, \
+         (c.mot_de_passe IS NOT NULL AND c.mot_de_passe<>'') AS mdp, c.salle_id, c.actif, s.nom AS salle \
+         FROM camera c LEFT JOIN salle s ON s.id=c.salle_id ORDER BY s.ordre, s.nom, c.nom",
+    )
+    .await?;
+    for camera in &mut cameras {
+        let depuis = camera.get("id").and_then(Value::as_i64).and_then(hors_ligne_depuis);
+        if let (Some(depuis), Some(objet)) = (depuis, camera.as_object_mut()) {
+            objet.insert("hors_ligne_depuis".into(), json!(depuis));
+        }
+    }
+    ctx.insert("cameras".into(), Value::Array(cameras));
     ctx.insert("salles".into(), Value::Array(generic_rows(pool, "SELECT id, nom FROM salle ORDER BY ordre, nom").await?));
     ctx.insert("resultat".into(), json!(query.get("resultat")));
     render(&state, "cameras.html", Value::Object(ctx))
@@ -190,6 +257,7 @@ pub(super) async fn enregistrer(
             .last_insert_rowid(),
     };
     CAPTURES.remove(&id);
+    PANNES.remove(&id);
     Ok(Redirect::to(&format!("/equipements/cameras?resultat=enregistre#camera-{id}")).into_response())
 }
 
@@ -205,6 +273,7 @@ pub(super) async fn supprimer(
     verify_csrf(&session, &form)?;
     sqlx::query("DELETE FROM camera WHERE id=?").bind(id).execute(&state.pool).await?;
     CAPTURES.remove(&id);
+    PANNES.remove(&id);
     Ok(Redirect::to("/equipements/cameras?resultat=supprimee").into_response())
 }
 
@@ -220,6 +289,32 @@ mod tests {
         assert_eq!(pass.as_deref(), Some("Mot@passe"));
         let (url, user, pass) = separer("rtsp://192.168.1.2/flux?a=b@c");
         assert_eq!((url.as_str(), user, pass), ("rtsp://192.168.1.2/flux?a=b@c", None, None));
+    }
+
+    #[test]
+    fn le_coupe_circuit_garde_la_premiere_heure_et_ne_previent_qu_une_fois() {
+        let t0 = Instant::now();
+        let (p1, premiere) = noter_echec(None, t0, "08:15");
+        assert!(premiere);
+        assert_eq!(p1.depuis, "08:15");
+        // Pendant 60 s : pas de nouvel essai.
+        assert!(p1.en_pause(t0));
+        assert!(p1.en_pause(t0 + StdDuration::from_secs(59)));
+        // Après 60 s : on peut réessayer.
+        assert!(!p1.en_pause(t0 + PAUSE_PANNE));
+        // Nouvel échec du même épisode : heure d'origine gardée, pas de WARN, pause relancée.
+        let t1 = t0 + StdDuration::from_secs(61);
+        let (p2, premiere) = noter_echec(Some(&p1), t1, "08:16");
+        assert!(!premiere);
+        assert_eq!(p2.depuis, "08:15");
+        assert!(p2.en_pause(t1 + StdDuration::from_secs(30)));
+    }
+
+    #[test]
+    fn l_image_hors_ligne_repond_200_en_svg() {
+        let r = image_hors_ligne("08:15");
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CONTENT_TYPE], "image/svg+xml");
     }
 
     #[test]

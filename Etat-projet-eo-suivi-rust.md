@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.75.1** — page Flux : plus d'erreur quand une bande dépasse sa date de départ prévue.
+Version actuelle : **2.75.2** — caméra injoignable : plus d'attente ni de 502 en série sur la page Caméras.
 
+
+Version Rust 2.75.2 : cameras.rs a un coupe-circuit en mémoire (PANNES, 60 s après un échec ffmpeg) ; pendant la pause /salles/camera/{id}/image répond 200 avec un SVG « Caméra hors ligne depuis HH:MM », un seul WARN par épisode de panne (ensuite debug), cameras.html affiche « hors ligne depuis HH:MM ». Test le_coupe_circuit_garde_la_premiere_heure_et_ne_previent_qu_une_fois.
 
 Version Rust 2.75.1 : conduite::flux fournit jours_retard (jours après le départ prévu, 0 au plus tôt) ; flux.html ne fait plus de négation dans le template (« -s.jours_depart » donnait « invalid operation », erreur 500 dès qu'une bande encore pleine dépassait son départ). Test flux_supporte_une_bande_en_retard_de_depart.
 

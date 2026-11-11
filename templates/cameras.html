@@ -16,7 +16,8 @@
 
 {% for c in cameras %}
 <section class="card" id="camera-{{ c.id }}"><h2>📷 {{ c.nom }} {% if c.salle %}<span class="sl-badge">{{ c.salle }}</span>{% else %}<span class="sl-badge jaune">sans salle</span>{% endif %}{% if not c.actif %} <span class="sl-badge jaune">désactivée</span>{% endif %}</h2>
-{% if c.actif %}<p><img src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable : vérifiez l’adresse et le mot de passe" loading="lazy" style="max-width:100%;width:640px;border-radius:8px;background:#0002;min-height:60px"></p>{% endif %}
+{% if c.actif %}<p><img src="/salles/camera/{{ c.id }}/image" alt="Caméra injoignable : vérifiez l’adresse et le mot de passe" loading="lazy" style="max-width:100%;width:640px;border-radius:8px;background:#0002;min-height:60px"></p>
+{% if c.hors_ligne_depuis %}<p class="muted">⚠ hors ligne depuis {{ c.hors_ligne_depuis }}</p>{% endif %}{% endif %}
 {% if session.est_admin %}
 <form class="rust-actions" method="post" action="/equipements/cameras"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="id" value="{{ c.id }}">
   <label>Nom<input name="nom" value="{{ c.nom }}" required></label>
