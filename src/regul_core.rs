@@ -106,6 +106,8 @@ pub enum Mode {
     Arret,
     /// Salle sans animaux : ventilation tenue au réglage « salle vide ».
     Vide,
+    /// Forçage minuté demandé par l'éleveur (voir `forcage`).
+    Force,
 }
 
 impl Mode {
@@ -115,6 +117,7 @@ impl Mode {
             Mode::Securite => "securite",
             Mode::Arret => "arret",
             Mode::Vide => "vide",
+            Mode::Force => "force",
         }
     }
 }
@@ -310,6 +313,39 @@ pub fn salle_vide(ventil_vide: f64) -> Decision {
     }
 }
 
+/// Forçage minuté : l'éleveur impose un pourcentage pendant un temps donné
+/// (« Engr2 à 100 % pendant 2 h »), quelles que soient la mesure et la
+/// consigne. La sécurité reste à l'éleveur : il a choisi la valeur.
+pub fn forcage(pct: f64) -> Decision {
+    let pct = arrondi_dixieme(borner(pct, 0.0, 100.0));
+    Decision {
+        ventil: pct,
+        mode: Mode::Force,
+        sonde_ok: true,
+        message: Some(format!("forcé à {pct:.0} % par l'éleveur")),
+    }
+}
+
+/// Durée maximale d'un forçage : au-delà d'une journée, c'est un réglage,
+/// pas un forçage.
+pub const FORCAGE_MAX_MIN: i64 = 24 * 60;
+
+/// Instant UTC au format rangé en base (« AAAA-MM-JJ HH:MM:SS », comme
+/// `datetime('now')` de SQLite), comparable comme du texte.
+pub fn instant_utc(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default()
+}
+
+/// Pourcentage forcé encore valable à l'instant `maintenant_utc` (même
+/// format que `instant_utc`), sinon rien : un forçage sans fin, ou dont la
+/// fin est passée, ne compte pas.
+pub fn forcage_en_cours(pct: Option<f64>, fin: Option<&str>, maintenant_utc: &str) -> Option<f64> {
+    let fin = fin?.trim();
+    (fin.len() >= 16 && fin > maintenant_utc).then_some(pct?)
+}
+
 /// Âge retenu pour une mesure : le plus ancien entre « la valeur n'a pas bougé
 /// depuis » (mémoire du démon, perdue à chaque redémarrage) et l'âge réel donné
 /// par la source. Sans cela, une sonde Zigbee muette depuis des semaines
@@ -492,6 +528,19 @@ mod tests {
         let d = salle_vide(8.0);
         assert_eq!((d.ventil, d.mode, d.mode.code()), (8.0, Mode::Vide, "vide"));
         assert_eq!(salle_vide(150.0).ventil, 100.0);
+    }
+
+    #[test]
+    fn un_forcage_prime_tant_que_sa_fin_nest_pas_passee() {
+        let now = "2026-11-11 15:00:00";
+        assert_eq!(forcage_en_cours(Some(100.0), Some("2026-11-11 17:00:00"), now), Some(100.0));
+        assert_eq!(forcage_en_cours(Some(100.0), Some("2026-11-11 14:59:59"), now), None);
+        assert_eq!(forcage_en_cours(Some(100.0), None, now), None);
+        assert_eq!(forcage_en_cours(None, Some("2026-11-11 17:00:00"), now), None);
+        let d = forcage(130.0);
+        assert_eq!(d.mode, Mode::Force);
+        assert!((d.ventil - 100.0).abs() < 1e-9);
+        assert_eq!(instant_utc(0), "1970-01-01 00:00:00");
     }
 
     #[test]

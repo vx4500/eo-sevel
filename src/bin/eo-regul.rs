@@ -94,6 +94,9 @@ struct SalleRegulee {
     h_alerte_max: Option<f64>,
     deadband_pct: f64,
     relance_s: i64,
+    /// Pourcentage forcé par l'éleveur pour un temps (voir 0034), déjà
+    /// filtré : `None` dès que la fin est passée.
+    forcage: Option<f64>,
 }
 
 /// Ce que le démon garde en mémoire d'un cycle à l'autre. Rien d'essentiel :
@@ -287,6 +290,11 @@ async fn cycle(
     simulation: bool,
 ) -> Result<usize> {
     let acces = acces_ipx(pool, simulation).await;
+    // Forçages échus : les salles non régulées retrouvent leur ancienne
+    // valeur, les régulées reprennent le calcul au cycle qui suit.
+    if let Err(error) = terminer_forcages(pool, client, &acces).await {
+        tracing::error!(error = %error, "fin de forçage non appliquée");
+    }
     let salles = charger_salles(pool).await?;
     let mut traitees = 0usize;
     for salle in &salles {
@@ -415,13 +423,14 @@ async fn charger_salles(pool: &SqlitePool) -> Result<Vec<SalleRegulee>> {
                 a.hygro_cible, a.hygro_influence, a.anticipation, a.t_plausible_min, \
                 a.t_plausible_max, a.h_plausible_min, a.h_plausible_max, a.fraicheur_max_s, \
                 a.ventil_securite, a.t_alerte_min, a.t_alerte_max, a.h_alerte_max, \
-                a.deadband_pct, a.relance_s \
+                a.deadband_pct, a.relance_s, a.forcage_pct, a.forcage_fin \
          FROM ambiance_salle a JOIN salle s ON s.id=a.salle_id \
          WHERE a.actif=1 ORDER BY s.ordre, s.nom",
     )
     .fetch_all(pool)
     .await?;
 
+    let instant = regul_core::instant_utc(maintenant());
     let mut salles = Vec::with_capacity(lignes.len());
     for ligne in lignes {
         salles.push(SalleRegulee {
@@ -454,9 +463,65 @@ async fn charger_salles(pool: &SqlitePool) -> Result<Vec<SalleRegulee>> {
             h_alerte_max: ligne.try_get::<Option<f64>, _>("h_alerte_max").ok().flatten(),
             deadband_pct: ligne.try_get("deadband_pct")?,
             relance_s: ligne.try_get("relance_s")?,
+            forcage: regul_core::forcage_en_cours(
+                ligne.try_get::<Option<f64>, _>("forcage_pct").ok().flatten(),
+                texte_renseigne(&ligne, "forcage_fin").as_deref(),
+                &instant,
+            ),
         });
     }
     Ok(salles)
+}
+
+/// Forçages dont la fin est passée. Une salle régulée reprend simplement
+/// son calcul ; une salle non régulée (le connecteur a créé sa ligne avec
+/// la sortie de son variateur) reçoit la valeur d'avant le forçage.
+async fn terminer_forcages(pool: &SqlitePool, client: &reqwest::Client, acces: &AccesIpx) -> Result<()> {
+    let instant = regul_core::instant_utc(maintenant());
+    let echus = sqlx::query(
+        "SELECT a.salle_id, s.nom, a.actif, a.pilote, a.ipx_hote, a.sortie_ventil, a.forcage_pct, a.forcage_retour \
+         FROM ambiance_salle a JOIN salle s ON s.id=a.salle_id \
+         WHERE a.forcage_fin IS NOT NULL AND a.forcage_fin<=?",
+    )
+    .bind(&instant)
+    .fetch_all(pool)
+    .await?;
+    for ligne in echus {
+        let salle_id: i64 = ligne.try_get("salle_id")?;
+        let nom: String = ligne.try_get("nom").unwrap_or_default();
+        let regulee = ligne.try_get::<i64, _>("actif").unwrap_or(0) != 0
+            && ligne.try_get::<i64, _>("pilote").unwrap_or(0) != 0;
+        let retour = ligne.try_get::<Option<f64>, _>("forcage_retour").ok().flatten();
+        let hote = texte_renseigne(&ligne, "ipx_hote").unwrap_or_default();
+        let sortie = texte_renseigne(&ligne, "sortie_ventil");
+        let mut remis = None;
+        if let (false, Some(retour), Some(sortie)) = (regulee, retour, sortie.as_deref()) {
+            if !acces.simulation {
+                match ecrire(client, acces, &hote, sortie, retour).await {
+                    Ok(()) => remis = Some(retour),
+                    Err(error) => {
+                        tracing::error!(salle = %nom, error = %error, "retour de ventilation impossible après forçage");
+                        continue;
+                    }
+                }
+            }
+        }
+        sqlx::query("UPDATE ambiance_salle SET forcage_pct=NULL, forcage_fin=NULL, forcage_retour=NULL WHERE salle_id=?")
+            .bind(salle_id)
+            .execute(pool)
+            .await?;
+        let detail = match remis {
+            Some(v) => format!("{nom} : fin du forçage, variateur remis à {v:.0} %"),
+            None => format!("{nom} : fin du forçage, régulation normale"),
+        };
+        tracing::info!(salle = %nom, "fin de forçage");
+        let _ = sqlx::query("INSERT INTO journal(horodatage,utilisateur,action,objet,detail,chemin) VALUES(CURRENT_TIMESTAMP,'eo-regul','fin_forcage',?,?,'/ambiance')")
+            .bind(&nom)
+            .bind(&detail)
+            .execute(pool)
+            .await;
+    }
+    Ok(())
 }
 
 /// Bande présente dans la salle et son nombre de jours de présence.
@@ -728,9 +793,12 @@ async fn traiter_salle(
         }
         _ => None,
     };
-    let decision = match vide {
-        Some(v) => regul_core::salle_vide(v),
-        None => calculer(&reglages, consigne, temperature, humidite, gradient),
+    // Un forçage minuté de l'éleveur passe avant tout le reste, salle vide
+    // comprise : il a demandé ce pourcentage, il l'aura jusqu'à l'heure dite.
+    let decision = match (salle.forcage, vide) {
+        (Some(pct), _) => regul_core::forcage(pct),
+        (None, Some(v)) => regul_core::salle_vide(v),
+        (None, None) => calculer(&reglages, consigne, temperature, humidite, gradient),
     };
 
     // Écriture sur l'automate : seulement si la salle est déclarée pilotée, si

@@ -418,6 +418,13 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         .await?;
     // Ventilation d'une salle vide (économie) : NULL = réglage désactivé.
     ensure_column(pool, "ambiance_salle", "ventil_vide", "REAL").await?;
+    // Forçage minuté de la ventilation (connecteur Claude) : le fichier
+    // n'est joué qu'une fois, ses ALTER TABLE ne se rejouent pas.
+    if !colonne_presente(pool, "ambiance_salle", "forcage_pct").await? {
+        sqlx::raw_sql(include_str!("../migrations/0034_forcage_ventilation.sql"))
+            .execute(pool)
+            .await?;
+    }
     // Plan de l'élevage pivoté par quarts de tour (voir routes::plan_elevage).
     ensure_column(pool, "plan_reglage", "rotation", "INTEGER NOT NULL DEFAULT 0").await?;
     // Taille d'un encart du plan, en % du plan (NULL = taille du contenu).
@@ -653,18 +660,20 @@ async fn verify_sqlite_pragmas(pool: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// La table a-t-elle déjà cette colonne ?
+pub async fn colonne_presente(pool: &SqlitePool, table: &str, column: &str) -> anyhow::Result<bool> {
+    let sql = format!("PRAGMA table_info(\"{}\")", table.replace('"', ""));
+    let rows = sqlx::query(&sql).fetch_all(pool).await?;
+    Ok(rows.iter().any(|row| row.get::<String, _>("name") == column))
+}
+
 async fn ensure_column(
     pool: &SqlitePool,
     table: &str,
     column: &str,
     definition: &str,
 ) -> anyhow::Result<()> {
-    let sql = format!("PRAGMA table_info(\"{}\")", table.replace('"', ""));
-    let rows = sqlx::query(&sql).fetch_all(pool).await?;
-    if rows
-        .iter()
-        .any(|row| row.get::<String, _>("name") == column)
-    {
+    if colonne_presente(pool, table, column).await? {
         return Ok(());
     }
     let alter = format!(

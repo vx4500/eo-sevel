@@ -25,8 +25,33 @@ fn outils() -> Value {
          "description": "Fiche d'une truie par son numéro de travail (ou fin de numéro) : statut, rang, bande, salle, case/vanne et derniers événements.",
          "input_schema": {"type": "object", "properties": {"numero": {"type": "string"}}, "required": ["numero"]}},
         {"name": "cases_salle",
-         "description": "Cases d'une salle (ex. « Verraterie ») avec numéro de vanne, places et truies présentes.",
-         "input_schema": {"type": "object", "properties": {"salle": {"type": "string"}}, "required": ["salle"]}},
+         "description": "Cases d'une salle avec numéro de vanne, places, truies présentes et nombre de porcs. La salle s'écrit comme on la dit : « Verraterie », « Engr2 », « eng 3 », « PS1 », « Mater 2 ».",
+         "input_schema": {"type": "object", "properties": {"salle": {"type": "string", "description": "nom complet ou abrégé de la salle"}}, "required": ["salle"]}},
+        {"name": "etat_salle",
+         "description": "État d'une salle en une fois : température, hygrométrie, consigne, ventilation réelle, forçage en cours, nombre de porcs ou de truies, bande et jour de présence, alertes. Ex. « comment va l'Engr2 ? », « combien de porcs en PS1 ? ». Sans salle : toutes les salles.",
+         "input_schema": {"type": "object", "properties": {"salle": {"type": "string", "description": "nom complet ou abrégé (Engr2, PS1, Mater 1, verraterie) ; vide = toutes"}}}},
+        {"name": "forcer_ventilation",
+         "description": "Force la ventilation d'une salle à un pourcentage pendant une durée, puis la régulation (ou l'ancien réglage du variateur) revient toute seule. Ex. « fais tourner l'Engr2 à 100 % pendant 2 h », « PS1 à 50 % pendant 30 minutes ». Salle en nom complet ou abrégé. Durée 120 min par défaut, 24 h au plus. Deux temps : d'abord sans confirme, lire le résumé à l'éleveur, puis confirme=true après son accord.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string", "description": "nom complet ou abrégé de la salle"},
+             "pourcentage": {"type": "number", "description": "0 à 100"},
+             "duree_minutes": {"type": "integer", "description": "durée en minutes, 120 par défaut, 1440 au plus"},
+             "confirme": confirme}, "required": ["salle", "pourcentage"]}},
+        {"name": "arreter_forcage",
+         "description": "Arrête tout de suite un forçage de ventilation en cours (ex. « remets l'Engr2 en automatique ») : la régulation reprend, ou le variateur retrouve sa valeur d'avant. Deux temps comme forcer_ventilation.",
+         "input_schema": {"type": "object", "properties": {"salle": {"type": "string"}, "confirme": confirme}, "required": ["salle"]}},
+        {"name": "regler_ambiance",
+         "description": "Change durablement un réglage de régulation d'une salle : consigne de température fixe (t_cible), plage (°C entre ventilation mini et maxi), ventilation minimale ou maximale (%). Ex. « mets la consigne de la gestante à 20 », « ventilation mini de PS1 à 25 % ». Pour un besoin passager, préférer forcer_ventilation. Deux temps comme forcer_ventilation.",
+         "input_schema": {"type": "object", "properties": {
+             "salle": {"type": "string"},
+             "t_cible": {"type": "number", "description": "consigne fixe en °C (ignorée si la salle suit une courbe)"},
+             "plage": {"type": "number", "description": "°C"},
+             "ventil_min": {"type": "number", "description": "%"},
+             "ventil_max": {"type": "number", "description": "%"},
+             "confirme": confirme}, "required": ["salle"]}},
+        {"name": "que_sais_tu_faire",
+         "description": "Liste en français ce que le connecteur sait faire, par famille (animaux, mouvements, ambiance, économie, mémoire, questions libres), et ce qu'il ne fait pas encore.",
+         "input_schema": {"type": "object", "properties": {}}},
         {"name": "calendrier_ia",
          "description": "Dates d'IA prévues par bande active : IA de la bande (mise-bas − gestation) et IA des truies sevrées (lundi suivant le sevrage). Sert à calculer un rappel « X jours avant les IA ».",
          "input_schema": {"type": "object", "properties": {}}},
@@ -44,18 +69,18 @@ fn outils() -> Value {
              "note": {"type": "string"}, "bande": {"type": "string"},
              "confirme": confirme}, "required": ["titre", "date"]}},
         {"name": "declarer_mort",
-         "description": "Déclare des porcs morts dans une salle (engraissement, post-sevrage…, pas la maternité). Case facultative si la salle n'en a qu'une. Deux temps comme deplacer_truie.",
+         "description": "Déclare des porcs morts dans une salle d'engraissement ou de post-sevrage (pas la maternité : les porcelets se saisissent par portée). Ex. « un mort en Engr3, respiratoire ». Salle en nom complet ou abrégé ; case facultative si la salle n'en a qu'une ou si la plus pleine suffit. Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
-             "salle": {"type": "string"}, "case": {"type": "string", "description": "numéro de vanne ou nom de la case (facultatif)"},
+             "salle": {"type": "string", "description": "nom complet ou abrégé"}, "case": {"type": "string", "description": "numéro de vanne ou nom de la case (facultatif)"},
              "nombre": {"type": "integer"}, "cause": {"type": "string", "description": "une cause configurée (la liste est renvoyée si elle est inconnue)"},
              "stade": {"type": "string", "description": "facultatif : déduit de la salle"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle", "nombre", "cause"]}},
         {"name": "transferer_porcs",
-         "description": "Transfère des porcs d'une salle (ou case) vers une autre ; les porcs gardent leur bande. Deux temps comme deplacer_truie.",
+         "description": "Transfère des porcs (porcelets, charcutiers) d'une salle vers une autre ; ils gardent leur bande. Ex. « passe 20 porcs de PS1 en Engr2 », « transfère 68 porcs de l'engraissement 2 vers l'engraissement 3 ». Salles en nom complet ou abrégé (Engr2, eng 3, PS1). Pris dans les cases les plus pleines ; la case d'arrivée n'est demandée que si la salle en a plusieurs. Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
-             "salle_source": {"type": "string"}, "case_source": {"type": "string", "description": "facultatif"},
-             "salle_destination": {"type": "string"}, "case_destination": {"type": "string", "description": "facultatif si la salle n'a qu'une case"},
+             "salle_source": {"type": "string", "description": "nom complet ou abrégé"}, "case_source": {"type": "string", "description": "facultatif"},
+             "salle_destination": {"type": "string", "description": "nom complet ou abrégé"}, "case_destination": {"type": "string", "description": "facultatif si la salle n'a qu'une case"},
              "nombre": {"type": "integer"}, "bande": {"type": "string", "description": "facultatif : vérifie que les porcs sont de cette bande"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle_source", "salle_destination", "nombre"]}},
@@ -80,7 +105,7 @@ fn outils() -> Value {
              "num_facture": {"type": "string"}, "note": {"type": "string"},
              "confirme": confirme}, "required": ["categorie", "montant_ht"]}},
         {"name": "depart_porcs",
-         "description": "Enregistre un départ de porcs à l'abattoir depuis une salle (pris dans les cases les plus pleines). Deux temps comme deplacer_truie.",
+         "description": "Enregistre un départ de porcs à l'abattoir depuis une salle (pris dans les cases les plus pleines). Ex. « 30 porcs partis de l'Engr1 ce matin ». Salle en nom complet ou abrégé. Deux temps comme deplacer_truie.",
          "input_schema": {"type": "object", "properties": {
              "salle": {"type": "string"}, "case": {"type": "string", "description": "facultatif"},
              "nombre": {"type": "integer"},
@@ -112,7 +137,7 @@ fn outils() -> Value {
 
 const CONSIGNES: &str = "Outils de l'élevage EO_Sevel. Réponds brièvement, en français parlé (l'éleveur est souvent à la voix, dans le bâtiment). \
 Avant toute écriture, appelle l'outil sans confirme, répète en une phrase ce qui va être fait et attends un « oui » ; seulement ensuite rappelle avec confirme=true. \
-N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Pour une date relative aux IA, utilise calendrier_ia. \
+N'invente jamais un numéro, une date ou une case : vérifie avec les outils. Les salles se disent en abrégé (Engr2, PS1, Mater 1) : passe le nom tel quel, les outils le reconnaissent. Pour « mets la salle à X % », utilise forcer_ventilation (retour automatique) ; pour l'état d'une salle, etat_salle. Pour une date relative aux IA, utilise calendrier_ia. \
 Ce qui a été retenu est listé ci-dessous (pas besoin d'appeler memoire). Quand l'éleveur explique quelque chose de durable, retiens-le en une phrase courte (outil retenir).";
 
 async fn table_memoire(pool: &SqlitePool) -> Result<(), String> {
@@ -161,11 +186,12 @@ async fn truie_par_numero(pool: &SqlitePool, numero: &str) -> Result<(i64, Strin
 
 async fn case_par_vanne(pool: &SqlitePool, salle: &str, vanne: &str) -> Result<(i64, i64, String, String, Option<i64>), String> {
     let v = vanne.trim_start_matches(['v', 'V']).trim().to_string();
+    let (salle_id, _, _) = salle_par_nom(pool, salle).await?;
     let lignes: Vec<(i64, i64, String, String, Option<i64>)> = sqlx::query_as(
         "SELECT c.id,c.salle_id,s.nom,c.nom,COALESCE(c.nb_max_truies,c.nb_max_porcs) FROM casesalle c JOIN salle s ON s.id=c.salle_id \
-         WHERE lower(s.nom) LIKE '%'||lower(?1)||'%' AND (c.num_vanne=?2 OR lower(c.nom)=lower(?2) OR c.nom LIKE ?2||' %')",
+         WHERE c.salle_id=?1 AND (c.num_vanne=?2 OR lower(c.nom)=lower(?2) OR c.nom LIKE ?2||' %')",
     )
-    .bind(salle).bind(&v)
+    .bind(salle_id).bind(&v)
     .fetch_all(pool).await.map_err(|e| e.to_string())?;
     match lignes.len() {
         0 => Err(format!("Pas de case « {vanne} » dans la salle « {salle} ». Utilise cases_salle pour voir les cases.")),
@@ -174,29 +200,70 @@ async fn case_par_vanne(pool: &SqlitePool, salle: &str, vanne: &str) -> Result<(
     }
 }
 
+/// Clé de comparaison d'un nom de salle tel qu'on le dit : minuscules, sans
+/// accent ni espace, préfixes ramenés à une forme courte. « Engraissement 2 »,
+/// « Engr2 », « eng 2 » et « E2 » donnent tous « eng2 » ; « Post-sevrage 1 »
+/// et « PS1 » donnent « ps1 » ; « Mater 1 » et « maternité 1 » donnent « mater1 ».
+pub(super) fn cle_salle(nom: &str) -> String {
+    let mut cle: String = nom.to_lowercase().chars().filter_map(|c| match c {
+        'é' | 'è' | 'ê' | 'ë' => Some('e'), 'à' | 'â' => Some('a'), 'î' | 'ï' => Some('i'),
+        'ô' => Some('o'), 'ù' | 'û' => Some('u'), 'ç' => Some('c'),
+        c if c.is_alphanumeric() => Some(c), _ => None,
+    }).collect();
+    for (long, court) in [("postsevrage", "ps"), ("postengraissement", "posteng"), ("engraissement", "eng"), ("engr", "eng"),
+                          ("maternite", "mater"), ("verraterie", "verrat"), ("gestantes", "gest"), ("gestante", "gest"), ("gestation", "gest")] {
+        if cle.starts_with(long) { cle = format!("{court}{}", &cle[long.len()..]); break; }
+    }
+    // « mat1 » → « mater1 », « e2 » → « eng2 », « p1 » → « ps1 » : ce qu'on dit vite.
+    if let Some(reste) = cle.strip_prefix("mat").filter(|r| r.chars().next().is_some_and(|c| c.is_ascii_digit())) { cle = format!("mater{reste}"); }
+    if let Some(reste) = cle.strip_prefix('e').filter(|r| r.chars().next().is_some_and(|c| c.is_ascii_digit())) { cle = format!("eng{reste}"); }
+    if let Some(reste) = cle.strip_prefix('p').filter(|r| r.chars().next().is_some_and(|c| c.is_ascii_digit())) { cle = format!("ps{reste}"); }
+    cle
+}
+
+/// Salle désignée comme on la dit : (id, nom, type). Un nom exact gagne ;
+/// sinon un seul nom qui commence par ou contient la clé ; sinon la liste
+/// des salles possibles, pour que l'éleveur précise.
+pub(super) async fn salle_par_nom(pool: &SqlitePool, texte: &str) -> Result<(i64, String, Option<String>), String> {
+    let cle = cle_salle(texte);
+    if cle.is_empty() { return Err("Quelle salle ?".into()); }
+    let salles: Vec<(i64, String, Option<String>)> = sqlx::query_as("SELECT id,nom,type FROM salle ORDER BY ordre,nom")
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    if let Some(s) = salles.iter().find(|s| cle_salle(&s.1) == cle) { return Ok(s.clone()); }
+    for test in [|c: &str, k: &str| c.starts_with(k), |c: &str, k: &str| c.contains(k)] {
+        let trouvees: Vec<&(i64, String, Option<String>)> = salles.iter().filter(|s| test(&cle_salle(&s.1), &cle)).collect();
+        match trouvees.as_slice() {
+            [une] => return Ok((*une).clone()),
+            [] => {}
+            plusieurs => return Err(format!("Plusieurs salles correspondent à « {texte} » : {}. Laquelle ?",
+                plusieurs.iter().map(|s| s.1.as_str()).collect::<Vec<_>>().join(", "))),
+        }
+    }
+    Err(format!("Pas de salle « {texte} ». Salles : {}.", salles.iter().map(|s| s.1.as_str()).collect::<Vec<_>>().join(", ")))
+}
+
 /// Porcs présents par case d'une salle (case facultative), la plus pleine
 /// d'abord : (case_id, salle_id, salle, case, effectif). La maternité est
 /// refusée : ses porcelets se comptent par portée, saisie dans EO_Sevel.
 async fn cases_porcs(pool: &SqlitePool, salle: &str, case: &str) -> Result<Vec<(i64, i64, String, String, i64)>, String> {
-    let lignes: Vec<(i64, i64, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT c.id,c.salle_id,s.nom,c.nom,s.type FROM casesalle c JOIN salle s ON s.id=c.salle_id \
-         WHERE lower(s.nom) LIKE '%'||lower(?1)||'%' AND (?2='' OR c.num_vanne=?2 OR lower(c.nom)=lower(?2) OR c.nom LIKE ?2||' %') ORDER BY c.id",
+    let (salle_id, nom, type_salle) = salle_par_nom(pool, salle).await?;
+    if stade_pour_type_salle(type_salle.as_deref().unwrap_or("")).as_deref() == Some("Maternité") {
+        return Err(format!("{nom} est une maternité : les porcelets se saisissent par portée dans EO_Sevel."));
+    }
+    let lignes: Vec<(i64, i64, String, String)> = sqlx::query_as(
+        "SELECT c.id,c.salle_id,s.nom,c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id \
+         WHERE c.salle_id=?1 AND (?2='' OR c.num_vanne=?2 OR lower(c.nom)=lower(?2) OR c.nom LIKE ?2||' %' OR replace(lower(c.nom),' ','')=replace(lower(?2),' ','')) ORDER BY c.id",
     )
-    .bind(salle).bind(case.trim_start_matches(['v', 'V']).trim())
+    .bind(salle_id).bind(case.trim_start_matches(['v', 'V']).trim())
     .fetch_all(pool).await.map_err(|e| e.to_string())?;
     if lignes.is_empty() {
-        return Err(format!("Pas de salle « {salle} »{}. Utilise cases_salle ou lister les salles avec requete.",
-            if case.is_empty() { String::new() } else { format!(" avec la case « {case} »") }));
-    }
-    let salles: std::collections::BTreeSet<&str> = lignes.iter().map(|l| l.2.as_str()).collect();
-    if salles.len() > 1 {
-        return Err(format!("Plusieurs salles correspondent : {}. Laquelle ?", salles.into_iter().collect::<Vec<_>>().join(", ")));
-    }
-    if lignes.iter().any(|l| stade_pour_type_salle(l.4.as_deref().unwrap_or("")).as_deref() == Some("Maternité")) {
-        return Err("Salle de maternité : les porcelets se saisissent par portée dans EO_Sevel.".into());
+        let toutes: Vec<String> = sqlx::query_scalar("SELECT nom FROM casesalle WHERE salle_id=? ORDER BY id").bind(salle_id)
+            .fetch_all(pool).await.unwrap_or_default();
+        return Err(if toutes.is_empty() { format!("{nom} n'a aucune case : à créer dans Mes salles.") }
+            else { format!("Pas de case « {case} » en {nom}. Cases : {}.", toutes.join(", ")) });
     }
     let mut sortie = Vec::new();
-    for (id, salle_id, s, c, _) in lignes {
+    for (id, salle_id, s, c) in lignes {
         let n = case_pig_count(pool, id).await.map_err(|e| e.to_string())?;
         sortie.push((id, salle_id, s, c, n));
     }
@@ -211,7 +278,8 @@ fn prelever(cases: &[(i64, i64, String, String, i64)], nombre: i64) -> Result<Ve
         return Err("Le nombre doit être d'au moins 1.".into());
     }
     if nombre > present {
-        return Err(format!("{} : {nombre} porcs demandés, {present} présents.", cases[0].2));
+        return Err(format!("Il n'y a que {present} porc(s) en {}{} ({nombre} demandés). Redemande avec {present} au plus, ou corrige l'inventaire dans EO_Sevel.",
+            cases[0].2, if cases.len() > 1 { format!(" : {}", cases.iter().map(|c| format!("{} {}", c.3, c.4)).collect::<Vec<_>>().join(", ")) } else { String::new() }));
     }
     let mut reste = nombre;
     let mut pris = Vec::new();
@@ -237,6 +305,132 @@ async fn code_bande(pool: &SqlitePool, bande_id: Option<i64>) -> Option<String> 
     sqlx::query_scalar("SELECT code FROM bande WHERE id=?").bind(bande_id?).fetch_optional(pool).await.ok().flatten()
 }
 
+fn confirme(a: &Value) -> bool {
+    a.get("confirme").and_then(Value::as_bool) == Some(true)
+}
+
+/// Réglages d'ambiance d'une salle utiles au forçage : (actif, pilote,
+/// ipx_hote, sortie_ventil, forcage_pct, forcage_fin, forcage_retour).
+type LigneAmbiance = (i64, i64, Option<String>, Option<String>, Option<f64>, Option<String>, Option<f64>);
+
+async fn ambiance_de(pool: &SqlitePool, salle_id: i64) -> Result<Option<LigneAmbiance>, String> {
+    sqlx::query_as("SELECT actif,pilote,ipx_hote,sortie_ventil,forcage_pct,forcage_fin,forcage_retour FROM ambiance_salle WHERE salle_id=?")
+        .bind(salle_id).fetch_optional(pool).await.map_err(|e| e.to_string())
+}
+
+fn l_forcage_actif(l: Option<&LigneAmbiance>) -> bool {
+    l.is_some_and(|l| crate::regul_core::forcage_en_cours(l.4, l.5.as_deref(), &crate::regul_core::instant_utc(chrono::Utc::now().timestamp())).is_some())
+}
+
+/// Variateur Zigbee rangé pour la ventilation de la salle (table ipx_point,
+/// rôle ventilation, hôte zigbee) : chemin « <ieee>/brightness ».
+async fn variateur_zigbee(pool: &SqlitePool, salle_id: i64) -> Result<Option<String>, String> {
+    sqlx::query_scalar(
+        "SELECT COALESCE(NULLIF(chemin_ecriture,''),chemin) FROM ipx_point WHERE salle_id=? AND role='ventilation' AND hote='zigbee' AND actif=1 ORDER BY ordre,id LIMIT 1",
+    ).bind(salle_id).fetch_optional(pool).await.map_err(|e| e.to_string())
+}
+
+/// Pourcentage réel d'un variateur Zigbee d'après la dernière valeur reçue.
+async fn pourcent_variateur(pool: &SqlitePool, chemin: &str) -> Option<f64> {
+    let ieee = chemin.trim().strip_suffix("/brightness")?;
+    let brightness: Option<f64> = sqlx::query_scalar("SELECT valeur FROM zigbee_valeur WHERE ieee=? AND cle='brightness'")
+        .bind(ieee).fetch_optional(pool).await.ok().flatten().flatten();
+    let etat: Option<f64> = sqlx::query_scalar("SELECT valeur FROM zigbee_valeur WHERE ieee=? AND cle='state'")
+        .bind(ieee).fetch_optional(pool).await.ok().flatten().flatten();
+    Some(if etat == Some(0.0) { 0.0 } else { crate::regul_core::variateur_vers_pourcent(brightness?) })
+}
+
+/// Dépose une consigne pour un variateur Zigbee (publiée dans la seconde par
+/// le pont d'eo-regul).
+async fn commander_variateur(pool: &SqlitePool, chemin: &str, pct: f64) -> Result<(), String> {
+    let (ieee, cle) = chemin.trim().split_once('/').ok_or("chemin Zigbee invalide")?;
+    let valeur = if cle == "brightness" { crate::regul_core::pourcent_vers_variateur(pct) } else { pct };
+    let charge = match cle {
+        "brightness" => json!({"brightness": valeur.round().clamp(0.0, 255.0) as i64}),
+        "state" => json!({"state": if valeur >= 0.5 { "ON" } else { "OFF" }}),
+        autre => json!({autre: valeur}),
+    };
+    sqlx::query("INSERT INTO zigbee_commande(ieee,charge,demande) VALUES(?,?,?)")
+        .bind(ieee).bind(charge.to_string()).bind(chrono::Utc::now().timestamp())
+        .execute(pool).await.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Le démon eo-regul donne-t-il signe de vie ? Sans lui, un forçage ne
+/// finirait jamais : on refuse plutôt que de laisser une salle à 100 %.
+async fn demon_vivant(pool: &SqlitePool) -> bool {
+    super::ambiance::etat_demon(pool).await["actif"].as_bool() == Some(true)
+}
+
+fn heure_locale(fin_utc: &str) -> String {
+    chrono::NaiveDateTime::parse_from_str(fin_utc.trim(), "%Y-%m-%d %H:%M:%S").ok()
+        .map(|d| d.and_utc().with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_else(|| fin_utc.to_string())
+}
+
+fn duree_texte(minutes: i64) -> String {
+    match (minutes / 60, minutes % 60) {
+        (0, m) => format!("{m} min"),
+        (h, 0) => format!("{h} h"),
+        (h, m) => format!("{h} h {m:02}"),
+    }
+}
+
+/// État complet d'une salle pour `etat_salle`.
+async fn etat_salle(pool: &SqlitePool, salle_id: i64, nom: &str, type_salle: Option<&str>) -> Value {
+    let etat: Option<(i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<i64>, Option<String>, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT e.ts,e.t,e.h,e.consigne,e.ventil,e.jour_bande,e.mode,e.sonde_ok,e.message,b.code FROM ambiance_etat e LEFT JOIN bande b ON b.id=e.bande_id WHERE e.salle_id=?",
+    ).bind(salle_id).fetch_optional(pool).await.ok().flatten();
+    let ambiance = ambiance_de(pool, salle_id).await.ok().flatten();
+    let instant = chrono::Utc::now().timestamp();
+    let forcage = ambiance.as_ref().and_then(|a| super::ambiance::forcage_affiche(a.4, a.5.as_deref(), instant));
+    let regulee = ambiance.as_ref().is_some_and(|a| a.0 != 0);
+    let variateur = variateur_zigbee(pool, salle_id).await.ok().flatten();
+    let ventil_reelle = match (&etat, &variateur) {
+        (Some(e), _) if regulee => e.4,
+        (_, Some(chemin)) => pourcent_variateur(pool, chemin).await,
+        _ => None,
+    };
+    let cases: Vec<(i64, String)> = sqlx::query_as("SELECT id,nom FROM casesalle WHERE salle_id=? ORDER BY id").bind(salle_id).fetch_all(pool).await.unwrap_or_default();
+    let mut porcs = 0i64;
+    let mut detail = Vec::new();
+    let mut bandes = std::collections::BTreeSet::new();
+    let auj = chrono::Local::now().date_naive().to_string();
+    for (id, case) in &cases {
+        let n = case_pig_count(pool, *id).await.unwrap_or(0);
+        porcs += n;
+        if let Some(code) = code_bande(pool, bande_de_la_case(pool, *id, &auj).await.ok().flatten()).await { if n > 0 { bandes.insert(code); } }
+        if cases.len() > 1 && n > 0 { detail.push(format!("{case} : {n}")); }
+    }
+    let truies: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie t WHERE t.reformee=0 AND (t.salle_id=?1 OR t.case_id IN (SELECT id FROM casesalle WHERE salle_id=?1))")
+        .bind(salle_id).fetch_one(pool).await.unwrap_or(0);
+    let alertes: Vec<String> = sqlx::query_scalar("SELECT message FROM ambiance_alerte WHERE salle_id=? AND fin IS NULL ORDER BY debut")
+        .bind(salle_id).fetch_all(pool).await.unwrap_or_default();
+    let age_min = etat.as_ref().map(|e| (instant - e.0) / 60);
+    json!({
+        "salle": nom, "type": type_salle,
+        "regulation": if !regulee { "aucune (variateur réglé à la main)" } else if ambiance.as_ref().is_some_and(|a| a.1 != 0) { "pilotée par EO_Sevel" } else { "observation seulement" },
+        "temperature": etat.as_ref().and_then(|e| e.1), "hygrometrie": etat.as_ref().and_then(|e| e.2),
+        "consigne": etat.as_ref().and_then(|e| e.3), "ventilation_pct": ventil_reelle,
+        "mode": etat.as_ref().and_then(|e| e.6.clone()), "sonde_ok": etat.as_ref().map(|e| e.7 != 0),
+        "mesure_il_y_a_min": age_min, "message": etat.as_ref().and_then(|e| e.8.clone()),
+        "forcage": forcage.map(|f| format!("forcé à {} % jusqu'à {}", f["pct"], f["fin"].as_str().unwrap_or(""))),
+        "porcs": porcs, "porcs_par_case": detail, "truies": truies,
+        "bande": if bandes.is_empty() { etat.as_ref().and_then(|e| e.9.clone()) } else { Some(bandes.into_iter().collect::<Vec<_>>().join(", ")) },
+        "jour_de_presence": etat.as_ref().and_then(|e| e.5),
+        "alertes": alertes,
+    })
+}
+
+const FAMILLES: &str = "\
+Truies : chercher_truie, deplacer_truie (vers une case), sevrer_salle (toute une maternité).\n\
+Porcs : transferer_porcs (salle à salle, noms abrégés acceptés), declarer_mort, depart_porcs (abattoir), cases_salle.\n\
+Ambiance : etat_salle (température, ventilation, porcs, bande), forcer_ventilation (X % pendant N min, retour automatique), arreter_forcage, regler_ambiance (consigne, plage, ventil mini/maxi).\n\
+Économie : enregistrer_achat (semence, véto, génétique, aliment).\n\
+Organisation : rappels, creer_rappel, calendrier_ia.\n\
+Mémoire : memoire, retenir, oublier.\n\
+Questions libres (lecture seule) : lister_tables, decrire_tables, requete.\n\
+Pas encore : saisie des IA, échos et mises-bas, soins et vaccins, pesées, relevés de compteurs et de silos, éclairage, commandes Zigbee directes. Jamais : code, mises à jour, sauvegardes, utilisateurs, relais de l'automate.";
+
 async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, String> {
     let pool = &state.pool;
     match nom {
@@ -253,18 +447,112 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                       "derniers_evenements": evts.into_iter().map(|(d, t)| format!("{d} {t}")).collect::<Vec<_>>()}).to_string())
         }
         "cases_salle" => {
-            let lignes: Vec<(String, String, Option<String>, Option<i64>, Option<String>)> = sqlx::query_as(
-                "SELECT s.nom,c.nom,c.num_vanne,COALESCE(c.nb_max_truies,c.nb_max_porcs), \
+            let (salle_id, _, _) = salle_par_nom(pool, arg(a, "salle")).await?;
+            let lignes: Vec<(i64, String, String, Option<String>, Option<i64>, Option<String>)> = sqlx::query_as(
+                "SELECT c.id,s.nom,c.nom,c.num_vanne,COALESCE(c.nb_max_truies,c.nb_max_porcs), \
                  (SELECT group_concat(t.num_travail,', ') FROM truie t WHERE t.case_id=c.id AND t.reformee=0) \
-                 FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE lower(s.nom) LIKE '%'||lower(?)||'%' ORDER BY s.nom,c.id",
-            ).bind(arg(a, "salle")).fetch_all(pool).await.map_err(|e| e.to_string())?;
-            if lignes.is_empty() {
-                return Err(format!("Aucune salle « {} ».", arg(a, "salle")));
-            }
-            Ok(Value::Array(lignes.into_iter().map(|(s, c, v, p, t)| {
+                 FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE c.salle_id=? ORDER BY c.id",
+            ).bind(salle_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            let mut sortie = Vec::new();
+            for (id, s, c, v, p, t) in lignes {
                 let truies: Vec<&str> = t.as_deref().map(|t| t.split(", ").collect()).unwrap_or_default();
-                json!({"salle": s, "case": c, "vanne": v, "places": p, "occupees": truies.len(), "truies": truies})
-            }).collect()).to_string())
+                let porcs = case_pig_count(pool, id).await.unwrap_or(0);
+                sortie.push(json!({"salle": s, "case": c, "vanne": v, "places": p, "occupees": truies.len(), "truies": truies, "porcs": porcs}));
+            }
+            Ok(Value::Array(sortie).to_string())
+        }
+        "etat_salle" => {
+            let salles: Vec<(i64, String, Option<String>)> = match arg(a, "salle") {
+                "" => sqlx::query_as("SELECT id,nom,type FROM salle ORDER BY ordre,nom").fetch_all(pool).await.map_err(|e| e.to_string())?,
+                s => vec![salle_par_nom(pool, s).await?],
+            };
+            let mut sortie = Vec::new();
+            for (id, nom, type_salle) in &salles {
+                sortie.push(etat_salle(pool, *id, nom, type_salle.as_deref()).await);
+            }
+            let demon = super::ambiance::etat_demon(pool).await;
+            Ok(json!({"regulation": demon["texte"], "salles": sortie}).to_string())
+        }
+        "que_sais_tu_faire" => Ok(FAMILLES.to_string()),
+        "forcer_ventilation" => {
+            let (salle_id, nom, _) = salle_par_nom(pool, arg(a, "salle")).await?;
+            let pct = a.get("pourcentage").and_then(Value::as_f64).ok_or("Pourcentage manquant (0 à 100).")?;
+            if !(0.0..=100.0).contains(&pct) { return Err("Le pourcentage va de 0 à 100.".into()); }
+            let minutes = match a.get("duree_minutes") { None | Some(Value::Null) => 120, Some(v) => v.as_i64().ok_or("Durée en minutes attendue.")? };
+            if minutes < 1 { return Err("Durée d'au moins 1 minute.".into()); }
+            if minutes > crate::regul_core::FORCAGE_MAX_MIN {
+                return Err(format!("Un forçage dure 24 h au plus ({minutes} min demandées). Pour un changement durable, utilise regler_ambiance."));
+            }
+            if !demon_vivant(pool).await {
+                return Err("Le service de régulation (eo-regul) ne donne pas signe de vie : le forçage ne pourrait pas se terminer tout seul. Refusé ; à vérifier sur la page Ambiance.".into());
+            }
+            let ambiance = ambiance_de(pool, salle_id).await?;
+            let regulee = ambiance.as_ref().is_some_and(|l| l.0 != 0);
+            let fin_ts = chrono::Utc::now().timestamp() + minutes * 60;
+            let fin = crate::regul_core::instant_utc(fin_ts);
+            let (resume, variateur, retour) = if regulee {
+                let l = ambiance.as_ref().unwrap();
+                if l.1 == 0 { return Err(format!("{nom} est en observation seulement (ventilation non pilotée par EO_Sevel) : rien à forcer. Coche « Piloter la ventilation » dans Ambiance.")); }
+                if l.3.as_deref().unwrap_or("").trim().is_empty() { return Err(format!("{nom} n'a pas de sortie de ventilation réglée dans Ambiance.")); }
+                (format!("{nom} forcée à {pct:.0} % pendant {} (jusqu'à {}), puis la régulation reprend toute seule. Appliqué par eo-regul dans la minute.", duree_texte(minutes), heure_locale(&fin)), None, None)
+            } else {
+                let chemin = variateur_zigbee(pool, salle_id).await?
+                    .ok_or_else(|| format!("{nom} n'est ni régulée ni équipée d'un variateur Zigbee rangé pour la ventilation : rien à forcer."))?;
+                let actuel = match ambiance.as_ref().and_then(|l| l.6) { Some(r) if l_forcage_actif(ambiance.as_ref()) => Some(r), _ => pourcent_variateur(pool, &chemin).await };
+                (format!("{nom} : variateur mis à {pct:.0} % pendant {} (jusqu'à {}), puis remis à {}. Envoyé au Zigbee tout de suite.",
+                    duree_texte(minutes), heure_locale(&fin), actuel.map(|v| format!("{v:.0} %")).unwrap_or("sa valeur d'avant (inconnue pour l'instant)".into())), Some(chemin), actuel)
+            };
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est fait) : {resume}")); }
+            if let Some(chemin) = &variateur {
+                sqlx::query("INSERT INTO ambiance_salle(salle_id,actif,pilote,ipx_hote,sortie_ventil) VALUES(?,0,0,'zigbee',?) ON CONFLICT(salle_id) DO UPDATE SET sortie_ventil=COALESCE(NULLIF(ambiance_salle.sortie_ventil,''),excluded.sortie_ventil), ipx_hote=COALESCE(NULLIF(ambiance_salle.ipx_hote,''),'zigbee')")
+                    .bind(salle_id).bind(chemin).execute(pool).await.map_err(|e| e.to_string())?;
+                commander_variateur(pool, chemin, pct).await?;
+            }
+            sqlx::query("UPDATE ambiance_salle SET forcage_pct=?, forcage_fin=?, forcage_retour=COALESCE(?,forcage_retour) WHERE salle_id=?")
+                .bind(pct).bind(&fin).bind(retour).bind(salle_id).execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "forcer_ventilation", &nom, &resume).await;
+            Ok(format!("Fait : {resume}"))
+        }
+        "arreter_forcage" => {
+            let (salle_id, nom, _) = salle_par_nom(pool, arg(a, "salle")).await?;
+            let ambiance = ambiance_de(pool, salle_id).await?;
+            if !l_forcage_actif(ambiance.as_ref()) { return Err(format!("Pas de forçage en cours en {nom}.")); }
+            let l = ambiance.unwrap();
+            let regulee = l.0 != 0 && l.1 != 0;
+            let resume = if regulee { format!("{nom} : fin du forçage, la régulation reprend dans la minute.") }
+                else { format!("{nom} : fin du forçage, variateur remis à {}.", l.6.map(|v| format!("{v:.0} %")).unwrap_or("— valeur d'avant inconnue, à régler à la main".into())) };
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est fait) : {resume}")); }
+            if let (false, Some(retour), Some(chemin)) = (regulee, l.6, l.3.as_deref()) { commander_variateur(pool, chemin, retour).await?; }
+            sqlx::query("UPDATE ambiance_salle SET forcage_pct=NULL, forcage_fin=NULL, forcage_retour=NULL WHERE salle_id=?")
+                .bind(salle_id).execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "arreter_forcage", &nom, &resume).await;
+            Ok(format!("Fait : {resume}"))
+        }
+        "regler_ambiance" => {
+            let (salle_id, nom, _) = salle_par_nom(pool, arg(a, "salle")).await?;
+            let actuel: Option<(Option<i64>, f64, f64, f64, f64)> = sqlx::query_as("SELECT courbe_id,t_cible_fixe,plage,ventil_min,ventil_max FROM ambiance_salle WHERE salle_id=?")
+                .bind(salle_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            let (courbe, t0, p0, vmin0, vmax0) = actuel.ok_or_else(|| format!("{nom} n'a pas de réglage d'ambiance : à créer dans la page Ambiance d'abord."))?;
+            let nombre = |k: &str| a.get(k).and_then(Value::as_f64);
+            let (t, p, vmin, vmax) = (nombre("t_cible").unwrap_or(t0), nombre("plage").unwrap_or(p0), nombre("ventil_min").unwrap_or(vmin0), nombre("ventil_max").unwrap_or(vmax0));
+            if nombre("t_cible").is_none() && nombre("plage").is_none() && nombre("ventil_min").is_none() && nombre("ventil_max").is_none() {
+                return Err(format!("Rien à changer. Actuellement en {nom} : consigne {t0} °C{}, plage {p0} °C, ventilation {vmin0} à {vmax0} %.", if courbe.is_some() { " (courbe)" } else { "" }));
+            }
+            if !(5.0..=40.0).contains(&t) { return Err("Consigne entre 5 et 40 °C.".into()); }
+            if !(0.1..=20.0).contains(&p) { return Err("Plage entre 0,1 et 20 °C.".into()); }
+            if !(0.0..=100.0).contains(&vmin) || !(0.0..=100.0).contains(&vmax) || vmin > vmax { return Err("Ventilation entre 0 et 100 %, minimum ≤ maximum.".into()); }
+            let mut changements = Vec::new();
+            if t != t0 { changements.push(format!("consigne {t0} → {t} °C{}", if courbe.is_some() { " (sans effet tant que la salle suit une courbe)" } else { "" })); }
+            if p != p0 { changements.push(format!("plage {p0} → {p} °C")); }
+            if vmin != vmin0 { changements.push(format!("ventilation mini {vmin0} → {vmin} %{}", if courbe.is_some() { " (la courbe peut l'imposer)" } else { "" })); }
+            if vmax != vmax0 { changements.push(format!("ventilation maxi {vmax0} → {vmax} %")); }
+            if changements.is_empty() { return Ok(format!("Déjà réglé ainsi en {nom}.")); }
+            let resume = format!("{nom} : {}.", changements.join(", "));
+            if !confirme(a) { return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}")); }
+            sqlx::query("UPDATE ambiance_salle SET t_cible_fixe=?,plage=?,ventil_min=?,ventil_max=? WHERE salle_id=?")
+                .bind(t).bind(p).bind(vmin).bind(vmax).bind(salle_id).execute(pool).await.map_err(|e| e.to_string())?;
+            journaliser(pool, "regler_ambiance", &nom, &resume).await;
+            Ok(format!("Enregistré : {resume}"))
         }
         "calendrier_ia" => {
             let c = load_band_schedule(pool).await.map_err(|e| e.to_string())?;
@@ -477,7 +765,7 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
             let sources = cases_porcs(pool, arg(a, "salle_source"), arg(a, "case_source")).await?;
             let dest = cases_porcs(pool, arg(a, "salle_destination"), arg(a, "case_destination")).await?;
             if dest.len() > 1 {
-                return Err(format!("Précise la case d'arrivée : {}.", dest.iter().map(|c| c.3.as_str()).collect::<Vec<_>>().join(", ")));
+                return Err(format!("{} a plusieurs cases, précise case_destination : {}.", dest[0].2, dest.iter().map(|c| format!("{} ({} porcs)", c.3, c.4)).collect::<Vec<_>>().join(", ")));
             }
             let (dest_case, dest_salle, dest_nom, dest_case_nom, dest_n) = dest[0].clone();
             let sources: Vec<_> = sources.into_iter().filter(|c| c.0 != dest_case).collect();
@@ -648,6 +936,152 @@ mod tests {
         let t = v["result"]["content"][0]["text"].as_str().unwrap_or("").to_string();
         println!("--- {nom} {args}\n{t}\n");
         (v["result"]["isError"] == true, t)
+    }
+
+    /// Base en mémoire avec un petit élevage : Engr2 (régulée, 80 porcs),
+    /// Engr3 (variateur Zigbee réglé à la main, vide), PS1 (une case),
+    /// 35G6K (deux cases), Mater 1.
+    async fn etat_test() -> anyhow::Result<(AppState, SqlitePool, String)> {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await?;
+        for m in [include_str!("../../migrations/0001_schema.sql"), include_str!("../../migrations/0005_ambiance.sql"),
+                  include_str!("../../migrations/0007_ipx_points.sql"), include_str!("../../migrations/0017_zigbee.sql"),
+                  include_str!("../../migrations/0034_forcage_ventilation.sql")] {
+            sqlx::raw_sql(m).execute(&pool).await?;
+        }
+        sqlx::query("INSERT INTO site(id,code,nom) VALUES(1,'S1','Site test')").execute(&pool).await?;
+        for (id, nom, type_salle, ordre) in [(14, "Engraissement 2", "Engraissement", 4), (15, "Engraissement 3", "Engraissement", 5),
+                                             (10, "Post-sevrage 1", "post_sevrage", 1), (4, "35G6K", "engraissement", 0), (7, "Mater 1", "maternite", 0)] {
+            sqlx::query("INSERT INTO salle(id,site_id,nom,type,nb_cases,ordre) VALUES(?,1,?,?,1,?)").bind(id).bind(nom).bind(type_salle).bind(ordre).execute(&pool).await?;
+        }
+        for (id, salle, nom, vanne, max) in [(137, 14, "Engraissement 2", "4-5-6", 75), (138, 15, "Engraissement 3", "7-8-9", 75), (90, 10, "PS1", "", 120),
+                                             (47, 4, "Case 1", "1", 280), (48, 4, "Case 2", "2", 204), (60, 7, "Case 1", "1", 1)] {
+            sqlx::query("INSERT INTO casesalle(id,salle_id,nom,num_vanne,nb_max_porcs) VALUES(?,?,?,?,?)").bind(id).bind(salle).bind(nom).bind(vanne).bind(max).execute(&pool).await?;
+        }
+        sqlx::query("INSERT INTO bande(id,code,active) VALUES(3,'B3.12',1)").execute(&pool).await?;
+        sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_dest_id,case_dest_id,nombre) VALUES('2026-11-01','porc',3,14,137,80)").execute(&pool).await?;
+        sqlx::query("INSERT INTO causeperte(libelle) VALUES('Respiratoire')").execute(&pool).await?;
+        // Engr2 régulée par Zigbee ; Engr3 : variateur rangé mais pas de régulation.
+        sqlx::query("INSERT INTO ambiance_salle(salle_id,actif,pilote,ipx_hote,sortie_ventil,courbe_id,t_cible_fixe,plage,ventil_min,ventil_max) VALUES(14,1,1,'zigbee','0xa4c138a52b72cf69/brightness',NULL,20,3,20,100)").execute(&pool).await?;
+        sqlx::query("INSERT INTO ambiance_etat(salle_id,ts,t,h,consigne,ventil,bande_id,jour_bande,mode,sonde_ok) VALUES(14,strftime('%s','now'),22.4,66,21.9,32,3,10,'auto',1)").execute(&pool).await?;
+        sqlx::query("INSERT INTO ipx_point(hote,chemin,nom,role,salle_id) VALUES('zigbee','0xa4c138785d1ad16e/brightness','ventil-eng3 — réglage','ventilation',15)").execute(&pool).await?;
+        sqlx::query("INSERT INTO zigbee_valeur(ieee,cle,valeur,ts) VALUES('0xa4c138785d1ad16e','brightness',76,strftime('%s','now')),('0xa4c138785d1ad16e','state',1,strftime('%s','now'))").execute(&pool).await?;
+        sqlx::query("INSERT INTO ambiance_heartbeat(id,ts,version,cycles,erreurs) VALUES(1,strftime('%s','now'),'test',1,0)").execute(&pool).await?;
+        let jeton = "a".repeat(64);
+        crate::sms_free::ecrire_parametre(&pool, "mcp_jeton", &jeton).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: "data/test.db".into(), secure_cookies: false },
+            pool.clone(),
+            crate::templates::build()?,
+        );
+        Ok((state, pool, jeton))
+    }
+
+    #[test]
+    fn les_noms_courts_de_salle_se_ramenent_a_une_cle() {
+        for (a, b) in [("Engraissement 2", "engr2"), ("Engraissement 2", "eng 2"), ("Engraissement 2", "E2"), ("Post-sevrage 1", "PS1"),
+                       ("Post-sevrage 1", "ps 1"), ("Mater 1", "maternité 1"), ("Mater 1", "mat1"), ("Verraterie", "verrat"), ("35G6K", "35g6k")] {
+            assert_eq!(cle_salle(a), cle_salle(b), "{a} / {b}");
+        }
+        assert_ne!(cle_salle("Engraissement 2"), cle_salle("Engraissement 3"));
+        assert_ne!(cle_salle("Post-Engraissement"), cle_salle("Engraissement"));
+    }
+
+    #[tokio::test]
+    async fn une_salle_se_trouve_par_son_nom_court() -> anyhow::Result<()> {
+        let (_, pool, _) = etat_test().await?;
+        for (dit, attendu) in [("engr2", "Engraissement 2"), ("eng 3", "Engraissement 3"), ("PS1", "Post-sevrage 1"), ("post sevrage 1", "Post-sevrage 1"),
+                               ("mater 1", "Mater 1"), ("35g6k", "35G6K"), ("Engraissement 2", "Engraissement 2"), ("E3", "Engraissement 3")] {
+            assert_eq!(salle_par_nom(&pool, dit).await.map(|s| s.1), Ok(attendu.to_string()), "{dit}");
+        }
+        let e = salle_par_nom(&pool, "Engraissement").await.unwrap_err();
+        assert!(e.contains("Plusieurs salles") && e.contains("Engraissement 3"), "{e}");
+        let e = salle_par_nom(&pool, "Gestante").await.unwrap_err();
+        assert!(e.contains("Pas de salle") && e.contains("Mater 1"), "{e}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn un_transfert_salle_a_salle_prend_la_case_unique() -> anyhow::Result<()> {
+        let (state, pool, jeton) = etat_test().await?;
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"engr2","salle_destination":"eng 3","nombre":20})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("Engraissement 3") && t.contains("B3.12"), "{t}");
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"engr2","salle_destination":"eng 3","nombre":200,"confirme":true})).await;
+        assert!(e && t.contains("80 porc"), "{t}");
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"engr2","salle_destination":"35G6K","nombre":20,"confirme":true})).await;
+        assert!(e && t.contains("case_destination") && t.contains("Case 2"), "{t}");
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"engr2","salle_destination":"mater 1","nombre":20,"confirme":true})).await;
+        assert!(e && t.contains("maternité"), "{t}");
+        let (e, t) = outil(&state, &jeton, "transferer_porcs", json!({"salle_source":"engr2","salle_destination":"eng 3","nombre":20,"confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        assert_eq!(case_pig_count(&pool, 138).await?, 20);
+        assert_eq!(case_pig_count(&pool, 137).await?, 60);
+        let (e, t) = outil(&state, &jeton, "cases_salle", json!({"salle":"eng3"})).await;
+        assert!(!e && t.contains("\"porcs\":20"), "{t}");
+        let (e, t) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Eng 3","nombre":1,"cause":"respiratoire","confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        assert_eq!(case_pig_count(&pool, 138).await?, 19);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn un_forcage_se_pose_puis_se_leve() -> anyhow::Result<()> {
+        let (state, pool, jeton) = etat_test().await?;
+        let forcage = |p: &SqlitePool| { let p = p.clone(); async move {
+            sqlx::query_as::<_, (Option<f64>, Option<String>, Option<f64>)>("SELECT forcage_pct,forcage_fin,forcage_retour FROM ambiance_salle WHERE salle_id=14").fetch_one(&p).await.unwrap() } };
+        // Salle régulée : deux temps, puis colonnes posées, puis levée.
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"engr2","pourcentage":100})).await;
+        assert!(!e && t.starts_with("À CONFIRMER") && t.contains("2 h"), "{t}");
+        assert_eq!(forcage(&pool).await.0, None);
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"engr2","pourcentage":100,"duree_minutes":1500,"confirme":true})).await;
+        assert!(e && t.contains("24 h"), "{t}");
+        let (e, _) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"engr2","pourcentage":130,"confirme":true})).await;
+        assert!(e);
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"engr2","pourcentage":100,"duree_minutes":90,"confirme":true})).await;
+        assert!(!e && t.starts_with("Fait"), "{t}");
+        let (pct, fin, _) = forcage(&pool).await;
+        assert_eq!(pct, Some(100.0));
+        let fin = fin.unwrap();
+        let attendu = crate::regul_core::instant_utc(chrono::Utc::now().timestamp() + 90 * 60);
+        assert_eq!(&fin[..13], &attendu[..13], "fin {fin} attendue vers {attendu}");
+        assert!(crate::regul_core::forcage_en_cours(pct, Some(&fin), &crate::regul_core::instant_utc(chrono::Utc::now().timestamp())).is_some());
+        let (e, t) = outil(&state, &jeton, "etat_salle", json!({"salle":"engr2"})).await;
+        assert!(!e && t.contains("forcé à 100") && t.contains("\"porcs\":80") && t.contains("B3.12"), "{t}");
+        let (e, t) = outil(&state, &jeton, "arreter_forcage", json!({"salle":"engr2","confirme":true})).await;
+        assert!(!e && t.starts_with("Fait"), "{t}");
+        assert_eq!(forcage(&pool).await, (None, None, None));
+        let (e, _) = outil(&state, &jeton, "arreter_forcage", json!({"salle":"engr2","confirme":true})).await;
+        assert!(e, "plus rien à arrêter");
+
+        // Salle non régulée avec variateur : commande Zigbee tout de suite, retour mémorisé.
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"eng 3","pourcentage":100,"duree_minutes":30,"confirme":true})).await;
+        assert!(!e && t.contains("remis à 30 %"), "{t}");
+        let charge: String = sqlx::query_scalar("SELECT charge FROM zigbee_commande ORDER BY id DESC LIMIT 1").fetch_one(&pool).await?;
+        assert_eq!(charge, "{\"brightness\":254}");
+        let ligne: (i64, Option<f64>, Option<f64>) = sqlx::query_as("SELECT actif,forcage_pct,forcage_retour FROM ambiance_salle WHERE salle_id=15").fetch_one(&pool).await?;
+        assert_eq!(ligne, (0, Some(100.0), Some(30.0)));
+        let (e, t) = outil(&state, &jeton, "arreter_forcage", json!({"salle":"eng 3","confirme":true})).await;
+        assert!(!e, "{t}");
+        let charge: String = sqlx::query_scalar("SELECT charge FROM zigbee_commande ORDER BY id DESC LIMIT 1").fetch_one(&pool).await?;
+        assert_eq!(charge, "{\"brightness\":76}");
+
+        // Sans variateur ni régulation : refus clair. Sans démon : refus.
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"PS1","pourcentage":50,"confirme":true})).await;
+        assert!(e && t.contains("rien à forcer"), "{t}");
+        sqlx::query("UPDATE ambiance_heartbeat SET ts=ts-3600").execute(&pool).await?;
+        let (e, t) = outil(&state, &jeton, "forcer_ventilation", json!({"salle":"engr2","pourcentage":50,"confirme":true})).await;
+        assert!(e && t.contains("eo-regul"), "{t}");
+
+        // Réglage durable.
+        let (e, t) = outil(&state, &jeton, "regler_ambiance", json!({"salle":"engr2","ventil_min":25,"confirme":true})).await;
+        assert!(!e && t.contains("20 → 25"), "{t}");
+        let vmin: f64 = sqlx::query_scalar("SELECT ventil_min FROM ambiance_salle WHERE salle_id=14").fetch_one(&pool).await?;
+        assert_eq!(vmin, 25.0);
+        let (e, t) = outil(&state, &jeton, "que_sais_tu_faire", json!({})).await;
+        assert!(!e && t.contains("forcer_ventilation"));
+        let (_, v) = rpc(&state, &jeton, json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await;
+        let noms: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+        for n in ["forcer_ventilation", "arreter_forcage", "etat_salle", "regler_ambiance", "que_sais_tu_faire"] { assert!(noms.contains(&n), "{n}"); }
+        Ok(())
     }
 
     #[tokio::test]

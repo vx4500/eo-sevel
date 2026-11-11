@@ -110,6 +110,19 @@ async fn consigne_theorique(
 }
 
 /// Lignes de salles affichées, état compris.
+/// Forçage en cours pour l'écran : pourcentage et heure de fin locale
+/// (« 17:30 »), ou rien si la fin est passée.
+pub(super) fn forcage_affiche(pct: Option<f64>, fin: Option<&str>, instant: i64) -> Option<Value> {
+    let pct = crate::regul_core::forcage_en_cours(pct, fin, &crate::regul_core::instant_utc(instant))?;
+    let fin = chrono::NaiveDateTime::parse_from_str(fin?.trim(), "%Y-%m-%d %H:%M:%S").ok()?;
+    let locale = fin.and_utc().with_timezone(&chrono::Local);
+    Some(json!({
+        "pct": pct,
+        "fin": locale.format("%H:%M").to_string(),
+        "fin_utc": fin.format("%Y-%m-%d %H:%M:%S").to_string(),
+    }))
+}
+
 pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
     let lignes = sqlx::query(
         "SELECT s.id, s.nom, s.type AS type_salle, si.nom AS site_nom, si.code AS site_code, \
@@ -117,7 +130,7 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
                 a.sortie_ventil, a.courbe_id, a.t_cible_fixe, a.plage, a.ventil_min, \
                 a.ventil_max, a.hygro_cible, a.hygro_influence, a.anticipation, \
                 a.ventil_securite, a.t_alerte_min, a.t_alerte_max, a.h_alerte_max, \
-                c.nom AS courbe_nom, \
+                a.forcage_pct, a.forcage_fin, c.nom AS courbe_nom, \
                 e.ts, e.t, e.h, e.lux, e.consigne, e.ventil, e.jour_bande, e.mode, \
                 e.sonde_ok, e.message, b.code AS bande_code \
          FROM salle s \
@@ -140,6 +153,11 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
         let t_cible_fixe: f64 = ligne.try_get("t_cible_fixe").unwrap_or(22.0);
         let ts: Option<i64> = ligne.try_get::<Option<i64>, _>("ts").ok().flatten();
         let age = ts.map(|ts| instant - ts);
+        let forcage = forcage_affiche(
+            ligne.try_get::<Option<f64>, _>("forcage_pct").ok().flatten(),
+            ligne.try_get::<Option<String>, _>("forcage_fin").ok().flatten().as_deref(),
+            instant,
+        );
         let alertes = sqlx::query_as::<_, (String, String, String, String)>(
             "SELECT type,gravite,debut,message FROM ambiance_alerte \
              WHERE salle_id=? AND fin IS NULL ORDER BY debut",
@@ -199,6 +217,7 @@ pub(super) async fn salles(pool: &SqlitePool) -> AppResult<Vec<Value>> {
                 consigne_theorique(pool, courbe_id, jour_bande, t_cible_fixe).await,
             "ventil": ligne.try_get::<f64, _>("ventil").ok(),
             "mode": ligne.try_get::<String, _>("mode").ok(),
+            "forcage": forcage,
             "sonde_ok": ligne.try_get::<i64, _>("sonde_ok").unwrap_or(1) != 0,
             "message": ligne.try_get::<String, _>("message").ok(),
             "mesure_agee": age.map(|age| age > SEUIL_ETAT_S).unwrap_or(true),
