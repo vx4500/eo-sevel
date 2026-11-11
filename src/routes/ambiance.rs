@@ -2330,6 +2330,9 @@ mod historique_plage_dates_tests {
         sqlx::raw_sql(include_str!("../../migrations/0005_ambiance.sql"))
             .execute(&pool)
             .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0034_forcage_ventilation.sql"))
+            .execute(&pool)
+            .await?;
         let site = sqlx::query("INSERT INTO site(code,nom) VALUES('S1','Site test')")
             .execute(&pool)
             .await?
@@ -2428,6 +2431,9 @@ mod enregistrer_validation_tests {
             .execute(&pool)
             .await?;
         sqlx::raw_sql(include_str!("../../migrations/0005_ambiance.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0034_forcage_ventilation.sql"))
             .execute(&pool)
             .await?;
         let site = sqlx::query("INSERT INTO site(code,nom) VALUES('S1','Site test')")
@@ -2561,6 +2567,9 @@ mod page_points_disponibles_tests {
         sqlx::raw_sql(include_str!("../../migrations/0005_ambiance.sql"))
             .execute(&pool)
             .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0034_forcage_ventilation.sql"))
+            .execute(&pool)
+            .await?;
         sqlx::raw_sql(include_str!("../../migrations/0007_ipx_points.sql"))
             .execute(&pool)
             .await?;
@@ -2626,6 +2635,9 @@ mod ipx_point_commander_tests {
             .execute(&pool)
             .await?;
         sqlx::raw_sql(include_str!("../../migrations/0005_ambiance.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0034_forcage_ventilation.sql"))
             .execute(&pool)
             .await?;
         sqlx::raw_sql(include_str!("../../migrations/0007_ipx_points.sql"))
