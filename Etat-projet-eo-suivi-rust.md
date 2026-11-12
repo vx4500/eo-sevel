@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.3** — vente directe : les e-mails envoyés aux clients sont de nouveau notés dans le journal (la date manquait et faisait échouer le récapitulatif de commande).
+Version actuelle : **2.76.4** — vente directe : une commande peut de nouveau être supprimée (ses lignes partent avec elle, ses messages restent dans l'historique).
 
+
+Version Rust 2.76.4 : la suppression d'une commande de vente directe échouait toujours (FOREIGN KEY constraint failed) : dans la base héritée, lignecommandeventedirecte et messageventedirecte référencent la commande sans suppression en cascade. effacer_commande efface d'abord les lignes et détache les messages (commande_id NULL) avant d'effacer la commande. Test effacer_commande_tests.
 
 Version Rust 2.76.3 : l'enregistrement d'un message de vente directe (messageventedirecte) fournit cree_le, colonne obligatoire sans valeur par défaut héritée de l'ancienne base. Sans elle, chaque envoi Brevo (récapitulatif de commande, statut, test, campagne) échouait au moment d'être noté, et l'échec n'apparaissait nulle part ; aucun message n'était journalisé depuis le passage en Rust. Test journal_message_tests.
 

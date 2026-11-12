@@ -11411,12 +11411,86 @@ async fn commande_supprimer(
             }
         }
     }
-    sqlx::query("DELETE FROM commandeventedirecte WHERE id=?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+    effacer_commande(&mut tx, id).await?;
     tx.commit().await?;
     Ok(Redirect::to("/vente-directe/commandes").into_response())
+}
+
+/// Efface une commande et ses lignes. Les messages déjà envoyés au client
+/// restent dans l'historique, simplement détachés de la commande : les
+/// tables héritées n'ont pas de suppression en cascade, et sans ce ménage
+/// la base refusait d'effacer toute commande ayant des lignes ou un message.
+async fn effacer_commande(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE messageventedirecte SET commande_id=NULL WHERE commande_id=?")
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM lignecommandeventedirecte WHERE commande_id=?")
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM commandeventedirecte WHERE id=?")
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod effacer_commande_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn une_commande_avec_lignes_et_message_s_efface() -> anyhow::Result<()> {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0001_schema.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
+        let commande = sqlx::query(
+            "INSERT INTO commandeventedirecte(nom_client,telephone,statut,total,cree_le) \
+             VALUES('Client','','nouvelle',10,CURRENT_TIMESTAMP)",
+        )
+        .execute(&pool)
+        .await?
+        .last_insert_rowid();
+        sqlx::query(
+            "INSERT INTO lignecommandeventedirecte(commande_id,nom_produit,prix_unitaire,unite,quantite,total_ligne) \
+             VALUES(?,'Colis',10,'kg',1,10)",
+        )
+        .bind(commande)
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO messageventedirecte(cree_le,commande_id,canal,type_message,destinataire,contenu,succes) \
+             VALUES(CURRENT_TIMESTAMP,?,'email','recap_commande','a@b.fr','x',1)",
+        )
+        .bind(commande)
+        .execute(&pool)
+        .await?;
+
+        let mut tx = pool.begin().await?;
+        effacer_commande(&mut tx, commande).await?;
+        tx.commit().await?;
+
+        let restes: (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM commandeventedirecte), \
+                    (SELECT COUNT(*) FROM lignecommandeventedirecte), \
+                    (SELECT COUNT(*) FROM messageventedirecte), \
+                    (SELECT COUNT(*) FROM messageventedirecte WHERE commande_id IS NOT NULL)",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(restes, (0, 0, 1, 0));
+        Ok(())
+    }
 }
 
 async fn vente_commande_modifier_page(
