@@ -735,6 +735,22 @@ pub(super) async fn hotes_autorises(pool: &SqlitePool) -> Vec<String> {
     .fetch_all(pool)
     .await
     .unwrap_or_default();
+    // Un point peut nommer sa propre source en préfixe (« hote:chemin ») :
+    // cet hôte-là est connu lui aussi, pour l'Explorateur et les tests de
+    // lecture.
+    let points: Vec<(Option<String>, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT entree_t, entree_h, entree_lux, sortie_ventil FROM ambiance_salle")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+    for (t, h, lux, sortie) in points {
+        for point in [t, h, lux, sortie].into_iter().flatten() {
+            let (hote, chemin) = crate::regul_core::hote_et_chemin("", &point);
+            if !hote.is_empty() && chemin != point.trim() {
+                hotes.push(hote.to_string());
+            }
+        }
+    }
     if let Some(defaut) = sqlx::query_scalar::<_, Option<String>>(
         "SELECT valeur FROM parametre WHERE cle='ambiance_ipx_hote'",
     )
@@ -1158,6 +1174,7 @@ async fn points(pool: &SqlitePool) -> AppResult<Vec<Value>> {
 /// Valeur brute actuelle d'un point (automate ou Zigbee), pour le plan de
 /// l'élevage. None si l'appareil ne répond pas.
 pub(super) async fn valeur_directe(pool: &SqlitePool, hote: &str, chemin: &str) -> Option<f64> {
+    let (hote, chemin) = crate::regul_core::hote_et_chemin(hote, chemin);
     if hote == super::zigbee::HOTE {
         return super::zigbee::valeur_point(pool, chemin).await;
     }
@@ -1207,10 +1224,11 @@ pub(super) async fn ipx_points_json(
 
         let mut enrichi = point.clone();
         if actif {
+            let (hote, chemin) = crate::regul_core::hote_et_chemin(&hote, &chemin);
             let brut = if hote == super::zigbee::HOTE {
-                super::zigbee::valeur_point(&state.pool, &chemin).await
+                super::zigbee::valeur_point(&state.pool, chemin).await
             } else {
-                lire_valeur(&client, &acces, &hote, &chemin).await
+                lire_valeur(&client, &acces, hote, chemin).await
             };
             if let Some(objet) = enrichi.as_object_mut() {
                 objet.insert("brut".into(), json!(brut));
@@ -1249,6 +1267,9 @@ pub(super) async fn lire_point(
     coefficient: f64,
     decalage: f64,
 ) -> Option<f64> {
+    // Le point peut porter sa propre source (« hote:chemin »), voir
+    // regul_core::hote_et_chemin.
+    let (hote, chemin) = crate::regul_core::hote_et_chemin(hote, chemin);
     let brut = if hote == super::zigbee::HOTE {
         super::zigbee::valeur_point(pool, chemin).await
     } else {
@@ -1339,6 +1360,7 @@ pub(super) async fn envoyer_commande(
     chemin_ecriture: &str,
     valeur: f64,
 ) -> AppResult<String> {
+    let (hote, chemin_ecriture) = crate::regul_core::hote_et_chemin(hote, chemin_ecriture);
     if hote.trim() == super::zigbee::HOTE {
         return super::zigbee::deposer_commande(pool, chemin_ecriture, valeur).await;
     }
@@ -2523,6 +2545,28 @@ mod enregistrer_validation_tests {
             Form(champs(false, "")),
         )
         .await?;
+        Ok(())
+    }
+
+    /// Une salle Zigbee peut lire sa température sur l'automate : le point
+    /// garde son préfixe « hote:chemin » tel quel en base, et cet hôte compte
+    /// parmi les hôtes connus de l'Explorateur.
+    #[tokio::test]
+    async fn un_point_prefixe_garde_sa_source_et_son_hote_est_connu() -> anyhow::Result<()> {
+        let (state, room) = etat().await?;
+        let mut form = champs(true, "zigbee");
+        form.insert("entree_t".into(), "192.168.1.250:api/core/ana/262197".into());
+        form.insert("sortie_ventil".into(), "0x94ec32fffea23a23/brightness".into());
+        enregistrer(State(state.clone()), Extension(session()), Path(room), Form(form)).await?;
+        let (hote, entree_t): (Option<String>, Option<String>) =
+            sqlx::query_as("SELECT ipx_hote, entree_t FROM ambiance_salle WHERE salle_id=?")
+                .bind(room)
+                .fetch_one(&state.pool)
+                .await?;
+        assert_eq!(hote.as_deref(), Some("zigbee"));
+        assert_eq!(entree_t.as_deref(), Some("192.168.1.250:api/core/ana/262197"));
+        let hotes = hotes_autorises(&state.pool).await;
+        assert_eq!(hotes, vec!["192.168.1.250".to_string(), "zigbee".to_string()]);
         Ok(())
     }
 }

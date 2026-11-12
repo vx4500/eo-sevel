@@ -386,6 +386,31 @@ pub fn chemin_niveau_ipx(sortie: &str) -> Option<String> {
     Some(format!("{base}/{}", id + 1))
 }
 
+/// Source d'un point. Un chemin d'entrée ou de sortie peut porter son propre
+/// hôte en préfixe, « hote:chemin » (ex. `192.168.1.250:api/core/ana/262197`
+/// ou `zigbee:0x94ec…/brightness`) : une salle dont la sonde est sur
+/// l'automate et le variateur en Zigbee se raccorde sans rien tordre. Sans
+/// préfixe, l'hôte de la salle s'applique, comme avant. Le préfixe est cherché
+/// avant le premier `/` du chemin, pour qu'un hôte avec port
+/// (`192.168.1.250:8080:api/…`) reste entier ; un schéma (`http://…`) n'est
+/// pas un hôte.
+pub fn hote_et_chemin<'a>(hote_salle: &'a str, point: &'a str) -> (&'a str, &'a str) {
+    let point = point.trim();
+    let tete = &point[..point.find('/').unwrap_or(point.len())];
+    if let Some(position) = tete.rfind(':') {
+        let hote = point[..position].trim();
+        let chemin = point[position + 1..].trim();
+        if !hote.is_empty()
+            && !chemin.is_empty()
+            && !hote.contains(char::is_whitespace)
+            && !chemin.starts_with("//")
+        {
+            return (hote, chemin);
+        }
+    }
+    (hote_salle.trim(), point)
+}
+
 /// Valeur proche de `cible`, à envoyer d'abord pour renvoyer une commande : le
 /// module ne réagit qu'à un changement, réécrire la même valeur ne ferait rien.
 pub fn valeur_voisine(cible: f64) -> f64 {
@@ -830,6 +855,63 @@ mod tests {
         assert!(!doit_enregistrer(Some(24.0), 24.05, 0.1, 30, 600));
         assert!(doit_enregistrer(Some(24.0), 24.2, 0.1, 30, 600));
         assert!(doit_enregistrer(Some(24.0), 24.0, 0.1, 900, 600));
+    }
+
+    #[test]
+    fn un_chemin_sans_prefixe_garde_l_hote_de_la_salle() {
+        assert_eq!(
+            hote_et_chemin("192.168.1.250", "api/core/ana/262202"),
+            ("192.168.1.250", "api/core/ana/262202")
+        );
+        assert_eq!(
+            hote_et_chemin("zigbee", " 0xa4c1389ff9c2bb0c/temperature "),
+            ("zigbee", "0xa4c1389ff9c2bb0c/temperature")
+        );
+        assert_eq!(hote_et_chemin(" zigbee ", "api/core/io/65536"), ("zigbee", "api/core/io/65536"));
+        assert_eq!(hote_et_chemin("", "api/core/ana/1"), ("", "api/core/ana/1"));
+        assert_eq!(hote_et_chemin("192.168.1.250", ""), ("192.168.1.250", ""));
+    }
+
+    #[test]
+    fn un_prefixe_hote_designe_sa_propre_source() {
+        assert_eq!(
+            hote_et_chemin("zigbee", "192.168.1.250:api/core/ana/262197"),
+            ("192.168.1.250", "api/core/ana/262197")
+        );
+        assert_eq!(
+            hote_et_chemin("192.168.1.250", "zigbee:0x94ec32fffea23a23/brightness"),
+            ("zigbee", "0x94ec32fffea23a23/brightness")
+        );
+        assert_eq!(
+            hote_et_chemin("zigbee", " 192.168.1.250 : api/core/ana/262198 "),
+            ("192.168.1.250", "api/core/ana/262198")
+        );
+        // Un hôte avec port reste entier : le préfixe s'arrête au dernier
+        // deux-points avant le premier `/`.
+        assert_eq!(
+            hote_et_chemin("zigbee", "192.168.1.250:8080:api/core/ana/1"),
+            ("192.168.1.250:8080", "api/core/ana/1")
+        );
+    }
+
+    #[test]
+    fn un_prefixe_douteux_n_est_pas_un_hote() {
+        // Schéma complet : pas un hôte, le chemin reste tel quel.
+        assert_eq!(
+            hote_et_chemin("192.168.1.250", "http://pirate/api"),
+            ("192.168.1.250", "http://pirate/api")
+        );
+        assert_eq!(hote_et_chemin("zigbee", ":api/core/ana/1"), ("zigbee", ":api/core/ana/1"));
+        assert_eq!(hote_et_chemin("zigbee", "192.168.1.250:"), ("zigbee", "192.168.1.250:"));
+        assert_eq!(
+            hote_et_chemin("zigbee", "mon hote:api/core/ana/1"),
+            ("zigbee", "mon hote:api/core/ana/1")
+        );
+        // Un deux-points après le premier `/` appartient au chemin.
+        assert_eq!(
+            hote_et_chemin("zigbee", "0xa4c1/etat:brut"),
+            ("zigbee", "0xa4c1/etat:brut")
+        );
     }
 
     #[test]

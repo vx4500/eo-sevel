@@ -49,7 +49,7 @@ mod zigbee_pont;
 use regul_core::{
     age_le_plus_ancien, calculer, consigne_courbe, depuis_dixiemes, doit_ecrire, doit_enregistrer, en_dixiemes,
     Decision, Lecture, Mode, PointCourbe, Reglages,
-    pourcent_vers_variateur, sortie_divergente, variateur_vers_pourcent,
+    hote_et_chemin, pourcent_vers_variateur, sortie_divergente, variateur_vers_pourcent,
 };
 
 /// Gabarits d'accès à l'automate. Ils vivent dans la table `parametre` plutôt
@@ -714,6 +714,14 @@ async fn traiter_salle(
 ) -> Result<()> {
     let ts = maintenant();
     let hote = salle.ipx_hote.clone().unwrap_or_default();
+    // Chaque point peut nommer sa propre source (« hote:chemin ») ; `lire` et
+    // `ecrire` la résolvent. Ici on ne garde que l'hôte réel de la sortie,
+    // pour les pauses et le renvoi, qui ne concernent que l'automate.
+    let hote_sortie = salle
+        .sortie_ventil
+        .as_deref()
+        .map(|sortie| hote_et_chemin(&hote, sortie).0.to_string())
+        .unwrap_or_else(|| hote.clone());
 
     let brut_t = lire(client, acces, &hote, salle.entree_t.as_deref()).await;
     let brut_h = lire(client, acces, &hote, salle.entree_h.as_deref()).await;
@@ -828,7 +836,7 @@ async fn traiter_salle(
                         etat.derniere_ecriture = Some(decision.ventil);
                         etat.ts_derniere_ecriture = ts;
                         applique = true;
-                        if hote.trim() != "zigbee" {
+                        if hote_sortie.trim() != "zigbee" {
                             tokio::time::sleep(Duration::from_millis(PAUSE_ECRITURE_MS)).await;
                         }
                     }
@@ -860,7 +868,7 @@ async fn traiter_salle(
     if let (true, false, Some(reelle), Some(sortie)) =
         (commande_effective, applique, reelle, salle.sortie_ventil.as_deref())
     {
-        if hote.trim() != "zigbee"
+        if hote_sortie.trim() != "zigbee"
             && sortie_divergente(decision.ventil, reelle)
             && ts - etat.ts_renvoi >= RENVOI_SORTIE_S
         {
@@ -1321,7 +1329,10 @@ async fn sortie_reelle(
     hote: &str,
     sortie: Option<&str>,
 ) -> Option<f64> {
-    let sortie = sortie?.trim();
+    let (hote, sortie) = hote_et_chemin(hote, sortie?);
+    if sortie.is_empty() {
+        return None;
+    }
     if hote.trim() != "zigbee" {
         if let Some(niveau) = niveau_module(client, acces, hote, sortie).await {
             return Some(niveau);
@@ -1346,6 +1357,7 @@ async fn niveau_module(
     hote: &str,
     sortie: &str,
 ) -> Option<f64> {
+    let (hote, sortie) = hote_et_chemin(hote, sortie);
     let chemin = regul_core::chemin_niveau_ipx(sortie)?;
     let adresse = url(&acces.gabarit_lecture, hote, &chemin, &acces.cle);
     let corps: serde_json::Value =
@@ -1361,6 +1373,8 @@ async fn lire(client: &reqwest::Client, acces: &AccesIpx, hote: &str, id: Option
     let Some(id) = id.filter(|valeur| !valeur.trim().is_empty()) else {
         return Lecture::absente();
     };
+    // Le point peut porter sa propre source : « hote:chemin ».
+    let (hote, id) = hote_et_chemin(hote, id);
     if hote.trim().is_empty() {
         return Lecture::absente();
     }
@@ -1449,6 +1463,8 @@ async fn ecrire(
     id: &str,
     valeur: f64,
 ) -> Result<()> {
+    let (hote, id) = hote_et_chemin(hote, id);
+    anyhow::ensure!(!hote.trim().is_empty(), "aucun hôte pour la sortie « {id} »");
     if hote.trim() == "zigbee" {
         // Variateur Zigbee : la régulation raisonne en %, la luminosité va
         // de 0 à 254.

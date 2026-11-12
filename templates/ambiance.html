@@ -1,13 +1,12 @@
 {% extends "base.html" %}
-{% macro select_point(nom_champ, valeur_actuelle, candidats, salle_id, ecriture=false) %}
-<select name="{{ nom_champ }}">
-  <option value="">— Aucun —</option>
-  {% if valeur_actuelle %}<option value="{{ valeur_actuelle }}" selected>Valeur actuelle : {{ valeur_actuelle }}</option>{% endif %}
+{% macro select_point(nom_champ, valeur_actuelle, candidats, salle_id, hote_salle, ecriture=false) %}
+<input name="{{ nom_champ }}" value="{{ valeur_actuelle or '' }}" list="dl-{{ nom_champ }}-{{ salle_id }}" placeholder="— Aucun — (ou hote:chemin)" autocomplete="off">
+<datalist id="dl-{{ nom_champ }}-{{ salle_id }}">
   {% for p in candidats %}
     {% set chemin = p.chemin_ecriture if ecriture and p.chemin_ecriture else p.chemin %}
-    {% if chemin %}<option value="{{ chemin }}"{% if chemin == valeur_actuelle %} selected{% endif %}>{{ p.nom }}{% if p.salle_id == salle_id %} (cette salle){% elif p.salle %} ({{ p.salle }}){% else %} (non affecté){% endif %}</option>{% endif %}
+    {% if chemin %}{% set valeur = chemin if (not p.hote) or p.hote == hote_salle else p.hote ~ ':' ~ chemin %}<option value="{{ valeur }}">{{ p.nom }}{% if p.salle_id == salle_id %} (cette salle){% elif p.salle %} ({{ p.salle }}){% else %} (non affecté){% endif %}</option>{% endif %}
   {% endfor %}
-</select>
+</datalist>
 {% endmacro %}
 {% block title %}Ambiance et ventilation — EO_Sevel{% endblock %}{% block content %}
 <style>
@@ -146,11 +145,11 @@
         <h3>Raccordement</h3>
         <label>Automate (adresse){% if not s.ipx_hote and (s.actif or s.pilote) %} <span class="rust-badge danger">non renseignée</span>{% endif %}<input name="ipx_hote" value="{{ s.ipx_hote or '' }}" list="dl-hotes" placeholder="à saisir, ex. 192.168.1.250"></label>
         <datalist id="dl-hotes">{% for h in hotes %}<option value="{{ h }}">{% endfor %}</datalist>
-        <label>Entrée température{{ select_point('entree_t', s.entree_t, s.points_t, s.id) }}</label>
-        <label>Entrée hygrométrie{{ select_point('entree_h', s.entree_h, s.points_h, s.id) }}</label>
-        <label>Entrée luminosité{{ select_point('entree_lux', s.entree_lux, s.points_lux, s.id) }}</label>
-        <label>Sortie ventilation{{ select_point('sortie_ventil', s.sortie_ventil, s.points_ventil, s.id, ecriture=true) }}</label>
-        <p class="muted">Les capteurs proposés sont ceux déjà rangés dans <a href="/ambiance/ipx/v5/relais">la carte de l'automate</a> ou <a href="/ambiance/ipx/v5/relais">l'Explorateur</a> avec le rôle correspondant. Rien à cette liste ? Rangez d'abord le point là-bas, avec le bon rôle (température, humidité, luminosité ou ventilation).</p>
+        <label>Entrée température{{ select_point('entree_t', s.entree_t, s.points_t, s.id, s.ipx_hote) }}</label>
+        <label>Entrée hygrométrie{{ select_point('entree_h', s.entree_h, s.points_h, s.id, s.ipx_hote) }}</label>
+        <label>Entrée luminosité{{ select_point('entree_lux', s.entree_lux, s.points_lux, s.id, s.ipx_hote) }}</label>
+        <label>Sortie ventilation{{ select_point('sortie_ventil', s.sortie_ventil, s.points_ventil, s.id, s.ipx_hote, ecriture=true) }}</label>
+        <p class="muted">Les capteurs proposés sont ceux déjà rangés dans <a href="/ambiance/ipx/v5/relais">la carte de l'automate</a> ou <a href="/ambiance/ipx/v5/relais">l'Explorateur</a> avec le rôle correspondant. Rien à cette liste ? Rangez d'abord le point là-bas, avec le bon rôle (température, humidité, luminosité ou ventilation). Un champ vide = aucun point. Un point peut venir d'une autre source que l'automate de la salle : écrivez <code>hote:chemin</code>, par exemple <code>192.168.1.250:api/core/ana/262197</code> pour une sonde de l'automate dans une salle Zigbee, ou <code>zigbee:0x…/brightness</code> pour un variateur Zigbee dans une salle sur automate.</p>
         <label><input type="checkbox" name="actif" style="width:auto"{% if s.actif %} checked{% endif %}> Mesurer et enregistrer</label>
         <label><input type="checkbox" name="pilote" style="width:auto"{% if s.pilote %} checked{% endif %}> Piloter la ventilation</label>
         <p class="muted">Deux cases distinctes, et c'est volontaire. « Mesurer » se contente de lire et d'archiver. « Piloter » autorise l'écriture sur l'automate. Laissez une salle en mesure seule le temps de comparer avec la régulation en place : c'est la seule façon honnête de vérifier avant de confier.</p>
