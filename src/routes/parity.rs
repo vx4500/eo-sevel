@@ -2148,7 +2148,7 @@ async fn log_message(
     content: &str,
     result: &Result<String, String>,
 ) -> AppResult<()> {
-    sqlx::query("INSERT INTO messageventedirecte(client_id,canal,type_message,destinataire,contenu,succes,detail) VALUES(?,?,?,?,?,?,?)").bind(client_id).bind(channel).bind(kind).bind(to).bind(content).bind(result.is_ok()).bind(match result{Ok(v)|Err(v)=>v}).execute(pool).await?;
+    sqlx::query("INSERT INTO messageventedirecte(cree_le,client_id,canal,type_message,destinataire,contenu,succes,detail) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?)").bind(client_id).bind(channel).bind(kind).bind(to).bind(content).bind(result.is_ok()).bind(match result{Ok(v)|Err(v)=>v}).execute(pool).await?;
     Ok(())
 }
 
@@ -2224,7 +2224,7 @@ pub(super) async fn envoyer_recap_commande(
         &content,
     )
     .await;
-    sqlx::query("INSERT INTO messageventedirecte(commande_id,client_id,canal,type_message,destinataire,contenu,succes,detail) VALUES(?,?,'email','recap_commande',?,?,?,?)")
+    sqlx::query("INSERT INTO messageventedirecte(cree_le,commande_id,client_id,canal,type_message,destinataire,contenu,succes,detail) VALUES(CURRENT_TIMESTAMP,?,?,'email','recap_commande',?,?,?,?)")
         .bind(order_id)
         .bind(client_id)
         .bind(destinataire)
@@ -2856,6 +2856,37 @@ mod perte_porcelet_tests {
             .await
             .expect_err("gravité inconnue refusée");
         assert!(matches!(err, AppError::Invalid(_)));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod journal_message_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    /// La table vient de l ancienne version : `cree_le` est obligatoire et
+    /// n a pas de valeur par défaut. Sans date, l envoi d un e-mail échouait
+    /// au moment de le noter, et le récapitulatif de commande était perdu.
+    #[tokio::test]
+    async fn un_message_envoye_est_note_avec_sa_date() -> anyhow::Result<()> {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        sqlx::raw_sql(include_str!("../../migrations/0001_schema.sql"))
+            .execute(&pool)
+            .await?;
+        let resultat: Result<String, String> = Err("HTTP 401".into());
+        log_message(&pool, None, "email", "test", "a@b.fr", "contenu", &resultat)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let (n, date): (i64, Option<String>) =
+            sqlx::query_as("SELECT COUNT(*), MAX(cree_le) FROM messageventedirecte")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(n, 1);
+        assert!(date.is_some());
         Ok(())
     }
 }

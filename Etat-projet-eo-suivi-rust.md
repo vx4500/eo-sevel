@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.2** — ambiance : chaque point d'une salle peut nommer sa propre source (« hote:chemin »), sonde sur l'automate et variateur Zigbee dans la même salle.
+Version actuelle : **2.76.3** — vente directe : les e-mails envoyés aux clients sont de nouveau notés dans le journal (la date manquait et faisait échouer le récapitulatif de commande).
 
+
+Version Rust 2.76.3 : l'enregistrement d'un message de vente directe (messageventedirecte) fournit cree_le, colonne obligatoire sans valeur par défaut héritée de l'ancienne base. Sans elle, chaque envoi Brevo (récapitulatif de commande, statut, test, campagne) échouait au moment d'être noté, et l'échec n'apparaissait nulle part ; aucun message n'était journalisé depuis le passage en Rust. Test journal_message_tests.
 
 Version Rust 2.76.2 : une salle régulée n'est plus tenue à une seule source. Un chemin d'entrée (entree_t, entree_h, entree_lux) ou de sortie (sortie_ventil) peut porter son hôte en préfixe, « hote:chemin » (`192.168.1.250:api/core/ana/262197`, `zigbee:0x…/brightness`) ; sans préfixe, l'hôte de la salle (ipx_hote) s'applique comme avant. Résolution dans regul_core::hote_et_chemin (fonction pure, testée : sans préfixe, avec préfixe, hôte avec port, schéma refusé), utilisée par eo-regul (lire, ecrire, sortie_reelle, niveau_module, pause et renvoi selon l'hôte réel de la sortie) et par l'application (valeur_directe, lire_point, envoyer_commande, points.json, hôtes autorisés de l'Explorateur). Formulaire de la salle : les points sont saisis dans un champ libre avec liste de suggestions (les points d'un autre hôte sont proposés déjà préfixés), aide « hote:chemin ». Cas d'usage : Post-sevrage 1, sonde Zigbee muette, remplacée par une X-THL « [PS1] » sur l'IPX800 (262197-262199) tandis que le variateur reste en Zigbee.
 
