@@ -103,6 +103,7 @@ pub fn build() -> anyhow::Result<Environment<'static>> {
     env.add_template("bande.html", include_str!("../templates/bande.html"))?;
     env.add_template("truies.html", include_str!("../templates/truies.html"))?;
     env.add_template("truie.html", include_str!("../templates/truie.html"))?;
+    env.add_template("rfid.html", include_str!("../templates/rfid.html"))?;
     env.add_template("energie.html", include_str!("../templates/energie.html"))?;
     env.add_template("ambiance.html", include_str!("../templates/ambiance.html"))?;
     env.add_template("acces_distance.html", include_str!("../templates/acces_distance.html"))?;

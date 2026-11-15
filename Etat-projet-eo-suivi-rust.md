@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.9** — page Structure : les cases de post-sevrage et d'engraissement affichent les morts et leur cause la plus fréquente.
+Version actuelle : **2.76.10** — nouvelle page RFID : attribuer une boucle à une truie, ou un identifiant RFID à une salle ou une case.
 
+
+Version Rust 2.76.10 : nouvelle page « RFID » (menu Mes animaux) pour attribuer une boucle électronique à une truie, ou un identifiant RFID à une salle ou une case, sans passer par la fiche truie (qui ne permettait de la saisir qu'à la création) ni par la page Structure (qui risquait d'écraser les autres champs de la ligne). Les porcs d'engraissement et les porcelets sous la mère ne sont comptés que par effectif de case, donc aucune boucle individuelle ne peut leur être attribuée.
 
 Version Rust 2.76.9 : sur la page Structure, les cases de post-sevrage et d'engraissement affichent maintenant le nombre de morts et la cause la plus fréquente, comme « Sevrés en moyenne » pour la maternité — demandé par Emmanuel pour repérer une case où l'on perd plus d'animaux que les autres. Calculé depuis declarationmort.case_id, toutes bandes confondues.
 

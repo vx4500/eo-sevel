@@ -711,6 +711,10 @@ pub fn router(state: AppState) -> Router {
             post(structure_salle_supprimer),
         )
         .route("/structure/case/{id}/rfid", post(structure_case_rfid))
+        .route("/rfid", get(rfid_page))
+        .route("/rfid/truie/{id}", post(rfid_truie))
+        .route("/rfid/salle/{id}", post(rfid_salle))
+        .route("/rfid/case/{id}", post(rfid_case))
         .route(
             "/structure/case/{id}/supprimer",
             post(structure_case_supprimer),
@@ -12967,6 +12971,101 @@ async fn structure_case_rfid(
         .execute(&state.pool)
         .await?;
     Ok(Redirect::to("/structure").into_response())
+}
+
+/// Page « RFID » : attribuer une boucle électronique à une truie, ou un
+/// identifiant RFID à une salle ou une case, sans passer par les fiches
+/// truie / Structure et sans écraser les autres champs de la ligne — avant
+/// cette page, seule la création d'une truie permettait de saisir sa boucle.
+/// Les porcs d'engraissement et les porcelets sous la mère ne sont pas
+/// suivis individuellement (seulement par effectif de case), donc aucune
+/// boucle individuelle ne peut leur être attribuée ici.
+async fn rfid_page(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+) -> AppResult<Html<String>> {
+    let truies = generic_rows(
+        &state.pool,
+        "SELECT id,num_travail,rfid FROM truie WHERE reformee=0 ORDER BY num_travail",
+    )
+    .await?;
+    let salles = generic_rows(
+        &state.pool,
+        "SELECT id,nom,rfid FROM salle ORDER BY nom",
+    )
+    .await?;
+    let cases = generic_rows(
+        &state.pool,
+        "SELECT c.id,c.nom,c.rfid,s.nom AS salle FROM casesalle c JOIN salle s ON s.id=c.salle_id ORDER BY s.nom,c.nom",
+    )
+    .await?;
+    let mut ctx = context(&session);
+    ctx.insert("truies".into(), Value::Array(truies));
+    ctx.insert("salles".into(), Value::Array(salles));
+    ctx.insert("cases".into(), Value::Array(cases));
+    render(&state, "rfid.html", Value::Object(ctx))
+}
+
+async fn rfid_truie(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let rfid = form_text(&form, "rfid");
+    if let Some(valeur) = rfid.as_deref().filter(|v| !v.is_empty()) {
+        let deja_prise: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM truie WHERE rfid=? AND reformee=0 AND id<>?")
+                .bind(valeur)
+                .bind(id)
+                .fetch_one(&state.pool)
+                .await?;
+        if deja_prise > 0 {
+            return Err(AppError::Invalid(format!(
+                "La boucle « {valeur} » est déjà attribuée à une autre truie active"
+            )));
+        }
+    }
+    sqlx::query("UPDATE truie SET rfid=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(&rfid)
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Redirect::to("/rfid").into_response())
+}
+
+async fn rfid_salle(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    sqlx::query("UPDATE salle SET rfid=? WHERE id=?")
+        .bind(form_text(&form, "rfid"))
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Redirect::to("/rfid").into_response())
+}
+
+async fn rfid_case(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    sqlx::query("UPDATE casesalle SET rfid=? WHERE id=?")
+        .bind(form_text(&form, "rfid"))
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Redirect::to("/rfid").into_response())
 }
 
 async fn structure_case_supprimer(
