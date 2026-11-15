@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.10** — nouvelle page RFID : attribuer une boucle à une truie, ou un identifiant RFID à une salle ou une case.
+Version actuelle : **2.76.11** — page RFID : design repris pour coller au reste de l'app (édition en ligne dans le tableau, sans menu déroulant redondant).
 
+
+Version Rust 2.76.11 : la page RFID (2.76.10) avait un menu déroulant redondant avec le tableau affiché juste dessous. Reprise du design pour reprendre le motif déjà utilisé ailleurs dans l'app : chaque ligne du tableau porte directement son propre champ et son bouton « Enregistrer », sans liste déroulante séparée.
 
 Version Rust 2.76.10 : nouvelle page « RFID » (menu Mes animaux) pour attribuer une boucle électronique à une truie, ou un identifiant RFID à une salle ou une case, sans passer par la fiche truie (qui ne permettait de la saisir qu'à la création) ni par la page Structure (qui risquait d'écraser les autres champs de la ligne). Les porcs d'engraissement et les porcelets sous la mère ne sont comptés que par effectif de case, donc aucune boucle individuelle ne peut leur être attribuée.
 

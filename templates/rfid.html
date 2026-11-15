@@ -3,19 +3,26 @@
 {% block content %}
 <h1>RFID : attribuer une boucle</h1>
 <p class="help">Truies, salles et cases seulement : les porcs d'engraissement et les porcelets sous la mère sont comptés par case, pas suivis individuellement, donc aucune boucle individuelle ne peut leur être attribuée ici.</p>
+<div class="rust-page-links"><a href="#rfid-truie">Truie</a><a href="#rfid-salle">Salle</a><a href="#rfid-case">Case</a></div>
 
-<section class="card"><h2>Truie</h2>
-{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/truie/0" id="form-rfid-truie"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Truie<select name="truie_id" required onchange="this.form.action='/rfid/truie/'+this.value">{% for t in truies %}<option value="{{ t.id }}">{{ t.num_travail }}{% if t.rfid %} — boucle actuelle : {{ t.rfid }}{% endif %}</option>{% endfor %}</select></label><label>Nouvelle boucle<input name="rfid" placeholder="Laisser vide pour retirer"></label><button>Enregistrer</button></form>{% endif %}
-<div class="rust-scroll"><table><tr><th>Truie</th><th>Boucle actuelle</th></tr>{% for t in truies %}<tr><td><a href="/truie/{{ t.id }}">{{ t.num_travail }}</a></td><td>{{ t.rfid or '—' }}</td></tr>{% else %}<tr><td colspan="2" class="rust-empty">Aucune truie</td></tr>{% endfor %}</table></div>
+<section class="card" id="rfid-truie"><h2>Truie</h2>
+<div class="rust-scroll"><table><tr><th>Truie</th><th>Boucle</th></tr>
+{% for t in truies %}<tr><td><a href="/truie/{{ t.id }}">{{ t.num_travail }}</a></td><td>{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/truie/{{ t.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="rfid" value="{{ t.rfid or '' }}" placeholder="Aucune boucle"><button class="ghost">Enregistrer</button></form>{% else %}{{ t.rfid or '—' }}{% endif %}</td></tr>
+{% else %}<tr><td colspan="2" class="rust-empty">Aucune truie</td></tr>{% endfor %}
+</table></div>
 </section>
 
-<section class="card"><h2>Salle</h2>
-{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/salle/0" id="form-rfid-salle"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Salle<select name="salle_id" required onchange="this.form.action='/rfid/salle/'+this.value">{% for s in salles %}<option value="{{ s.id }}">{{ s.nom }}{% if s.rfid %} — RFID actuel : {{ s.rfid }}{% endif %}</option>{% endfor %}</select></label><label>Nouveau RFID<input name="rfid" placeholder="Laisser vide pour retirer"></label><button>Enregistrer</button></form>{% endif %}
-<div class="rust-scroll"><table><tr><th>Salle</th><th>RFID actuel</th></tr>{% for s in salles %}<tr><td>{{ s.nom }}</td><td>{{ s.rfid or '—' }}</td></tr>{% else %}<tr><td colspan="2" class="rust-empty">Aucune salle</td></tr>{% endfor %}</table></div>
+<section class="card" id="rfid-salle"><h2>Salle</h2>
+<div class="rust-scroll"><table><tr><th>Salle</th><th>RFID</th></tr>
+{% for s in salles %}<tr><td>{{ s.nom }}</td><td>{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/salle/{{ s.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="rfid" value="{{ s.rfid or '' }}" placeholder="Aucun RFID"><button class="ghost">Enregistrer</button></form>{% else %}{{ s.rfid or '—' }}{% endif %}</td></tr>
+{% else %}<tr><td colspan="2" class="rust-empty">Aucune salle</td></tr>{% endfor %}
+</table></div>
 </section>
 
-<section class="card"><h2>Case</h2>
-{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/case/0" id="form-rfid-case"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><label>Case<select name="case_id" required onchange="this.form.action='/rfid/case/'+this.value">{% for c in cases %}<option value="{{ c.id }}">{{ c.salle }} · {{ c.nom }}{% if c.rfid %} — RFID actuel : {{ c.rfid }}{% endif %}</option>{% endfor %}</select></label><label>Nouveau RFID<input name="rfid" placeholder="Laisser vide pour retirer"></label><button>Enregistrer</button></form>{% endif %}
-<div class="rust-scroll"><table><tr><th>Salle</th><th>Case</th><th>RFID actuel</th></tr>{% for c in cases %}<tr><td>{{ c.salle }}</td><td>{{ c.nom }}</td><td>{{ c.rfid or '—' }}</td></tr>{% else %}<tr><td colspan="3" class="rust-empty">Aucune case</td></tr>{% endfor %}</table></div>
+<section class="card" id="rfid-case"><h2>Case</h2>
+<div class="rust-scroll"><table><tr><th>Salle</th><th>Case</th><th>RFID</th></tr>
+{% for c in cases %}<tr><td>{{ c.salle }}</td><td>{{ c.nom }}</td><td>{% if session.peut_modifier %}<form class="rust-actions" method="post" action="/rfid/case/{{ c.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input name="rfid" value="{{ c.rfid or '' }}" placeholder="Aucun RFID"><button class="ghost">Enregistrer</button></form>{% else %}{{ c.rfid or '—' }}{% endif %}</td></tr>
+{% else %}<tr><td colspan="3" class="rust-empty">Aucune case</td></tr>{% endfor %}
+</table></div>
 </section>
 {% endblock %}
