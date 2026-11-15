@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.8** — page Structure : les cases de maternité affichent « Sevrés en moyenne » pour repérer une case qui sèvre moins que les autres.
+Version actuelle : **2.76.9** — page Structure : les cases de post-sevrage et d'engraissement affichent les morts et leur cause la plus fréquente.
 
+
+Version Rust 2.76.9 : sur la page Structure, les cases de post-sevrage et d'engraissement affichent maintenant le nombre de morts et la cause la plus fréquente, comme « Sevrés en moyenne » pour la maternité — demandé par Emmanuel pour repérer une case où l'on perd plus d'animaux que les autres. Calculé depuis declarationmort.case_id, toutes bandes confondues.
 
 Version Rust 2.76.8 : sur la page Structure, les cases de maternité affichent maintenant « Sevrés en moyenne » (nombre moyen de porcelets sevrés et nombre de portées), comme la colonne « Réussite écho » pour la verraterie — demandé par Emmanuel pour repérer une case où l'on sèvre moins que les autres. Calculé à partir de la mise-bas (case figée à la saisie) et du sevrage suivant de la même truie (dans les 60 jours).
 

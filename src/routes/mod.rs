@@ -12329,6 +12329,32 @@ async fn case_sevrage_stats(pool: &SqlitePool, case_id: i64) -> AppResult<Value>
     Ok(json!({"portees": portees, "moyenne": moyenne}))
 }
 
+/// Nombre de morts et cause la plus fréquente pour une case de porcs en
+/// croissance (post-sevrage, engraissement) : `declarationmort.case_id` est
+/// la case où la mort a été déclarée, toutes bandes confondues. Permet de
+/// repérer une case où l'on perd plus d'animaux que les autres, et pourquoi.
+async fn case_mort_stats(pool: &SqlitePool, case_id: i64) -> AppResult<Value> {
+    let total: Option<i64> = sqlx::query_scalar(
+        "SELECT SUM(nombre) FROM declarationmort WHERE case_id=?",
+    )
+    .bind(case_id)
+    .fetch_one(pool)
+    .await?;
+    let cause: Option<(String, i64)> = sqlx::query_as(
+        "SELECT cause, SUM(nombre) AS n FROM declarationmort \
+         WHERE case_id=? AND cause IS NOT NULL AND trim(cause)<>'' \
+         GROUP BY cause ORDER BY n DESC, cause LIMIT 1",
+    )
+    .bind(case_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(json!({
+        "total": total.unwrap_or(0),
+        "cause_frequente": cause.as_ref().map(|(c, _)| c.clone()),
+        "cause_nombre": cause.as_ref().map(|(_, n)| *n),
+    }))
+}
+
 async fn structure(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -12376,6 +12402,7 @@ async fn structure(
             "sevrage_stats".into(),
             case_sevrage_stats(&state.pool, id).await?,
         );
+        object.insert("mort_stats".into(), case_mort_stats(&state.pool, id).await?);
         surfaces::enrich(&state.pool, object).await?;
     }
     // Comparaison porcs/m² par stade : regroupe les cases par secteur déclaré
