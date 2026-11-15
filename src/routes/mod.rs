@@ -12305,6 +12305,30 @@ async fn case_echo_stats(pool: &SqlitePool, case_id: i64) -> AppResult<Value> {
     Ok(json!({"echos": total, "pleines": pleines, "taux_pleine": taux_pleine}))
 }
 
+/// Nombre de porcelets sevrés en moyenne pour une case de maternité, toutes
+/// bandes confondues : `evenement.case_id` de la mise-bas est figé au moment
+/// de la saisie (contrairement à `truie.case_id` qui suit l'animal après le
+/// sevrage), donc il identifie la case où la portée a réellement été élevée.
+/// Permet de repérer une case où l'on sèvre moins que les autres.
+async fn case_sevrage_stats(pool: &SqlitePool, case_id: i64) -> AppResult<Value> {
+    let valeurs: Vec<(Option<i64>,)> = sqlx::query_as(
+        "SELECT (SELECT s.nb_sevres FROM evenement s WHERE s.truie_id=mb.truie_id \
+         AND s.type='sevrage' AND s.date>mb.date AND julianday(s.date)-julianday(mb.date)<=60 \
+         ORDER BY s.date LIMIT 1) \
+         FROM evenement mb WHERE mb.type='mise_bas' AND mb.case_id=?",
+    )
+    .bind(case_id)
+    .fetch_all(pool)
+    .await?;
+    let sevres: Vec<i64> = valeurs.into_iter().filter_map(|(v,)| v).collect();
+    let portees = sevres.len() as i64;
+    let moyenne = (portees > 0).then(|| {
+        let somme: i64 = sevres.iter().sum();
+        (somme as f64 / portees as f64 * 10.0).round() / 10.0
+    });
+    Ok(json!({"portees": portees, "moyenne": moyenne}))
+}
+
 async fn structure(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
@@ -12348,6 +12372,10 @@ async fn structure(
         object.insert("places_truies_dispo".into(), json!(sow_places));
         object.insert("places_porcelets_dispo".into(), Value::Null);
         object.insert("echo_stats".into(), case_echo_stats(&state.pool, id).await?);
+        object.insert(
+            "sevrage_stats".into(),
+            case_sevrage_stats(&state.pool, id).await?,
+        );
         surfaces::enrich(&state.pool, object).await?;
     }
     // Comparaison porcs/m² par stade : regroupe les cases par secteur déclaré

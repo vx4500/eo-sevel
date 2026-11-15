@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.7** — page Structure : le tableau des ventilateurs déclarés est enfin aligné avec ses colonnes (Nom, Position, Fonction, Voie, Ø, Débit, Sortie IPX, Actif), au lieu d'un bloc de champs non aligné.
+Version actuelle : **2.76.8** — page Structure : les cases de maternité affichent « Sevrés en moyenne » pour repérer une case qui sèvre moins que les autres.
 
+
+Version Rust 2.76.8 : sur la page Structure, les cases de maternité affichent maintenant « Sevrés en moyenne » (nombre moyen de porcelets sevrés et nombre de portées), comme la colonne « Réussite écho » pour la verraterie — demandé par Emmanuel pour repérer une case où l'on sèvre moins que les autres. Calculé à partir de la mise-bas (case figée à la saisie) et du sevrage suivant de la même truie (dans les 60 jours).
 
 Version Rust 2.76.7 : le tableau « Ventilateurs déclarés » mettait tous les champs d'édition dans une seule cellule (colspan=9) avec une mise en page en ligne (flex-wrap) qui ne correspondait pas aux colonnes de l'en-tête — le bouton Supprimer retombait même sous la colonne Position quand ça ne tenait pas sur une ligne. Repéré par Emmanuel sur une capture d'écran. Chaque champ est maintenant dans sa propre cellule, alignée avec son en-tête ; les formulaires (modifier, supprimer) sont posés hors du tableau et les champs leur sont rattachés par l'attribut `form`, pour rester valides sans casser l'alignement.
 
