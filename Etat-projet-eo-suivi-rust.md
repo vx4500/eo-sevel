@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.6** — page Structure : chaque salle n'affiche plus que les colonnes qui la concernent (Porcs pour l'engraissement/post-sevrage, Truies et Réussite écho pour Verraterie/Gestante, Truies et Porcelets sous mère pour les Maternités).
+Version actuelle : **2.76.7** — page Structure : le tableau des ventilateurs déclarés est enfin aligné avec ses colonnes (Nom, Position, Fonction, Voie, Ø, Débit, Sortie IPX, Actif), au lieu d'un bloc de champs non aligné.
 
+
+Version Rust 2.76.7 : le tableau « Ventilateurs déclarés » mettait tous les champs d'édition dans une seule cellule (colspan=9) avec une mise en page en ligne (flex-wrap) qui ne correspondait pas aux colonnes de l'en-tête — le bouton Supprimer retombait même sous la colonne Position quand ça ne tenait pas sur une ligne. Repéré par Emmanuel sur une capture d'écran. Chaque champ est maintenant dans sa propre cellule, alignée avec son en-tête ; les formulaires (modifier, supprimer) sont posés hors du tableau et les champs leur sont rattachés par l'attribut `form`, pour rester valides sans casser l'alignement.
 
 Version Rust 2.76.6 : le tableau des cases de la page Structure affichait les mêmes colonnes pour toutes les salles (Porcs, Truies maternité, Porcelets sous mère/nourrice, Réussite écho), sans rapport avec leur type réel — demandé par Emmanuel après une capture d'écran de la Gestante. Colonnes maintenant choisies selon salle.type : engraissement/post-sevrage → Porcs ; verraterie/gestante → Truies + Réussite écho ; maternité → Truies + Porcelets sous mère/nourrice. RFID et Surface restent toujours affichés.
 
