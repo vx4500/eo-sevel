@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.76.6 — Structure : chaque salle n’affiche que les colonnes qui la concernent</h2><ul><li>La page Structure montrait les mêmes colonnes (Porcs, Truies, Porcelets sous mère, Réussite écho) pour toutes les salles, même sans rapport avec leur usage. Maintenant choisies selon le type de salle : engraissement/post-sevrage → Porcs ; verraterie/gestante → Truies + Réussite écho ; maternité → Truies + Porcelets sous mère.</li></ul></section>
 <section class="card"><h2>2.76.5 — Saisie « Chaleur » : les 3 boutons d’observation redeviennent lisibles</h2><ul><li>Dans la saisie rapide d’une chaleur, les boutons « Aspect vulve », « Comportement » et « Réflexe d’immobilité » avaient un texte blanc sur fond blanc : invisibles. Couleur corrigée.</li></ul></section>
 <section class="card"><h2>2.76.4 — Supprimer une commande fonctionne</h2><ul><li>Le bouton Supprimer d’une commande de vente directe affichait une erreur. La commande et ses lignes sont maintenant effacées.</li><li>Les e-mails déjà envoyés au client restent visibles dans l’historique des messages.</li></ul></section>
 <section class="card"><h2>2.76.3 — Les e-mails aux clients sont de nouveau notés</h2><ul><li>Chaque e-mail ou SMS envoyé à un client (récapitulatif de commande, changement d’état, campagne, essai) est de nouveau noté dans l’historique des messages, réussi ou non.</li><li>Avant, la note échouait et le récapitulatif de commande était perdu sans rien signaler.</li></ul></section>

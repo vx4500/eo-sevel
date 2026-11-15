@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.5** — saisie rapide « Chaleur » : les 3 boutons de suggestion dans l'observation (Aspect vulve, Comportement, Réflexe d'immobilité) étaient illisibles, texte blanc sur fond blanc.
+Version actuelle : **2.76.6** — page Structure : chaque salle n'affiche plus que les colonnes qui la concernent (Porcs pour l'engraissement/post-sevrage, Truies et Réussite écho pour Verraterie/Gestante, Truies et Porcelets sous mère pour les Maternités).
 
+
+Version Rust 2.76.6 : le tableau des cases de la page Structure affichait les mêmes colonnes pour toutes les salles (Porcs, Truies maternité, Porcelets sous mère/nourrice, Réussite écho), sans rapport avec leur type réel — demandé par Emmanuel après une capture d'écran de la Gestante. Colonnes maintenant choisies selon salle.type : engraissement/post-sevrage → Porcs ; verraterie/gestante → Truies + Réussite écho ; maternité → Truies + Porcelets sous mère/nourrice. RFID et Surface restent toujours affichés.
 
 Version Rust 2.76.5 : les boutons de suggestion d'observation en saisie de chaleur (`.fab-chaleur-suggestions button`) ne fixaient pas de couleur de texte ; la règle générique `button{color:#fff}` s'appliquait par défaut sur un fond blanc, rendant le texte invisible. Couleur de texte ajoutée (vert foncé, comme les autres boutons de la fenêtre de saisie rapide). Repéré par Emmanuel sur une capture d'écran.
 
