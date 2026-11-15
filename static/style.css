@@ -259,7 +259,7 @@ nav .grp .sous a:hover{background:rgba(200,130,63,.3);color:#fff}
 /* v1.31 — Chaleur : seulement 3 suggestions dans Observation */
 .fab-chaleur-suggestions{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .fab-chaleur-suggestions button{
-  border:1px solid var(--border,#d9dee5);background:var(--card,#fff);
+  border:1px solid var(--border,#d9dee5);background:var(--card,#fff);color:var(--vert,#1e4d3a);
   border-radius:7px;padding:5px 7px;font-size:.72rem;font-weight:600;cursor:pointer
 }
 .fab-chaleur-suggestions button:hover{border-color:#166534;background:rgba(22,101,52,.06)}

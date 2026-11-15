@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.4** — vente directe : une commande peut de nouveau être supprimée (ses lignes partent avec elle, ses messages restent dans l'historique).
+Version actuelle : **2.76.5** — saisie rapide « Chaleur » : les 3 boutons de suggestion dans l'observation (Aspect vulve, Comportement, Réflexe d'immobilité) étaient illisibles, texte blanc sur fond blanc.
 
+
+Version Rust 2.76.5 : les boutons de suggestion d'observation en saisie de chaleur (`.fab-chaleur-suggestions button`) ne fixaient pas de couleur de texte ; la règle générique `button{color:#fff}` s'appliquait par défaut sur un fond blanc, rendant le texte invisible. Couleur de texte ajoutée (vert foncé, comme les autres boutons de la fenêtre de saisie rapide). Repéré par Emmanuel sur une capture d'écran.
 
 Version Rust 2.76.4 : la suppression d'une commande de vente directe échouait toujours (FOREIGN KEY constraint failed) : dans la base héritée, lignecommandeventedirecte et messageventedirecte référencent la commande sans suppression en cascade. effacer_commande efface d'abord les lignes et détache les messages (commande_id NULL) avant d'effacer la commande. Test effacer_commande_tests.
 
