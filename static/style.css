@@ -105,7 +105,8 @@ nav .grp .sous a:hover{background:rgba(200,130,63,.3);color:#fff}
   background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);z-index:200;
   padding:14px;display:none}
 #fab-panel.open{display:block}
-.fab-head{font-weight:700;color:var(--vert,#1e4d3a);margin-bottom:10px}
+.fab-head{font-weight:700;color:var(--vert,#1e4d3a);margin:-14px -14px 10px;padding:14px 14px 6px;
+  position:sticky;top:-14px;background:#fff;z-index:2}
 .fab-close{float:right;padding:0 3px;background:transparent;color:var(--vert,#1e4d3a);font-size:18px;line-height:1}
 .fab-close:hover{background:transparent;color:#b42318}
 .fab-types{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
@@ -242,7 +243,7 @@ nav .grp .sous a:hover{background:rgba(200,130,63,.3);color:#fff}
 /* v1.30 — correction affichage Saisie rapide > Chaleur */
 #fab-panel.open{
   display:block;
-  max-height:calc(100vh - 55px);
+  max-height:calc(100vh - 110px); /* le panneau part de 92px du bas : le haut et le ✕ restent visibles */
   overflow-y:auto;
   overscroll-behavior:contain;
 }

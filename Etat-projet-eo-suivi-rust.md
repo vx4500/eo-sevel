@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.13** — saisie rapide : s'ouvre sur l'IA, boutons dans l'ordre d'usage, saisies rares rangées sous « Autres… ».
+Version actuelle : **2.76.14** — saisie rapide : le haut du panneau et son bouton ✕ ne sortent plus de l'écran.
 
+
+Version Rust 2.76.14 : la saisie rapide pouvait monter plus haut que l'écran (hauteur maxi 100vh − 55px pour un panneau posé à 92px du bas) : avec « Autres… » ouvert, son en-tête et le bouton ✕ disparaissaient. Hauteur maxi ramenée à 100vh − 110px et en-tête collant (sticky) pendant le défilement.
 
 Version Rust 2.76.13 : saisie rapide réordonnée d'après les saisies réelles des 60 derniers jours (IA 125, transferts 122, morts 75, pertes porcelets 53, sevrages 40, chaleurs 38, échos 30, mises-bas 18). Elle s'ouvre sur « IA / saillie » au lieu de « ELD / poids » ; ELD/poids, Sortie truie, Quai abattoir, Nouvelle cochette et Comportement (0 à 6 saisies en 60 jours) passent sous un bouton « Autres… », qui s'ouvre seul si l'un d'eux est choisi. Menu : le raccourci « Résultat économique » est retiré de « Bâtiments et mouvements » (la page reste dans Ma gestion > Économie).
 
