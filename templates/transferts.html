@@ -6,6 +6,71 @@
 <p>Les effectifs sont calculés à partir des entrées, sorties et mortalités déclarées. Un transfert est refusé si la source est insuffisante ou si la capacité de la destination est dépassée.</p>
 
 {% if session.peut_modifier %}
+<form class="card" method="post" action="/transferts/salle" id="deplacer-salle">
+  <h2>Déplacer une salle entière</h2>
+  <p class="muted" style="margin-top:0">Toutes les cases occupées de la salle de départ, chacune vers sa case d’arrivée, en une seule fois. Vérifiez les cases proposées, puis validez.</p>
+  <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+  <div class="rust-actions">
+    <label>Salle de départ<select id="ds-source"><option value="">Choisir…</option></select></label>
+    <label>Salle d’arrivée<select id="ds-dest"><option value="">Choisir…</option></select></label>
+  </div>
+  <div id="ds-zone" hidden>
+    <div class="rust-scroll"><table><thead><tr><th>Case de départ</th><th>Présents</th><th>Case d’arrivée</th><th>Nombre</th></tr></thead><tbody id="ds-lignes"></tbody></table></div>
+    <p id="ds-total" style="font-weight:700"></p>
+    <div class="rust-actions"><label>Date<input type="date" name="date" value="{{ today }}" required></label><label>Note<input name="note"></label></div>
+    <button>Déplacer toute la salle</button>
+  </div>
+</form>
+<script type="application/json" id="ds-cases">{{ cases|tojson }}</script>
+<script>
+(function(){
+  var cases=JSON.parse(document.getElementById('ds-cases').textContent);
+  var src=document.getElementById('ds-source'), dst=document.getElementById('ds-dest');
+  var zone=document.getElementById('ds-zone'), body=document.getElementById('ds-lignes'), total=document.getElementById('ds-total');
+  var salles=[], vu={};
+  cases.forEach(function(c){ if(!vu[c.salle_id]){ vu[c.salle_id]={id:c.salle_id,nom:c.site+' · '+c.salle,mater:String(c.salle_type||'').indexOf('mater')===0,porcs:0}; salles.push(vu[c.salle_id]); } vu[c.salle_id].porcs+=Math.max(0,c.presents||0); });
+  salles.forEach(function(s){
+    if(!s.mater && s.porcs>0) src.add(new Option(s.nom+' — '+s.porcs+' porc(s)',s.id));
+    dst.add(new Option(s.nom,s.id));
+  });
+  function cle(c){return String(c.case_nom);}
+  function dans(salle){return cases.filter(function(c){return String(c.salle_id)===String(salle);});}
+  function majTotal(){
+    var n=0; body.querySelectorAll('tr').forEach(function(tr){ if(tr.querySelector('select').value) n+=parseInt(tr.querySelector('input').value)||0; });
+    total.textContent=n+' porc(s) seront déplacés.';
+  }
+  function dessiner(){
+    body.replaceChildren();
+    if(!src.value||!dst.value){zone.hidden=true;return;}
+    var departs=dans(src.value).filter(function(c){return (c.presents||0)>0;});
+    var arrivees=dans(dst.value);
+    departs.forEach(function(c,i){
+      var tr=document.createElement('tr');
+      var td1=document.createElement('td'); td1.textContent=c.case_nom;
+      var td2=document.createElement('td'); td2.textContent=c.presents;
+      var td3=document.createElement('td'); var sel=document.createElement('select'); sel.name='dest_'+c.case_id;
+      sel.add(new Option('— ne pas déplacer —',''));
+      arrivees.forEach(function(a){
+        if(a.case_id===c.case_id) return;
+        var place=a.nb_max_porcs?' ('+Math.max(0,a.presents||0)+'/'+a.nb_max_porcs+')':'';
+        sel.add(new Option(a.case_nom+place,a.case_id));
+      });
+      // Proposition : la case de même nom, sinon celle de même rang.
+      var meme=arrivees.filter(function(a){return cle(a)===cle(c)&&a.case_id!==c.case_id;})[0]||arrivees[i];
+      if(meme&&meme.case_id!==c.case_id) sel.value=String(meme.case_id);
+      td3.appendChild(sel);
+      var td4=document.createElement('td'); var nb=document.createElement('input'); nb.type='number'; nb.min='0'; nb.max=String(c.presents); nb.name='nb_'+c.case_id; nb.value=String(c.presents); nb.style.maxWidth='90px';
+      td4.appendChild(nb);
+      tr.append(td1,td2,td3,td4); body.appendChild(tr);
+      sel.addEventListener('change',majTotal); nb.addEventListener('input',majTotal);
+    });
+    zone.hidden=departs.length===0;
+    majTotal();
+  }
+  src.addEventListener('change',dessiner); dst.addEventListener('change',dessiner);
+})();
+</script>
+
 <div class="rust-grid">
   <form class="card" method="post" action="/transferts/porcs" id="deplacer-porcs">
     <h2>Déplacer des porcs</h2>

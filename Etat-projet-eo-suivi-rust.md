@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.14** — saisie rapide : le haut du panneau et son bouton ✕ ne sortent plus de l'écran.
+Version actuelle : **2.77.0** — Transferts : déplacer une salle entière en une seule saisie.
 
+
+Version Rust 2.77.0 : page Transferts, nouveau formulaire « Déplacer une salle entière » (POST /transferts/salle, champs dest_<case>/nb_<case>). Chaque case occupée de la salle de départ (hors maternité, qui passe par le sevrage) est proposée vers la case de même nom, sinon de même rang, de la salle d'arrivée, avec tout son effectif. Tout est contrôlé avant d'écrire (effectif de départ via case_departure_count, capacité d'arrivée cumulée, une case pouvant partir et recevoir), puis écrit dans une seule transaction ; chaque transfert garde la bande de sa case. Motif : le 23/09, 24 transferts de porcs saisis un par un depuis 23 cases ; le 11/11, 18. Test deplacer_une_salle_entiere.
 
 Version Rust 2.76.14 : la saisie rapide pouvait monter plus haut que l'écran (hauteur maxi 100vh − 55px pour un panneau posé à 92px du bas) : avec « Autres… » ouvert, son en-tête et le bouton ✕ disparaissaient. Hauteur maxi ramenée à 100vh − 110px et en-tête collant (sticky) pendant le défilement.
 

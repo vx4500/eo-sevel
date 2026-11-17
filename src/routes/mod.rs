@@ -417,6 +417,7 @@ pub fn router(state: AppState) -> Router {
         .route("/transferts", get(transferts))
         .route("/transferts/porcs", post(transferts_porcs))
         .route("/transferts/truies", post(transferts_truies))
+        .route("/transferts/salle", post(transferts_salle))
         .route("/transfert/{id}/supprimer", post(transfert_supprimer))
         .route(
             "/truie/{id}/selection",
@@ -7990,9 +7991,22 @@ async fn transferts(
 ) -> AppResult<Html<String>> {
     let cases = generic_rows(
         &state.pool,
-        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
+        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,lower(COALESCE(s.type,'')) AS salle_type,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
     )
     .await?;
+    // « Déplacer une salle entière » : l'effectif réel (inventaire compris)
+    // de chaque case, celui que le contrôle de l'enregistrement utilisera.
+    let mut cases = cases;
+    for row in &mut cases {
+        let object = json_object_mut(row, "les cases de transfert")?;
+        let id = object.get("case_id").and_then(Value::as_i64).unwrap_or_default();
+        let maternite = object
+            .get("salle_type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.starts_with("mater"));
+        let presents = if maternite { 0 } else { case_pig_count(&state.pool, id).await? };
+        object.insert("presents".into(), json!(presents));
+    }
     let mut bands = generic_rows(
         &state.pool,
         "SELECT id,code,date_mb,site FROM bande WHERE active=1 ORDER BY date_mb DESC,code",
@@ -8297,6 +8311,80 @@ mod transfert_maternite_tests {
         Ok(())
     }
 
+    /// Déplacer une salle entière : toutes les lignes passent d'un bloc, et
+    /// une seule ligne fausse fait tout refuser sans rien écrire.
+    #[tokio::test]
+    async fn deplacer_une_salle_entiere() -> anyhow::Result<()> {
+        let (state, _maternity_pen, dest_pen) = test_state().await?;
+        let room: i64 = sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
+            .bind(dest_pen)
+            .fetch_one(&state.pool)
+            .await?;
+        let mut sources = Vec::new();
+        for (nom, n) in [("A", 30), ("B", 25)] {
+            let id = sqlx::query("INSERT INTO casesalle(salle_id,nom,nb_max_porcs) VALUES(?,?,100)")
+                .bind(room)
+                .bind(nom)
+                .execute(&state.pool)
+                .await?
+                .last_insert_rowid();
+            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre) VALUES(?,'2026-08-01',?)")
+                .bind(id)
+                .bind(n)
+                .execute(&state.pool)
+                .await?;
+            sources.push(id);
+        }
+        let formulaire = |nb_b: &str| -> HashMap<String, String> {
+            [
+                ("csrf_token".to_string(), "csrf-test".to_string()),
+                ("date".into(), "2026-08-10".into()),
+                (format!("dest_{}", sources[0]), dest_pen.to_string()),
+                (format!("nb_{}", sources[0]), "30".into()),
+                (format!("dest_{}", sources[1]), dest_pen.to_string()),
+                (format!("nb_{}", sources[1]), nb_b.to_string()),
+            ]
+            .into_iter()
+            .collect()
+        };
+        // 30 + 26 > 25 présents en B : refus, rien d'écrit.
+        let err = transferts_salle(State(state.clone()), Extension(session()), Form(formulaire("26")))
+            .await
+            .expect_err("doit être refusé");
+        assert!(matches!(err, AppError::Invalid(ref m) if m.contains("25 porc")), "{err:?}");
+        let ecrits: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transfert")
+            .fetch_one(&state.pool)
+            .await?;
+        assert_eq!(ecrits, 0);
+        transferts_salle(State(state.clone()), Extension(session()), Form(formulaire("25"))).await?;
+        assert_eq!(case_pig_count(&state.pool, dest_pen).await?, 55);
+        assert_eq!(case_pig_count(&state.pool, sources[0]).await?, 0);
+        assert_eq!(case_pig_count(&state.pool, sources[1]).await?, 0);
+        // La case d'arrivée (100 places, 55 présents) refuse 60 de plus.
+        let autre = sqlx::query("INSERT INTO casesalle(salle_id,nom,nb_max_porcs) VALUES(?,'C',100)")
+            .bind(room)
+            .execute(&state.pool)
+            .await?
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO inventairecase(case_id,date,nombre) VALUES(?,'2026-08-01',60)")
+            .bind(autre)
+            .execute(&state.pool)
+            .await?;
+        let trop: HashMap<String, String> = [
+            ("csrf_token".to_string(), "csrf-test".to_string()),
+            ("date".into(), "2026-08-11".into()),
+            (format!("dest_{autre}"), dest_pen.to_string()),
+            (format!("nb_{autre}"), "60".into()),
+        ]
+        .into_iter()
+        .collect();
+        let err = transferts_salle(State(state.clone()), Extension(session()), Form(trop))
+            .await
+            .expect_err("capacité");
+        assert!(matches!(err, AppError::Invalid(ref m) if m.contains("capacité")), "{err:?}");
+        Ok(())
+    }
+
     /// Toujours refuser un déplacement au-delà de la portée réellement
     /// présente, avec le vrai effectif plutôt qu'un compte de case figé à 0.
     #[tokio::test]
@@ -8555,6 +8643,125 @@ async fn transferts_truies(
             .bind(&date).bind(source_room).bind(destination_room).bind(source_case).bind(destination).bind(id).bind(form_text(&form, "note")).execute(&mut *tx).await?;
     }
     tx.commit().await?;
+    Ok(Redirect::to("/transferts").into_response())
+}
+
+/// Déplacer toute une salle en une fois : chaque case occupée de la salle de
+/// départ vers sa case d'arrivée (champs `dest_<case>` et `nb_<case>`).
+/// Vu le 23/09 : 24 transferts de porcs saisis un par un depuis 23 cases.
+/// Tout est contrôlé avant d'écrire, puis enregistré d'un bloc : soit tout
+/// passe, soit rien.
+async fn transferts_salle(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let date = form_date_or_today(&form, "date")?;
+    let note = form_text(&form, "note");
+    let mut lignes: Vec<(i64, i64, i64)> = Vec::new();
+    for source in form_selected_ids(&form, "dest_") {
+        let Some(dest) = form_i64(&form, &format!("dest_{source}")) else {
+            continue; // « ne pas déplacer »
+        };
+        let nombre = form_i64(&form, &format!("nb_{source}")).unwrap_or(0);
+        if nombre <= 0 {
+            continue;
+        }
+        lignes.push((source, dest, nombre));
+    }
+    if lignes.is_empty() {
+        return Err(AppError::Invalid("Aucune case à déplacer".into()));
+    }
+    let nom_case = |id: i64| {
+        let pool = state.pool.clone();
+        async move {
+            let nom: Option<String> = sqlx::query_scalar(
+                "SELECT s.nom||' · '||c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE c.id=?",
+            )
+            .bind(id)
+            .fetch_optional(&pool)
+            .await?;
+            Ok::<String, AppError>(nom.unwrap_or_else(|| format!("case {id}")))
+        }
+    };
+    // Contrôles : effectif de chaque case de départ, puis place dans chaque
+    // case d'arrivée (une case peut à la fois partir et recevoir).
+    let mut variation: HashMap<i64, i64> = HashMap::new();
+    let mut a_ecrire = Vec::new();
+    for &(source, dest, nombre) in &lignes {
+        if source == dest {
+            return Err(AppError::Invalid(format!(
+                "{} : la case de départ et d'arrivée sont identiques",
+                nom_case(source).await?
+            )));
+        }
+        let salle_source: i64 = sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
+            .bind(source)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::Invalid("Case de départ introuvable".into()))?;
+        let disponible = case_departure_count(&state.pool, source).await?;
+        if nombre > disponible {
+            return Err(AppError::Invalid(format!(
+                "{} : {disponible} porc(s) présent(s), {nombre} demandé(s)",
+                nom_case(source).await?
+            )));
+        }
+        let salle_dest: i64 = sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
+            .bind(dest)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| AppError::Invalid("Case d'arrivée introuvable".into()))?;
+        *variation.entry(source).or_default() -= nombre;
+        *variation.entry(dest).or_default() += nombre;
+        let bande = bande_de_la_case(&state.pool, source, &date).await?;
+        a_ecrire.push((source, salle_source, dest, salle_dest, nombre, bande));
+    }
+    for (&case_id, &delta) in &variation {
+        if delta <= 0 {
+            continue;
+        }
+        let capacite: Option<i64> =
+            sqlx::query_scalar("SELECT nb_max_porcs FROM casesalle WHERE id=?")
+                .bind(case_id)
+                .fetch_optional(&state.pool)
+                .await?
+                .flatten();
+        if let Some(capacite) = capacite.filter(|c| *c > 0) {
+            let present = case_pig_count(&state.pool, case_id).await?;
+            if present + delta > capacite {
+                return Err(AppError::Invalid(format!(
+                    "{} : capacité dépassée, {} place(s) disponible(s) pour {delta} porc(s)",
+                    nom_case(case_id).await?,
+                    (capacite - present).max(0)
+                )));
+            }
+        }
+    }
+    let mut tx = state.pool.begin_with("BEGIN IMMEDIATE").await?;
+    for (source, salle_source, dest, salle_dest, nombre, bande) in &a_ecrire {
+        sqlx::query("INSERT INTO transfert(date,espece,bande_id,salle_source_id,salle_dest_id,case_source_id,case_dest_id,nombre,note) VALUES(?,'porc',?,?,?,?,?,?,?)")
+            .bind(&date)
+            .bind(bande)
+            .bind(salle_source)
+            .bind(salle_dest)
+            .bind(source)
+            .bind(dest)
+            .bind(nombre)
+            .bind(&note)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    // Même question qu'après un transfert simple pour un petit reste.
+    for &(source, _, _) in &lignes {
+        let reste = case_pig_count(&state.pool, source).await?;
+        if (1..=9).contains(&reste) {
+            return Ok(Redirect::to(&format!("/transferts?reste={source}&n={reste}")).into_response());
+        }
+    }
     Ok(Redirect::to("/transferts").into_response())
 }
 
