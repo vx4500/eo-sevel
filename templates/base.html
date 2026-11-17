@@ -227,12 +227,6 @@
       {% if 'transferts' in session.pages %}<a href="/transferts"><b>Transferts</b><small>Déplacements entre cases</small></a>{% endif %}
       {% if session.recoit_achats and 'reception' in session.pages %}<a href="/reception"><b>Réception</b><small>Animaux achetés à l’entrée</small></a>{% endif %}
       {% if 'archives' in session.pages %}<a href="/archives"><b>Archives</b><small>Bandes terminées</small></a>{% endif %}
-      {# Lien dupliqué depuis "Ma gestion" comme raccourci pour cette rubrique :
-         l'ancre évite que la page /economique se croie rattachée à "Mes
-         animaux" quand elle est ouverte directement (voir `situer()` plus bas,
-         qui compare le chemin exact — sans l'ancre — pour retrouver la bonne
-         rubrique et le bon fil d'ariane). #}
-      {% if 'economique' in session.pages %}<a href="/economique#depuis-bandes"><b>Résultat économique</b><small>Marge par bande en temps réel</small></a>{% endif %}
     </div>
   </div></div>{% endif %}
 
@@ -361,23 +355,25 @@
 <aside id="fab-panel" aria-label="Saisie rapide" aria-hidden="true">
   <div class="fab-head">Saisie rapide <button type="button" id="fab-close" class="fab-close" aria-label="Fermer la saisie rapide">✕</button></div>
   <div class="fab-types" role="tablist" aria-label="Type de saisie">
-    <button type="button" class="fab-t on" data-type="eld">ELD / poids</button>
-    <button type="button" class="fab-t" data-type="ia">IA / saillie</button>
-    <button type="button" class="fab-t" data-type="echo">Écho</button>
-    <button type="button" class="fab-t" data-type="chaleur">Chaleur</button>
-    <button type="button" class="fab-t" data-type="mise_bas">Mise-bas</button>
-    <button type="button" class="fab-t" data-type="perte">Perte porcelet</button>
-    <button type="button" class="fab-t" data-type="perte_bande">Perte porc</button>
-    <button type="button" class="fab-t" data-type="quai">Quai abattoir</button>
-    <button type="button" class="fab-t" data-type="sortie">Sortie truie</button>
+    <button type="button" class="fab-t on" data-type="ia">IA / saillie</button>
     <button type="button" class="fab-t" data-type="mouvement">Mouvement</button>
+    <button type="button" class="fab-t" data-type="perte_bande">Perte porc</button>
+    <button type="button" class="fab-t" data-type="perte">Perte porcelet</button>
     <button type="button" class="fab-t" data-type="sevrage">Sevrage</button>
-    <button type="button" class="fab-t" data-type="cochette">Nouvelle cochette</button>
-    <button type="button" class="fab-t" data-type="comportement">Comportement</button>
+    <button type="button" class="fab-t" data-type="chaleur">Chaleur</button>
+    <button type="button" class="fab-t" data-type="echo">Écho</button>
+    <button type="button" class="fab-t" data-type="mise_bas">Mise-bas</button>
+    <details class="fab-autres"><summary>Autres…</summary><div>
+      <button type="button" class="fab-t" data-type="eld">ELD / poids</button>
+      <button type="button" class="fab-t" data-type="sortie">Sortie truie</button>
+      <button type="button" class="fab-t" data-type="quai">Quai abattoir</button>
+      <button type="button" class="fab-t" data-type="cochette">Nouvelle cochette</button>
+      <button type="button" class="fab-t" data-type="comportement">Comportement</button>
+    </div></details>
   </div>
   <form method="post" action="/saisie-rapide" id="fab-form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
-    <input type="hidden" name="type" id="fab-type" value="eld">
+    <input type="hidden" name="type" id="fab-type" value="ia">
     <label id="fab-truie-wrap"><span id="fab-truie-label">Truie</span>
       <input type="search" id="fab-truie-recherche" placeholder="N° de vanne, numéro de truie, RFID ou bande" inputmode="search" hidden>
       <select name="truie_id" id="fab-truie" required><option value="">Chargement…</option></select>
@@ -925,6 +921,7 @@
   function chooseType(type,chosen){
     typeInput.value=type;
     document.querySelectorAll('.fab-t').forEach(function(item){item.classList.toggle('on',item===chosen);});
+    var autres=chosen&&chosen.closest('.fab-autres'); if(autres) autres.open=true;
     document.querySelectorAll('#fab-form .fab-f').forEach(function(section){
       var active=section.dataset.for===type; section.hidden=!active;
       section.querySelectorAll('input,select,textarea,button').forEach(function(field){field.disabled=!active;});
@@ -982,6 +979,8 @@
     }
   }
   document.querySelectorAll('.fab-t').forEach(function(item){item.addEventListener('click',function(){chooseType(item.dataset.type,item);});});
+  // L'IA est la saisie la plus fréquente : le panneau s'ouvre dessus.
+  chooseType('ia',document.querySelector('.fab-t[data-type="ia"]'));
   document.querySelectorAll('[data-observation]').forEach(function(item){item.addEventListener('click',function(){
     var value=item.dataset.observation; var parts=note.value.split(',').map(function(v){return v.trim();}).filter(Boolean);
     if(parts.indexOf(value)<0){parts.push(value);} note.value=parts.join(', '); note.focus();

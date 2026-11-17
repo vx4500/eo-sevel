@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.12** — mise à jour plus légère : une compilation en moins par étape inutile, profil release sans LTO, purge des anciennes sauvegardes automatiques.
+Version actuelle : **2.76.13** — saisie rapide : s'ouvre sur l'IA, boutons dans l'ordre d'usage, saisies rares rangées sous « Autres… ».
 
+
+Version Rust 2.76.13 : saisie rapide réordonnée d'après les saisies réelles des 60 derniers jours (IA 125, transferts 122, morts 75, pertes porcelets 53, sevrages 40, chaleurs 38, échos 30, mises-bas 18). Elle s'ouvre sur « IA / saillie » au lieu de « ELD / poids » ; ELD/poids, Sortie truie, Quai abattoir, Nouvelle cochette et Comportement (0 à 6 saisies en 60 jours) passent sous un bouton « Autres… », qui s'ouvre seul si l'un d'eux est choisi. Menu : le raccourci « Résultat économique » est retiré de « Bâtiments et mouvements » (la page reste dans Ma gestion > Économie).
 
 Version Rust 2.76.12 : scripts/mettre-a-jour-zip.sh ne lance plus `cargo check` (inclus dans `cargo test`) ni `cargo clippy` (non bloquant, déjà lancé par la CI GitHub) : deux compilations complètes en moins à chaque mise à jour. Profil release sans `lto = "thin"` ni `codegen-units = 1`, qui saturaient la mémoire du serveur (pic 3 Go + 760 Mo de swap). Après une mise à jour réussie, seules les 10 dernières sauvegardes horodatées par le script sont gardées (base, binaire, unité systemd, static ; réglable par EO_GARDER_SAUVEGARDES) ; les sauvegardes faites à la main ne sont jamais effacées.
 

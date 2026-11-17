@@ -112,6 +112,12 @@ nav .grp .sous a:hover{background:rgba(200,130,63,.3);color:#fff}
 .fab-t{padding:7px 10px;border-radius:8px;border:1px solid var(--line,#dfe4e0);background:#fff;
   color:#1e4d3a;cursor:pointer;font-size:13px;font-weight:600}
 .fab-t.on{background:var(--vert,#1e4d3a);color:#fff;border-color:var(--vert,#1e4d3a)}
+.fab-autres{flex-basis:100%}
+.fab-autres summary{display:inline-block;list-style:none;padding:7px 10px;border-radius:8px;
+  border:1px dashed var(--line,#dfe4e0);color:#667c72;cursor:pointer;font-size:13px;font-weight:600}
+.fab-autres summary::-webkit-details-marker{display:none}
+.fab-autres[open] summary{color:#1e4d3a}
+.fab-autres>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 #fab-panel label{display:block;margin-bottom:8px;font-size:13px}
 #fab-panel input,#fab-panel select{width:100%;padding:8px;border:1px solid var(--line,#dfe4e0);border-radius:8px}
 .fab-ok{width:100%;padding:10px;background:var(--cuivre,#b06a2c);color:#fff;border:0;border-radius:9px;
