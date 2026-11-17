@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.76.11** — page RFID : design repris pour coller au reste de l'app (édition en ligne dans le tableau, sans menu déroulant redondant).
+Version actuelle : **2.76.12** — mise à jour plus légère : une compilation en moins par étape inutile, profil release sans LTO, purge des anciennes sauvegardes automatiques.
 
+
+Version Rust 2.76.12 : scripts/mettre-a-jour-zip.sh ne lance plus `cargo check` (inclus dans `cargo test`) ni `cargo clippy` (non bloquant, déjà lancé par la CI GitHub) : deux compilations complètes en moins à chaque mise à jour. Profil release sans `lto = "thin"` ni `codegen-units = 1`, qui saturaient la mémoire du serveur (pic 3 Go + 760 Mo de swap). Après une mise à jour réussie, seules les 10 dernières sauvegardes horodatées par le script sont gardées (base, binaire, unité systemd, static ; réglable par EO_GARDER_SAUVEGARDES) ; les sauvegardes faites à la main ne sont jamais effacées.
 
 Version Rust 2.76.11 : la page RFID (2.76.10) avait un menu déroulant redondant avec le tableau affiché juste dessous. Reprise du design pour reprendre le motif déjà utilisé ailleurs dans l'app : chaque ligne du tableau porte directement son propre champ et son bouton « Enregistrer », sans liste déroulante séparée.
 

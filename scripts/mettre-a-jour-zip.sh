@@ -128,10 +128,9 @@ fi
 
 echo "Contrôles et compilation de la version $version..."
 status_update "controles" "25" "$version" "Contrôles du code et des dépendances."
-cargo check
-# Les remarques de style de clippy sont affichées mais ne bloquent pas ;
-# les tests, eux, bloquent.
-cargo clippy --all-targets || true
+# Ni cargo check ni clippy ici : chacun recompilait tout le code sur ce petit
+# serveur pour rien (check est inclus dans test, clippy n'était pas bloquant
+# et tourne déjà sur GitHub à chaque envoi). Les tests, eux, bloquent.
 cargo test
 status_update "compilation" "50" "$version" "Compilation de la version $version."
 cargo build --release
@@ -259,6 +258,22 @@ fi
 
 rollback_required=0
 trap - EXIT
+
+# Seules les sauvegardes faites par ce script (nom horodaté) sont purgées ;
+# celles faites à la main avant une correction ne sont jamais touchées.
+purger_sauvegardes() {
+    local motif="$1"
+    printf '%s\n' "$BACKUP_DIR"/$motif \
+        | { grep -E '_[0-9]{8}_[0-9]{6}(\.db)?$' || true; } \
+        | sed -E 's/^(.*_([0-9]{8}_[0-9]{6})(\.db)?)$/\2 \1/' \
+        | sort -r | tail -n +"$((GARDER_SAUVEGARDES + 1))" | cut -d' ' -f2- \
+        | while IFS= read -r ancienne; do rm -rf -- "$ancienne"; done
+}
+GARDER_SAUVEGARDES="${EO_GARDER_SAUVEGARDES:-10}"
+for motif in 'elevage_avant_[0-9]*.db' 'eo-sevel_[0-9]*' 'eo-sevel.service_[0-9]*' 'static_[0-9]*'; do
+    purger_sauvegardes "$motif" || echo "Purge des anciennes sauvegardes $motif impossible." >&2
+done
+
 status_update "terminee" "100" "$version" "Mise à jour terminée avec succès."
 mkdir -p "$ARCHIVE_DIR"
 [[ "$MODE" == "zip" ]] && mv -f "$ZIP_FILE" "$ARCHIVE_DIR/eo-sevel-${version}_${stamp}.zip" 2>/dev/null || true
