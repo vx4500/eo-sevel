@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.80.0** — modules Zigbee : renommer et supprimer depuis la page Zigbee.
+Version actuelle : **2.81.0** — page Électricité et eau refaite, comparaisons sur la même durée.
 
+
+Version Rust 2.81.0 : /electricite et /eau refaites (templates/electricite.html) : bascule ⚡/💧, cartes compteurs avec puissance instantanée (zigbee_valeur), tuiles (consommation, comparaison ▲▼, moyenne par jour ou puissance moyenne, pic ou jour/mois le plus fort, sous-compteur, dernier relevé), graphiques avec échelle ronde (echelle_ronde/graduations), aire sous la courbe, repère « maintenant », barres en attente hachurées, bulle au survol/toucher, réglages repliés. Comparaison corrigée : limitée au dernier jour connu de la période (eau : dernier relevé, −48 % faux → −11 %), et pour l'électricité le dernier jour s'arrête à la même heure qu'aujourd'hui (journée en cours : hier à la même heure). Essai ignoré pages_electricite_et_eau_sur_copie.
 
 Version Rust 2.80.0 : page Zigbee, menu « Renommer ou supprimer » par module. POST /ambiance/zigbee/renommer (nom 1–50 car., sans / # +, unique) : demande bridge/request/device/rename {from: ieee, to} déposée dans zigbee_commande (cible « bridge/request/device/… »), nom mis à jour tout de suite dans zigbee_appareil et dans les ipx_point rattachés. POST /ambiance/zigbee/supprimer : bridge/request/device/remove {id, force} (forcé si sur pile ou hors ligne), points ipx retirés, present=0. Pont : zigbee_pont::sujet_commande publie sur bridge/request/… ; les réponses bridge/response/device/* sont notées dans zigbee_commande.resultat et affichées en haut de la page (30 dernières minutes). Tests : renommer_puis_supprimer_un_module, les_demandes_au_pont_vont_sur_bridge_request.
 

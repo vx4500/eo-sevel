@@ -187,22 +187,50 @@ struct Barre {
     v: Option<f64>,
     partiel: bool,
     sous: Option<f64>,
+    /// Pas encore arrivé (heure ou jour à venir), ou après le dernier relevé.
+    attente: bool,
+    /// Heure ou jour en cours.
+    actuel: bool,
 }
 
-fn barres(valeurs: Vec<Barre>) -> Value {
-    let max = valeurs.iter().filter_map(|b| b.v).fold(0.0_f64, f64::max).max(0.001);
-    let h = |x: f64| (x / max * 100.0).clamp(0.0, 100.0).round();
+/// Échelle « ronde » d'un graphique : (haut, pas), 3 à 5 graduations.
+fn echelle_ronde(max: f64) -> (f64, f64) {
+    let max = if max > 0.0 { max } else { 1.0 };
+    let brut = max / 4.0;
+    let p = 10f64.powf(brut.log10().floor());
+    let pas = [1.0, 2.0, 2.5, 5.0, 10.0].iter().map(|m| m * p).find(|x| *x >= brut * 0.999).unwrap_or(10.0 * p);
+    ((max / pas).ceil().max(1.0) * pas, pas)
+}
+
+fn graduations(haut: f64, pas: f64) -> Value {
+    let n = (haut / pas).round() as i64;
     Value::Array(
+        (0..=n)
+            .map(|i| {
+                let v = i as f64 * pas;
+                let texte = if pas < 1.0 { format!("{:.1}", v).replace('.', ",") } else { format!("{}", v.round() as i64) };
+                json!({"pct": (v / haut * 100.0).round(), "texte": texte})
+            })
+            .collect(),
+    )
+}
+
+/// Barres et graduations de l'axe.
+fn barres(valeurs: Vec<Barre>) -> (Value, Value) {
+    let (max, pas) = echelle_ronde(valeurs.iter().filter_map(|b| b.v).fold(0.0_f64, f64::max));
+    let h = |x: f64| (x / max * 100.0).clamp(0.0, 100.0).round();
+    let grad = graduations(max, pas);
+    (Value::Array(
         valeurs
             .into_iter()
             .map(|b| {
                 json!({"court": b.court, "titre": b.titre, "kwh": b.v.map(|k| (k * 10.0).round() / 10.0),
-                       "h": b.v.map(h).unwrap_or(0.0), "partiel": b.partiel,
+                       "h": b.v.map(h).unwrap_or(0.0), "partiel": b.partiel, "attente": b.attente, "actuel": b.actuel,
                        "sous": b.sous.map(|k| (k * 10.0).round() / 10.0),
                        "h_sous": b.sous.zip(b.v).map(|(s, v)| if v > 0.0 { (s.min(v) / v * 100.0).round() } else { 0.0 })})
             })
             .collect(),
-    )
+    ), grad)
 }
 
 type Jours = HashMap<NaiveDate, (f64, f64)>;
@@ -210,6 +238,8 @@ type Jours = HashMap<NaiveDate, (f64, f64)>;
 /// Barres par jour (semaine, mois) ou par mois (année).
 fn barres_periode(vue: &str, du: NaiveDate, au: NaiveDate, jours: &Jours, sous: Option<&Jours>) -> Vec<Barre> {
     let auj = Local::now().date_naive();
+    // Dernier jour connu : au-delà, l'eau attend son prochain relevé.
+    let dernier = jours.keys().max().copied().unwrap_or(auj).min(auj);
     let mut v = Vec::new();
     if vue == "annee" {
         let mut m = du;
@@ -225,6 +255,8 @@ fn barres_periode(vue: &str, du: NaiveDate, au: NaiveDate, jours: &Jours, sous: 
                 v: total,
                 partiel: total.is_some() && !complet,
                 sous: s.filter(|_| total.is_some()),
+                attente: total.is_none() && m > dernier,
+                actuel: m <= auj && auj <= fin,
             });
             m = mois_suivant(m);
         }
@@ -238,6 +270,8 @@ fn barres_periode(vue: &str, du: NaiveDate, au: NaiveDate, jours: &Jours, sous: 
                 v: x.map(|x| x.0),
                 partiel: x.is_some_and(|x| x.1 < 0.9),
                 sous: sous.and_then(|s| s.get(&j)).map(|x| x.0).filter(|_| x.is_some()),
+                attente: x.is_none() && j > dernier,
+                actuel: j == auj,
             });
             j += Duration::days(1);
         }
@@ -274,7 +308,9 @@ async fn heures_elec(pool: &SqlitePool, ieee: &str, cle: &str, t1: i64, t2: i64)
         } else {
             (None, false)
         };
-        v.push(Barre { court: heure.clone(), titre: format!("{heure}h"), v: val, partiel, sous: None });
+        let maintenant = Local::now().timestamp();
+        v.push(Barre { court: heure.clone(), titre: format!("{heure}h – {}h", heure.parse::<i64>().map(|x| x + 1).unwrap_or(0)), v: val, partiel, sous: None,
+            attente: val.is_none() && a > maintenant, actuel: a <= maintenant && maintenant < b });
     }
     Ok((v, m, !importees.is_empty()))
 }
@@ -359,7 +395,26 @@ async fn afficher(
     };
     let d = q.get("d").and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()).unwrap_or(auj).min(auj);
     let choisi = q.get("c").and_then(|c| liste.iter().find(|l| &l.0 == c)).or(liste.first()).cloned();
-    ctx.insert("compteurs".into(), json!(liste.iter().map(|(i, n, _)| json!({"ieee": i, "nom": n})).collect::<Vec<_>>()));
+    // Puissance instantanée de chaque compteur électrique.
+    let mut compteurs_vue = Vec::new();
+    for (i, n, c) in &liste {
+        let mut v = json!({"ieee": i, "nom": n});
+        if elec {
+            let derniere: Option<(Option<f64>, i64)> = sqlx::query_as("SELECT valeur, ts FROM zigbee_valeur WHERE ieee=? AND cle=?")
+                .bind(i)
+                .bind(c)
+                .fetch_optional(pool)
+                .await?;
+            if let Some((Some(w), ts)) = derniere {
+                let age = Local::now().timestamp() - ts;
+                v["kw"] = json!((w / 100.0).round() / 10.0);
+                v["recent"] = json!(age < 900);
+                v["age_min"] = json!(age / 60);
+            }
+        }
+        compteurs_vue.push(v);
+    }
+    ctx.insert("compteurs".into(), Value::Array(compteurs_vue.clone()));
     ctx.insert("vue".into(), json!(vue));
     let cle_prix = if elec { "elec_prix_kwh" } else { "eau_prix_m3" };
     let prix: Option<f64> = crate::proxmox::parametre(pool, cle_prix).await.and_then(|p| p.replace(',', ".").parse().ok());
@@ -369,6 +424,7 @@ async fn afficher(
     };
     ctx.insert("ieee".into(), json!(ieee));
     ctx.insert("nom".into(), json!(nom));
+    ctx.insert("maintenant".into(), compteurs_vue.iter().find(|c| c["ieee"] == ieee.as_str()).filter(|c| c["kw"].is_number()).cloned().unwrap_or(Value::Null));
 
     // Sous-compteurs (placés après celui-ci) et compteur parent.
     let mut enfants: Vec<(String, String, String)> = Vec::new();
@@ -419,8 +475,61 @@ async fn afficher(
         (!v.is_empty()).then(|| v.iter().sum())
     };
     let total = somme(&jours, du, au);
-    let ecoule = (auj.min(au) - du).num_days();
-    let total_avant = somme(&jours, avant, avant + Duration::days(ecoule));
+    // Comparaison sur la même durée de données : jusqu'au dernier jour connu
+    // de la période (aujourd'hui, ou le dernier relevé d'eau).
+    let fin_donnees = jours.keys().filter(|j| **j >= du && **j <= au).max().copied().unwrap_or(auj.min(au));
+    let ecoule = (fin_donnees - du).num_days().max(0);
+    let mut total_avant = somme(&jours, avant, avant + Duration::days(ecoule));
+    let fr = |d: NaiveDate| d.format("%d/%m").to_string();
+    let partielle = fin_donnees < au;
+    let bornes = format!("{} → {}", fr(avant), fr(avant + Duration::days(ecoule)));
+    let mut comparaison = match vue {
+        "jour" => "La veille".to_string(),
+        "semaine" if partielle => format!("Mêmes jours, semaine d'avant ({bornes})"),
+        "semaine" => "Semaine d'avant".to_string(),
+        "mois" if partielle => format!("Même période en {} ({bornes})", MOIS[avant.month0() as usize]),
+        "mois" => format!("{} {}", MOIS[avant.month0() as usize], avant.year()),
+        _ if partielle => format!("Même période en {} ({bornes})", avant.year()),
+        _ => format!("Année {}", avant.year()),
+    };
+    // Période en cours qui finit aujourd'hui : le dernier jour comparé
+    // s'arrête à la même heure qu'aujourd'hui (sinon une journée pas finie
+    // serait comparée à une journée entière).
+    if elec && vue != "jour" && fin_donnees == auj && ecoule > 0 {
+        let dernier_avant = avant + Duration::days(ecoule);
+        let t1 = debut_jour(dernier_avant);
+        let t2 = t1 + (Local::now().timestamp() - debut_jour(auj));
+        let m = mesures(pool, &ieee, &cle, t1, t2).await?;
+        if !m.is_empty() {
+            let debut = somme(&jours, avant, dernier_avant - Duration::days(1)).unwrap_or(0.0);
+            total_avant = Some(debut + integrer(&m, t1, t2).0);
+            comparaison = format!("{comparaison}, à la même heure");
+        }
+    }
+    // Aujourd'hui : comparé à hier à la même heure.
+    if elec && vue == "jour" && d == auj {
+        let maintenant = Local::now().timestamp();
+        let (t1, t2) = (debut_jour(d - Duration::days(1)), maintenant - 86400);
+        let m = mesures(pool, &ieee, &cle, t1, t2).await?;
+        if !m.is_empty() {
+            total_avant = Some(integrer(&m, t1, t2).0);
+            comparaison = format!("Hier à la même heure ({})", Local::now().format("%Hh%M"));
+        }
+    }
+    ctx.insert("comparaison".into(), json!(comparaison));
+    // Moyenne par jour (ou puissance moyenne pour une journée).
+    let jours_mesures = jours.keys().filter(|j| **j >= du && **j <= au).count();
+    if let Some(t) = total {
+        if vue == "jour" {
+            let heures = if d == auj { (Local::now().timestamp() - debut_jour(d)) as f64 / 3600.0 } else { 24.0 };
+            if heures > 0.5 {
+                ctx.insert("moyenne".into(), json!({"valeur": ((t / heures) * 10.0).round() / 10.0, "unite": "kW", "libelle": "Puissance moyenne"}));
+            }
+        } else if jours_mesures > 0 {
+            let par_jour = t / jours_mesures as f64;
+            ctx.insert("moyenne".into(), json!({"valeur": (par_jour * 10.0).round() / 10.0, "unite": format!("{} / jour", if elec { "kWh" } else { "m³" }), "libelle": format!("Moyenne sur {jours_mesures} jour{}", if jours_mesures > 1 { "s" } else { "" })}));
+        }
+    }
     let arrondi = |x: f64| (x * 10.0).round() / 10.0;
     ctx.insert("total".into(), json!(total.map(arrondi)));
     ctx.insert("total_avant".into(), json!(total_avant.map(arrondi)));
@@ -465,19 +574,37 @@ async fn afficher(
             }
         }
         let pmax = m.iter().map(|x| x.1).fold(0.0_f64, f64::max);
-        let echelle = (pmax * 1.1).max(100.0);
+        let (haut_kw, pas_kw) = echelle_ronde((pmax / 1000.0).max(0.1));
+        let echelle = haut_kw * 1000.0;
         let points: Vec<String> = quarts
             .iter()
-            .map(|(q, s, n)| format!("{:.1},{:.1}", (*q as f64 + 0.5) / 96.0 * 720.0, 175.0 - s / f64::from(*n) / echelle * 165.0))
+            .map(|(q, s, n)| format!("{:.1},{:.1}", (*q as f64 + 0.5) / 96.0 * 720.0, 180.0 - s / f64::from(*n) / echelle * 180.0))
             .collect();
         ctx.insert("trace".into(), json!(points.join(" ")));
+        if let (Some(premier), Some(dernier)) = (points.first(), points.last()) {
+            let x = |p: &str| p.split(',').next().unwrap_or("0").to_string();
+            ctx.insert("aire".into(), json!(format!("M{},180 L{} L{},180 Z", x(premier), points.join(" L"), x(dernier))));
+        }
+        ctx.insert("graduations_kw".into(), graduations(haut_kw, pas_kw));
+        if d == auj {
+            ctx.insert("maintenant_pct".into(), json!(((Local::now().timestamp() - t1) as f64 / (t2 - t1) as f64 * 100.0).clamp(0.0, 100.0).round()));
+        }
         ctx.insert("echelle_kw".into(), json!((echelle / 100.0).round() / 10.0));
         if let Some((ts_max, w)) = m.iter().max_by(|a, b| a.1.total_cmp(&b.1)) {
             ctx.insert("pic".into(), json!({"kw": (w / 100.0).round() / 10.0, "heure": Local.timestamp_opt(*ts_max, 0).single().map(|t| t.format("%Hh%M").to_string())}));
         }
-        ctx.insert("barres".into(), barres(heures));
+        let (b, g) = barres(heures);
+        ctx.insert("barres".into(), b);
+        ctx.insert("graduations".into(), g);
     } else {
-        ctx.insert("barres".into(), barres(barres_periode(vue, du, au, &jours, sous.as_ref())));
+        let (b, g) = barres(barres_periode(vue, du, au, &jours, sous.as_ref()));
+        ctx.insert("barres".into(), b);
+        ctx.insert("graduations".into(), g);
+    }
+    // Barre la plus haute.
+    if let Some(b) = ctx.get("barres").and_then(Value::as_array).and_then(|l| l.iter().filter(|b| b["kwh"].is_number()).max_by(|a, b| a["kwh"].as_f64().unwrap_or(0.0).total_cmp(&b["kwh"].as_f64().unwrap_or(0.0)))) {
+        let plus = json!({"titre": b["titre"], "kwh": b["kwh"]});
+        ctx.insert("plus_fort".into(), plus);
     }
     render(&state, "electricite.html", Value::Object(ctx))
 }
@@ -508,7 +635,7 @@ pub(super) async fn prix(
 
 #[cfg(test)]
 mod tests {
-    use super::integrer;
+    use super::*;
 
     #[test]
     fn integration_de_la_puissance() {
@@ -552,13 +679,46 @@ mod tests_copie {
             "trace": "0,170 720,20", "echelle_kw": 29.8,
             "barres": [{"court": "0", "titre": "0h–1h", "kwh": 4.2, "h": 50, "partiel": false, "sous": 1.0, "h_sous": 24}, {"court": "1", "titre": "1h–2h", "kwh": null, "h": 0, "partiel": false}]
         }))?;
-        assert!(page.contains("136,0 kWh") || page.contains("136.0 kWh"), "{page}");
+        assert!(page.contains("136,0") || page.contains("136.0"), "{page}");
         assert!(page.contains("dont Soupe") && page.contains("height:24%"));
         let eau = eau_par_jour(&pool, 1).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
         let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
         let sept: f64 = eau.iter().filter(|(j, _)| **j >= d("2026-09-11") && **j < d("2026-09-25")).map(|(_, v)| v.0).sum();
         println!("eau 11→25/09 : {sept:.1} m³, {} jours", eau.len());
         assert!((sept - 58.0).abs() < 0.01);
+        Ok(())
+    }
+
+    /// Pages Électricité et Eau sur une copie de la base réelle, écrites dans
+    /// le dossier de `EO_TEST_BASE` (el_<genre>_<vue>.html).
+    #[tokio::test]
+    #[ignore]
+    async fn pages_electricite_et_eau_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).foreign_keys(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: chemin.clone().into(), secure_cookies: false },
+            pool,
+            crate::templates::build()?,
+        );
+        let dossier = std::path::Path::new(&chemin).parent().unwrap().to_path_buf();
+        for (genre, vues) in [("elec", vec!["jour", "semaine", "mois", "annee"]), ("eau", vec!["semaine", "mois", "annee"])] {
+            for vue in vues {
+                let mut q = HashMap::new();
+                q.insert("vue".to_string(), vue.to_string());
+                let session = super::super::documents::tests::session();
+                let html = if genre == "elec" {
+                    page(State(state.clone()), Extension(session), Query(q)).await
+                } else {
+                    page_eau(State(state.clone()), Extension(session), Query(q)).await
+                }
+                .map_err(|e| anyhow::anyhow!("{e:?}"))?
+                .0;
+                std::fs::write(dossier.join(format!("el_{genre}_{vue}.html")), html)?;
+            }
+        }
         Ok(())
     }
 }

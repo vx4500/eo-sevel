@@ -2,81 +2,164 @@
 {% block title %}{% if eau %}Consommation d’eau{% else %}Consommation électrique{% endif %} — EO_Sevel{% endblock %}
 {% block content %}
 <style>
-.el-onglets{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
-.el-onglets a{padding:7px 14px;border-radius:999px;border:1px solid rgba(127,140,133,.45);text-decoration:none;color:inherit;font-weight:600}
-.el-onglets a.actif{background:#b7791f;border-color:#b7791f;color:#fff}
-.el-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 12px}
-.el-nav h2{margin:0;flex:1;min-width:180px}
-.el-nav a{text-decoration:none;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid rgba(127,140,133,.45);color:inherit}
-.el-nav .off{opacity:.3;pointer-events:none}
-.el-chiffres{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
-.el-chiffres div{border:1px solid rgba(127,140,133,.35);border-radius:10px;padding:10px 12px}
-.el-chiffres small{display:block;opacity:.75;font-size:.8rem}.el-chiffres b{font-size:1.45rem}
-.el-hausse{color:#c0392b}.el-baisse{color:#2f8f5b}
-.el-barres{display:flex;align-items:flex-end;gap:3px;height:190px;padding:0 2px;border-bottom:1px solid rgba(127,140,133,.5)}
-.el-barre{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
-.el-barre i{display:flex;flex-direction:column;justify-content:flex-end;width:100%;background:#b7791f;border-radius:4px 4px 0 0;min-height:1px;overflow:hidden}
-.el-barre i b{display:block;width:100%;background:#7a4a0c}
-.eau .el-barre i,.eau .el-onglets a.actif{background:#2b7bb9;border-color:#2b7bb9}
-.el-legende{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;margin:6px 0}.el-legende span::before{content:"";display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c)}
-.el-barre i.partiel{background:repeating-linear-gradient(45deg,#b7791f 0 4px,rgba(183,121,31,.35) 4px 8px)}
-.el-barre span{font-size:.68rem;opacity:.8;white-space:nowrap;margin-bottom:2px}
-.el-etiquettes{display:flex;gap:3px;padding:0 2px}
-.el-etiquettes span{flex:1;text-align:center;font-size:.72rem;opacity:.75;min-width:0;overflow:hidden}
-.el-courbe{width:100%;height:200px;display:block;border:1px solid rgba(127,140,133,.3);border-radius:8px}
-@media(max-width:600px){.el-barre span{display:none}}
+.el{--c:#b7791f;--c-fonce:#7a4a0c;--c-pale:#fbf1e2;--ligne:rgba(127,140,133,.28)}
+.el.eau{--c:#2b7bb9;--c-fonce:#164f7c;--c-pale:#e6f1fa}
+.el-tete{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.el-tete h1{margin:0}
+.el-genre{display:inline-flex;background:#fff;border:1px solid var(--ligne);border-radius:999px;padding:4px;gap:4px}
+.el-genre a{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:999px;text-decoration:none!important;font-weight:700;color:#3d4a43!important}
+.el-genre a.actif{background:var(--c);color:#fff!important;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.el-barre-outils{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.el-compteurs{display:flex;flex-wrap:wrap;gap:8px}
+.el-compteurs a{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-radius:12px;background:#fff;border:1px solid var(--ligne);text-decoration:none!important;color:#24312a!important;min-width:150px}
+.el-compteurs a b{font-size:1rem}
+.el-compteurs a small{color:#66756c;font-size:.8rem}
+.el-compteurs a.actif{border:2px solid var(--c);background:var(--c-pale)}
+.el-direct{display:inline-flex;align-items:center;gap:5px}.el-direct::before{content:"";width:8px;height:8px;border-radius:50%;background:#2f8f5b;box-shadow:0 0 0 3px rgba(47,143,91,.2)}
+.el-direct.vieux::before{background:#b0b8b3;box-shadow:none}
+.el-periode{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.el-vues{display:inline-flex;background:#fff;border:1px solid var(--ligne);border-radius:10px;padding:3px;gap:2px}
+.el-vues a{padding:7px 14px;border-radius:8px;text-decoration:none!important;font-weight:700;color:#3d4a43!important}
+.el-vues a.actif{background:var(--c);color:#fff!important}
+.el-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
+.el-nav a{display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 10px;border-radius:10px;background:#fff;border:1px solid var(--ligne);text-decoration:none!important;font-weight:700;color:#24312a!important}
+.el-nav a.off{opacity:.3;pointer-events:none}
+.el-nav strong{font-size:1.05rem;padding:0 6px;white-space:nowrap}
+.el-tuiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.el-tuile{background:#fff;border:1px solid var(--ligne);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.el-tuile small{color:#66756c;font-size:.8rem}
+.el-tuile .gros{font-size:1.6rem;font-weight:800;line-height:1.15;color:#1f2b25}
+.el-tuile .gros u{text-decoration:none;font-size:.9rem;font-weight:600;color:#66756c;margin-left:3px}
+.el-tuile.principale{background:var(--c);border-color:var(--c)}
+.el-tuile.principale small,.el-tuile.principale .gros,.el-tuile.principale .gros u{color:#fff}
+.el-tuile .el-hausse{color:#c0392b;font-weight:700}.el-tuile .el-baisse{color:#2f8f5b;font-weight:700}
+.el-part{height:8px;border-radius:4px;background:var(--c-pale);overflow:hidden;margin-top:4px}.el-part i{display:block;height:100%;background:var(--c-fonce)}
+.el-graphe{background:#fff;border:1px solid var(--ligne);border-radius:14px;padding:14px 16px 10px;margin-bottom:14px}
+.el-graphe h2{font-size:1.05rem;margin:0 0 10px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.el-graphe h2 small{font-weight:500;color:#66756c;font-size:.82rem}
+.el-zone{display:flex;gap:6px}
+.el-axe{position:relative;width:34px;flex:none;font-size:.7rem;color:#66756c}
+.el-axe span{position:absolute;right:0;transform:translateY(50%)}
+.el-dessin{position:relative;flex:1;min-width:0}
+.el-grille{position:absolute;left:0;right:0;border-top:1px dashed var(--ligne)}
+.el-barres{position:relative;display:flex;align-items:flex-end;gap:3px;height:210px}
+.el-b{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0;cursor:default;position:relative}
+.el-b i{display:flex;flex-direction:column;justify-content:flex-end;width:100%;max-width:46px;background:var(--c);border-radius:5px 5px 0 0;min-height:2px;overflow:hidden;transition:filter .15s}
+.el-b i b{display:block;width:100%;background:var(--c-fonce)}
+.el-b:hover i{filter:brightness(1.15)}
+.el-b.partiel i{background:repeating-linear-gradient(45deg,var(--c) 0 4px,var(--c-pale) 4px 8px)}
+.el-b.vide i{background:transparent;min-height:0}
+.el-b.attente::after{content:"";position:absolute;inset:0 1px;background:repeating-linear-gradient(-45deg,transparent 0 6px,rgba(127,140,133,.08) 6px 12px);border-radius:4px}
+.el-b.actuel i{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--c)}.el-b.vide i{box-shadow:none!important}
+.el-b em{font-style:normal;font-size:.68rem;color:#4d5b53;white-space:nowrap;margin-bottom:3px}
+.el-moyenne{position:absolute;left:0;right:0;border-top:2px dashed var(--c-fonce);opacity:.55;pointer-events:none}
+.el-moyenne span{position:absolute;right:0;top:-18px;font-size:.7rem;font-weight:700;color:var(--c-fonce);background:#fff;padding:0 4px;border-radius:4px}
+.el-etiq{display:flex;gap:3px;margin:4px 0 0 40px}
+.el-etiq span{flex:1;text-align:center;font-size:.72rem;color:#66756c;min-width:0;overflow:hidden;white-space:nowrap}
+.el-etiq span.actuel{color:var(--c-fonce);font-weight:800}
+.el-courbe{display:block;width:100%;height:200px}
+.el-heures{position:relative;height:16px;margin:4px 0 0 40px;font-size:.72rem;color:#66756c}
+.el-heures span{position:absolute;transform:translateX(-50%)}.el-heures span:first-child{transform:none}.el-heures span:last-child{transform:translateX(-100%)}
+.el-maintenant{position:absolute;top:0;bottom:0;border-left:2px solid #c0392b;pointer-events:none}
+.el-maintenant span{position:absolute;top:-2px;left:4px;font-size:.68rem;font-weight:700;color:#c0392b;white-space:nowrap}
+.el-legende{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:#4d5b53;margin:8px 0 0 40px}
+.el-legende span{display:inline-flex;align-items:center;gap:5px}.el-legende i{width:12px;height:12px;border-radius:3px;background:var(--k)}
+.el-bulle{position:fixed;z-index:50;pointer-events:none;background:#1f2b25;color:#fff;font-size:.82rem;padding:6px 10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.2);display:none;white-space:nowrap}
+.el-plus{background:#fff;border:1px solid var(--ligne);border-radius:14px;padding:4px 16px;margin-bottom:14px}
+.el-plus summary{cursor:pointer;font-weight:700;padding:10px 0;color:var(--c-fonce)}
+.el-plus form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:0 0 10px}
+.el-plus p{margin:0 0 12px}
+@media(max-width:700px){.el-etiq span{overflow:visible}.el-mois .el-etiq span:not(.cle){visibility:hidden}.el-nav{margin-left:0;width:100%}.el-nav strong{flex:1;text-align:center}.el-b em{display:none}.el-compteurs a{min-width:0;flex:1}}
 </style>
-<div class="{% if eau %}eau{% endif %}">
-<h1>{% if eau %}Consommation d’eau{% else %}Consommation électrique{% endif %}</h1>
-<p><a href="{% if eau %}/electricite{% else %}/eau{% endif %}">{% if eau %}Voir l’électricité →{% else %}Voir l’eau →{% endif %}</a> · <a href="/energie">Relevés des compteurs</a></p>
-{% if not compteurs %}
-<section class="card"><p>{% if eau %}Aucun compteur d’eau : créez-le dans Eau et électricité, avec ses relevés.{% else %}Aucun compteur électrique Zigbee pour l'instant. Ils apparaissent ici dès qu'ils sont raccordés au réseau Zigbee.{% endif %}</p></section>
-{% else %}
-{% if compteurs|length > 1 %}<div class="el-onglets">{% for c in compteurs %}<a href="{{ base }}?c={{ c.ieee }}&vue={{ vue }}&d={{ d }}" class="{% if c.ieee == ieee %}actif{% endif %}">{{ c.nom }}</a>{% endfor %}</div>{% endif %}
-<div class="el-onglets">
-  {% for v, l in [('jour','Jour'),('semaine','Semaine'),('mois','Mois'),('annee','Année')] %}{% if not eau or v != 'jour' %}<a href="{{ base }}?c={{ ieee }}&vue={{ v }}&d={{ d }}" class="{% if vue == v %}actif{% endif %}">{{ l }}</a>{% endif %}{% endfor %}
+<div class="el{% if eau %} eau{% endif %}">
+<div class="el-tete">
+  <h1>{% if eau %}Consommation d’eau{% else %}Consommation électrique{% endif %}</h1>
+  <div class="el-genre"><a href="/electricite" class="{% if not eau %}actif{% endif %}">⚡ Électricité</a><a href="/eau" class="{% if eau %}actif{% endif %}">💧 Eau</a></div>
 </div>
-<section class="card">
-  <div class="el-nav">
-    <a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ precedent }}" aria-label="Période précédente">‹</a>
-    <h2>{{ nom }} · {{ titre }}</h2>
-    {% if suivant %}<a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ suivant }}" aria-label="Période suivante">›</a><a href="{{ base }}?c={{ ieee }}&vue={{ vue }}">Aujourd'hui</a>{% else %}<a class="off">›</a>{% endif %}
+{% if not compteurs %}
+<section class="card"><p>{% if eau %}Aucun compteur d’eau : créez-le dans <a href="/energie">Relevés des compteurs</a>, avec ses relevés.{% else %}Aucun compteur électrique Zigbee pour l'instant. Ils apparaissent ici dès qu'ils sont raccordés au réseau Zigbee.{% endif %}</p></section>
+{% else %}
+<div class="el-barre-outils">
+  <div class="el-compteurs">{% for c in compteurs %}<a href="{{ base }}?c={{ c.ieee }}&vue={{ vue }}&d={{ d }}" class="{% if c.ieee == ieee %}actif{% endif %}"><b>{% if eau %}💧{% else %}⚡{% endif %} {{ c.nom }}</b>{% if c.kw is defined %}<small class="el-direct{% if not c.recent %} vieux{% endif %}">{{ c.kw|decimal1 }} kW {% if c.recent %}maintenant{% else %}il y a {{ c.age_min }} min{% endif %}</small>{% elif eau %}<small>relevés d’index</small>{% endif %}</a>{% endfor %}</div>
+  <div class="el-periode">
+    <div class="el-vues">{% for v, l in [('jour','Jour'),('semaine','Semaine'),('mois','Mois'),('annee','Année')] %}{% if not eau or v != 'jour' %}<a href="{{ base }}?c={{ ieee }}&vue={{ v }}&d={{ d }}" class="{% if vue == v %}actif{% endif %}">{{ l }}</a>{% endif %}{% endfor %}</div>
+    <div class="el-nav">
+      <a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ precedent }}" aria-label="Période précédente">‹</a>
+      <strong>{{ titre }}</strong>
+      {% if suivant %}<a href="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ suivant }}" aria-label="Période suivante">›</a><a href="{{ base }}?c={{ ieee }}&vue={{ vue }}">Aujourd’hui</a>{% else %}<a class="off" aria-hidden="true">›</a>{% endif %}
+    </div>
   </div>
-  <div class="el-chiffres">
-    <div><small>Consommation</small><b>{% if total is not none %}{{ total|decimal1 }} {{ unite }}{% else %}—{% endif %}</b></div>
-    {% if cout is not none %}<div><small>Coût estimé</small><b>{{ cout|decimal2 }} €</b></div>{% endif %}
-    <div><small>Période précédente{% if suivant is none and vue != 'jour' %} (même durée){% endif %}</small><b>{% if total_avant is not none %}{{ total_avant|decimal1 }} {{ unite }}{% else %}—{% endif %}</b>{% if ecart is not none %} <span class="{% if ecart > 0 %}el-hausse{% else %}el-baisse{% endif %}">{% if ecart > 0 %}+{% endif %}{{ ecart|int }} %</span>{% endif %}</div>
-    {% if sous %}<div><small>dont {{ sous.noms }}</small><b>{{ sous.kwh|decimal1 }} kWh</b> <small>{{ sous.pct|int }} % · reste de l’élevage {{ sous.reste|decimal1 }} kWh</small></div>{% endif %}
-    {% if parent_nom %}<div><small>Compteur placé après</small><b>{{ parent_nom }}</b></div>{% endif %}
-    {% if dernier_releve %}<div><small>Dernier relevé</small><b>{{ dernier_releve.date|date_fr }}</b> <small>index {{ dernier_releve.index }}</small></div>{% endif %}
-    {% if pic %}<div><small>Puissance maximale</small><b>{{ pic.kw|decimal1 }} kW</b> <small>à {{ pic.heure }}</small></div>{% endif %}
+</div>
+
+<div class="el-tuiles">
+  <div class="el-tuile principale"><small>Consommation · {{ nom }}</small><span class="gros">{% if total is not none %}{{ total|decimal1 }}<u>{{ unite }}</u>{% else %}—{% endif %}</span>{% if cout is not none %}<small>≈ {{ cout|decimal2 }} € TTC</small>{% endif %}</div>
+  <div class="el-tuile"><small>{{ comparaison or 'Période précédente' }}</small><span class="gros">{% if total_avant is not none %}{{ total_avant|decimal1 }}<u>{{ unite }}</u>{% else %}—{% endif %}</span>{% if total_avant is none %}<small>pas de données à comparer</small>{% endif %}{% if ecart is not none %}<small class="{% if ecart > 0 %}el-hausse{% else %}el-baisse{% endif %}">{% if ecart > 0 %}▲ +{{ ecart|int }} %{% elif ecart < 0 %}▼ {{ ecart|int }} %{% else %}= stable{% endif %}</small>{% endif %}</div>
+  {% if moyenne %}<div class="el-tuile"><small>{{ moyenne.libelle }}</small><span class="gros">{{ moyenne.valeur|decimal1 }}<u>{{ moyenne.unite }}</u></span></div>{% endif %}
+  {% if pic %}<div class="el-tuile"><small>Puissance maximale</small><span class="gros">{{ pic.kw|decimal1 }}<u>kW</u></span><small>à {{ pic.heure }}</small></div>
+  {% elif plus_fort and vue != 'jour' %}<div class="el-tuile"><small>{% if vue == 'annee' %}Mois le plus fort{% else %}Jour le plus fort{% endif %}</small><span class="gros">{{ plus_fort.kwh|decimal1 }}<u>{{ unite }}</u></span><small>{{ plus_fort.titre }}</small></div>{% endif %}
+  {% if sous %}<div class="el-tuile"><small>dont {{ sous.noms }}</small><span class="gros">{{ sous.kwh|decimal1 }}<u>kWh</u></span><div class="el-part"><i style="width:{{ sous.pct|int }}%"></i></div><small>{{ sous.pct|int }} % · reste de l’élevage {{ sous.reste|decimal1 }} kWh</small></div>{% endif %}
+  {% if parent_nom %}<div class="el-tuile"><small>Sous-compteur de</small><span class="gros" style="font-size:1.2rem">{{ parent_nom }}</span></div>{% endif %}
+  {% if dernier_releve %}<div class="el-tuile"><small>Dernier relevé</small><span class="gros" style="font-size:1.3rem">{{ dernier_releve.date|date_fr }}</span><small>index {{ dernier_releve.index }} · <a href="/energie">saisir un relevé</a></small></div>{% endif %}
+</div>
+
+{% if vue == 'jour' %}
+<section class="el-graphe"><h2>Puissance <small>moyenne par quart d’heure, en kW</small></h2>
+  <div class="el-zone">
+    <div class="el-axe">{% for g in graduations_kw or [] %}<span style="bottom:{{ g.pct }}%">{{ g.texte }}</span>{% endfor %}</div>
+    <div class="el-dessin">
+      {% for g in graduations_kw or [] %}<div class="el-grille" style="bottom:{{ g.pct }}%"></div>{% endfor %}
+      <svg class="el-courbe" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance de la journée">
+        <defs><linearGradient id="el-degrade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--c);stop-opacity:.4"/><stop offset="1" style="stop-color:var(--c);stop-opacity:.04"/></linearGradient></defs>
+        <g style="color:var(--c)">{% if trace %}{% if aire %}<path d="{{ aire }}" fill="url(#el-degrade)"/>{% endif %}<polyline points="{{ trace }}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}</g>
+      </svg>
+      {% if maintenant_pct is defined and maintenant_pct is not none %}<div class="el-maintenant" style="left:{{ maintenant_pct }}%"><span>maintenant</span></div>{% endif %}
+    </div>
   </div>
-
-  {% if vue == 'jour' %}
-  <h3>Puissance <small class="muted">(moyenne par quart d'heure, échelle {{ echelle_kw|decimal1 }} kW)</small></h3>
-  <svg class="el-courbe" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="Courbe de puissance de la journée">
-    {% for h in [180, 360, 540] %}<line x1="{{ h }}" y1="0" x2="{{ h }}" y2="180" stroke="rgba(127,140,133,.3)" stroke-dasharray="3 4"/>{% endfor %}
-    {% if trace %}<polyline points="{{ trace }}" fill="none" stroke="#b7791f" stroke-width="2" vector-effect="non-scaling-stroke"/>{% else %}<text x="360" y="95" text-anchor="middle" fill="#8a948f" font-size="14">Pas de mesure ce jour-là</text>{% endif %}
-  </svg>
-  <div class="el-etiquettes"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
-  <h3>Par heure (kWh)</h3>
-  {% endif %}
-
-  {% if sous %}<div class="el-legende"><span style="--c:#7a4a0c">{{ sous.noms }}</span><span style="--c:#b7791f">reste de l’élevage</span></div>{% endif %}
-  <div class="el-barres">{% for b in barres %}<div class="el-barre" title="{{ b.titre }} : {% if b.kwh is not none %}{{ b.kwh|decimal1 }} {{ unite }}{% if b.sous is not none %} dont {{ b.sous|decimal1 }} {{ sous.noms if sous else '' }}{% endif %}{% if b.partiel %} (mesures incomplètes){% endif %}{% else %}pas de mesure{% endif %}">{% if b.kwh is not none and vue != 'jour' %}<span>{% if eau and b.kwh < 10 %}{{ b.kwh|decimal1 }}{% else %}{{ b.kwh|int }}{% endif %}</span>{% endif %}<i class="{% if b.partiel %}partiel{% endif %}" style="height:{{ b.h }}%">{% if b.h_sous %}<b style="height:{{ b.h_sous }}%"></b>{% endif %}</i></div>{% endfor %}</div>
-  <div class="el-etiquettes">{% for b in barres %}<span>{% if vue != 'mois' or loop.index is odd %}{{ b.court }}{% endif %}</span>{% endfor %}</div>
-  {% if eau %}<p class="muted">D’après les relevés d’index : la consommation entre deux relevés est répartie régulièrement sur les jours qui les séparent. Plus les relevés sont rapprochés, plus le détail est juste. Pas de valeur après le dernier relevé.</p>
-  {% else %}<p class="muted">Calcul d'après la puissance mesurée toutes les 2 minutes environ. Avant le 25/09/2026 : historique repris de l’ancien relevé. Barres hachurées : mesures incomplètes ou consommation estimée (compteur resté muet puis rattrapé, coupure). Passez le doigt ou la souris sur une barre pour la valeur exacte.</p>{% endif %}
+  <div class="el-heures"><span style="left:0">0h</span><span style="left:25%">6h</span><span style="left:50%">12h</span><span style="left:75%">18h</span><span style="left:100%">24h</span></div>
 </section>
+{% endif %}
+
+<section class="el-graphe{% if vue == 'mois' %} el-mois{% endif %}"><h2>{% if vue == 'jour' %}Heure par heure{% elif vue == 'annee' %}Mois par mois{% else %}Jour par jour{% endif %} <small>en {{ unite }} · touchez une barre pour sa valeur</small></h2>
+  <div class="el-zone">
+    <div class="el-axe">{% for g in graduations or [] %}<span style="bottom:{{ g.pct }}%">{{ g.texte }}</span>{% endfor %}</div>
+    <div class="el-dessin">
+      {% for g in graduations or [] %}<div class="el-grille" style="bottom:{{ g.pct }}%"></div>{% endfor %}
+      <div class="el-barres">{% for b in barres %}<div class="el-b{% if b.kwh is none %} vide{% endif %}{% if b.partiel %} partiel{% endif %}{% if b.attente %} attente{% endif %}{% if b.actuel %} actuel{% endif %}" data-bulle="{{ b.titre }} : {% if b.kwh is not none %}{{ b.kwh|decimal1 }} {{ unite }}{% if b.sous is not none %} (dont {{ b.sous|decimal1 }} {{ sous.noms if sous else '' }}){% endif %}{% if b.partiel %} · mesures incomplètes{% endif %}{% elif b.attente %}{% if eau %}en attente du prochain relevé{% else %}à venir{% endif %}{% else %}pas de mesure{% endif %}">{% if b.kwh is not none and vue != 'jour' and barres|length <= 31 %}<em>{% if b.kwh < 10 %}{{ b.kwh|decimal1 }}{% else %}{{ b.kwh|int }}{% endif %}</em>{% endif %}<i style="height:{{ b.h }}%">{% if b.h_sous %}<b style="height:{{ b.h_sous }}%"></b>{% endif %}</i></div>{% endfor %}</div>
+    </div>
+  </div>
+  <div class="el-etiq">{% for b in barres %}<span class="{% if b.actuel %}actuel{% endif %}{% if vue == 'mois' and (loop.index == 1 or loop.index is divisibleby(5)) %} cle{% endif %}">{% if vue == 'jour' %}{% if loop.index0 is divisibleby(3) %}{{ b.court }}h{% endif %}{% elif vue != 'mois' or loop.index is odd or loop.index is divisibleby(5) %}{{ b.court }}{% endif %}</span>{% endfor %}</div>
+  <div class="el-legende">
+    {% if sous %}<span style="--k:var(--c-fonce)"><i></i>{{ sous.noms }}</span><span style="--k:var(--c)"><i></i>reste de l’élevage</span>{% endif %}
+    <span style="--k:repeating-linear-gradient(45deg,var(--c) 0 3px,var(--c-pale) 3px 6px)"><i></i>mesures incomplètes</span>
+    <span style="--k:repeating-linear-gradient(-45deg,#fff 0 3px,rgba(127,140,133,.3) 3px 6px)"><i></i>{% if eau %}pas encore de relevé{% else %}à venir{% endif %}</span>
+  </div>
+</section>
+<div class="el-bulle" id="el-bulle"></div>
+
+<details class="el-plus"><summary>Comment c’est calculé</summary>
+{% if eau %}<p class="muted">D’après les relevés d’index : la consommation entre deux relevés est répartie régulièrement sur les jours qui les séparent. Plus les relevés sont rapprochés, plus le détail est juste. Après le dernier relevé, les jours attendent le relevé suivant. La comparaison se fait toujours sur le même nombre de jours.</p>
+{% else %}<p class="muted">D’après la puissance mesurée toutes les 2 minutes environ par le compteur Zigbee. Avant le 25/09/2026 : historique repris de l’ancien relevé. Barres hachurées : mesures incomplètes ou consommation estimée (compteur resté muet puis rattrapé, coupure). Aujourd’hui est comparé à hier à la même heure.</p>{% endif %}
+</details>
 
 {% if session.peut_modifier %}
-<section class="card"><h2>Réglages</h2>
-<form class="rust-actions" method="post" action="/electricite/prix"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ d }}"><input type="hidden" name="genre" value="{% if eau %}eau{% else %}elec{% endif %}"><input type="hidden" name="ieee" value="{{ ieee }}">
+<details class="el-plus"><summary>⚙ Réglages : prix{% if not eau %} et sous-compteurs{% endif %}</summary>
+<form method="post" action="/electricite/prix"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="{{ base }}?c={{ ieee }}&vue={{ vue }}&d={{ d }}"><input type="hidden" name="genre" value="{% if eau %}eau{% else %}elec{% endif %}"><input type="hidden" name="ieee" value="{{ ieee }}">
   <label>Prix {% if eau %}du m³{% else %}du kWh{% endif %} (€ TTC)<input name="prix" inputmode="decimal" value="{{ prix if prix is not none else '' }}" placeholder="{% if eau %}4,20{% else %}0,21{% endif %}"></label>
   {% if not eau and autres %}<label>{{ nom }} est placé après<select name="parent"><option value="">— aucun compteur (arrivée directe)</option>{% for a in autres %}<option value="{{ a.ieee }}"{% if parent == a.ieee %} selected{% endif %}>{{ a.nom }}</option>{% endfor %}</select></label>{% endif %}
   <button type="submit">Enregistrer</button>
-</form><p class="muted">Le prix sert seulement à afficher un coût estimé (vide = pas de coût).{% if not eau %} Un compteur placé après un autre (sous-compteur) apparaît comme une part de celui-ci.{% endif %}</p></section>
+</form><p class="muted">Le prix sert seulement à afficher un coût estimé (vide = pas de coût).{% if not eau %} Un compteur placé après un autre (sous-compteur) apparaît comme une part de celui-ci.{% endif %}</p></details>
 {% endif %}
 {% endif %}
 </div>
+<script>
+(function(){
+  var bulle=document.getElementById('el-bulle');if(!bulle)return;
+  function montrer(e,el){bulle.textContent=el.dataset.bulle;bulle.style.display='block';var x=e.clientX,y=e.clientY;var l=Math.min(window.innerWidth-bulle.offsetWidth-8,Math.max(8,x-bulle.offsetWidth/2));bulle.style.left=l+'px';bulle.style.top=(y-bulle.offsetHeight-12)+'px';}
+  document.querySelectorAll('.el-b[data-bulle]').forEach(function(el){
+    el.addEventListener('mousemove',function(e){montrer(e,el)});
+    el.addEventListener('mouseleave',function(){bulle.style.display='none'});
+    el.addEventListener('click',function(e){montrer(e,el);clearTimeout(el._t);el._t=setTimeout(function(){bulle.style.display='none'},2500)});
+  });
+})();
+</script>
 {% endblock %}
