@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.81.0** — page Électricité et eau refaite, comparaisons sur la même durée.
+Version actuelle : **2.81.1** — bibliothèques mises à jour pour corriger des failles de sécurité.
 
+
+Version Rust 2.81.1 : audit OSV du Cargo.lock (18/11) — mises à jour compatibles : rustls 0.23.43→0.23.46, rustls-webpki 0.103.14→0.103.17, tokio 1.53.1→1.54.1, webpki-roots 1.0.9→1.0.12, zstd 0.13.3→0.13.5, zstd-safe 7.2.4→7.4.1, zstd-sys 2.0.16→2.1.3, quinn-proto 0.11.19, quinn-udp 0.5.16. Restent : rsa 0.9.10 (RUSTSEC-2023-0071, non compilé pour la cible), chrono (non maintenu, informatif), libsqlite3-sys 0.30.1 (RUSTSEC-2026-0459, local ; demande sqlx plus récent).
 
 Version Rust 2.81.0 : /electricite et /eau refaites (templates/electricite.html) : bascule ⚡/💧, cartes compteurs avec puissance instantanée (zigbee_valeur), tuiles (consommation, comparaison ▲▼, moyenne par jour ou puissance moyenne, pic ou jour/mois le plus fort, sous-compteur, dernier relevé), graphiques avec échelle ronde (echelle_ronde/graduations), aire sous la courbe, repère « maintenant », barres en attente hachurées, bulle au survol/toucher, réglages repliés. Comparaison corrigée : limitée au dernier jour connu de la période (eau : dernier relevé, −48 % faux → −11 %), et pour l'électricité le dernier jour s'arrête à la même heure qu'aujourd'hui (journée en cours : hier à la même heure). Essai ignoré pages_electricite_et_eau_sur_copie.
 
