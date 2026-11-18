@@ -1,16 +1,23 @@
-{% extends "base.html" %}{% block title %}Travail semaine {{ numero }} · EO_Sevel<script>
-document.querySelectorAll('.tr-tout').forEach(function(b){b.addEventListener('click',function(){
-  var cases=b.closest('form').querySelectorAll('input[type=checkbox]');var tout=Array.prototype.every.call(cases,function(c){return c.checked;});
-  cases.forEach(function(c){c.checked=!tout;});b.textContent=tout?'Tout cocher':'Tout décocher';});});
-window.addEventListener('beforeprint',function(){document.querySelectorAll('details.tr-etape').forEach(function(d){d.open=true;});});
-</script>
-{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}Travail semaine {{ numero }} · EO_Sevel{% endblock %}{% block content %}
 {% include "conduite_style.html" %}
 <style>
-.tr-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;margin-top:6px}
-.tr-truie{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px dotted var(--cd-ligne);font-size:.92rem}
-.tr-truie .case{width:14px;height:14px;border:1.5px solid #445b50;border-radius:3px;flex:none;transform:translateY(2px)}
-.tr-truie small{color:var(--cd-doux)}
+.tr-grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:8px}
+.tr-truie{position:relative;display:flex;flex-direction:row;align-items:center;gap:10px;padding:10px 12px;border:2px solid #dfe6e1;border-radius:12px;background:#fff;color:#1d2b24;font-size:1rem;cursor:pointer;user-select:none;transition:background .12s,border-color .12s,transform .08s}
+.tr-truie:hover{border-color:#8fb39d}
+.tr-truie:active{transform:scale(.97)}
+.tr-truie input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.tr-truie::before{content:"";flex:none;width:24px;height:24px;border-radius:50%;border:2px solid #a9bdb1;background:#fff;display:grid;place-items:center;font-weight:900;font-size:15px;color:#1f6b45}
+.tr-truie span{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.tr-truie b{font-size:1.12rem;letter-spacing:.01em}
+.tr-truie small{color:#6b7f74;font-size:.78rem}
+.tr-truie:has(input:checked){background:#1f6b45;border-color:#1f6b45;color:#fff}
+.tr-truie:has(input:checked)::before{content:"✓";border-color:#fff}
+.tr-truie:has(input:checked) small{color:#cfe9d9}
+.tr-truie:has(input:focus-visible){outline:3px solid #b06a2c;outline-offset:2px}
+.tr-faites .tr-truie:has(input:checked){background:#9b2c2c;border-color:#9b2c2c}
+.tr-faites .tr-truie:has(input:checked)::before{content:"↺";color:#9b2c2c}
+.tr-compte{font-weight:700;color:#667c72}
+.tr-choisi .tr-compte{color:#1f6b45}
 .tr-etape{border-left:5px solid var(--cd-vert);padding-left:12px;margin:14px 0}
 .tr-etape.ia{border-color:#6a4c93}.tr-etape.ia_retour{border-color:#8e44ad}.tr-etape.soin{border-color:#0f7c8c}.tr-etape.retour{border-color:#9c6fb0}.tr-etape.gestante{border-color:#7b5ea7}.tr-etape.verraterie{border-color:#3a6d9a}.tr-etape.echo{border-color:#8a7fb8}.tr-etape.maternite{border-color:#c7832f}.tr-etape.mise_bas{border-color:#b3401c}.tr-etape.sevrage{border-color:#2a7f62}.tr-etape.transfert{border-color:#3b6f96}.tr-etape.depart{border-color:#555f66}
 .tr-etape h3{margin:0 0 2px;font-size:1.05rem}
@@ -20,10 +27,10 @@ window.addEventListener('beforeprint',function(){document.querySelectorAll('deta
 .tr-titre{flex:1;font-size:1.02rem}
 .tr-pastille{background:#fbe9d0;color:#7a4a10;border-radius:999px;padding:2px 10px;font-size:.85rem;font-weight:700;white-space:nowrap}
 .tr-pastille.fini{background:#dcefe4;color:#1f6b45}
-.tr-truie{cursor:pointer}.tr-truie input{width:18px;height:18px;flex:none;transform:translateY(3px)}
-.tr-truie:has(input:checked){background:#e8f4ec}
-.tr-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0 4px}
-.tr-actions label{display:flex;gap:6px;align-items:center;font-size:.9rem}
+.tr-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 4px;padding:10px 12px;border-radius:12px;background:#f3f7f4;position:sticky;bottom:8px;z-index:3;box-shadow:0 4px 14px rgba(24,62,47,.10)}
+.tr-actions label{display:flex;flex-direction:row;gap:6px;align-items:center;font-size:.9rem}
+.tr-actions .tr-compte{flex:1;min-width:160px}
+@media print{.tr-truie{border:1px solid #999;padding:4px 6px}.tr-truie::before{width:14px;height:14px}.tr-actions{display:none}}
 .tr-lien{font-weight:700}
 .tr-faites{margin:6px 0 0;font-size:.9rem}
 .tr-ok{background:#dcefe4;color:#1f6b45;padding:8px 12px;border-radius:8px;font-weight:700}
@@ -56,6 +63,7 @@ window.addEventListener('beforeprint',function(){document.querySelectorAll('deta
         <label class="tr-truie"><input type="checkbox" name="truie_{{ tr.id }}"><span><b>{{ tr.num_travail }}</b> <small>rg {{ tr.rang or '?' }}{% if tr.salle %} · {{ tr.salle }}{% if tr.case_nom %} {{ tr.case_nom }}{% endif %}{% endif %}</small></span></label>
       {% endfor %}</div>
       {% if session.peut_modifier %}<div class="tr-actions no-print">
+        <span class="tr-compte">Touchez les truies faites</span>
         <button type="button" class="ghost tr-tout">Tout cocher</button>
         <label>Date <input type="date" name="date" value="{{ aujourdhui }}"></label>
         {% if t.code == 'echo' %}<button name="action" value="pleine">Pleines</button><button name="action" value="vide" class="ghost danger">Vides</button>
@@ -68,10 +76,10 @@ window.addEventListener('beforeprint',function(){document.querySelectorAll('deta
     {% else %}<p class="vide">Tout est fait pour cette étape.</p>{% endif %}
     {% if nb_faites and session.peut_modifier %}
     <details class="tr-faites no-print"><summary>{{ nb_faites }} truie(s) pointée(s) — annuler une erreur</summary>
-      <form method="post" action="/conduite/semaine/valider" data-no-ajax>
+      <form method="post" action="/conduite/semaine/valider" data-no-ajax class="tr-form">
         <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="code" value="{{ t.code }}"><input type="hidden" name="bande_id" value="{{ t.bande_id }}"><input type="hidden" name="acte_id" value="{{ t.acte_id }}"><input type="hidden" name="debut" value="{{ debut }}">
         <div class="tr-grille">{% for f in t.faites %}<label class="tr-truie"><input type="checkbox" name="truie_{{ f.id }}"><span><b>{{ f.num_travail }}</b> <small>le {{ f.date_fait|date_fr }}{% if f.par %} · {{ f.par }}{% endif %}</small></span></label>{% endfor %}</div>
-        <div class="tr-actions"><button name="action" value="annuler" class="ghost">Remettre à faire</button></div>
+        <div class="tr-actions"><span class="tr-compte">Touchez les truies à remettre à faire</span><button name="action" value="annuler" class="ghost">Remettre à faire</button></div>
       </form>
     </details>{% endif %}
   {% else %}
@@ -102,9 +110,21 @@ window.addEventListener('beforeprint',function(){document.querySelectorAll('deta
 </div>
 </div>
 <script>
-document.querySelectorAll('.tr-tout').forEach(function(b){b.addEventListener('click',function(){
-  var cases=b.closest('form').querySelectorAll('input[type=checkbox]');var tout=Array.prototype.every.call(cases,function(c){return c.checked;});
-  cases.forEach(function(c){c.checked=!tout;});b.textContent=tout?'Tout cocher':'Tout décocher';});});
+// Tuiles de truies : compteur de cochées, « Tout cocher », et toutes les
+// étapes dépliées à l'impression.
+document.querySelectorAll('.tr-form').forEach(function(form){
+  var cases=form.querySelectorAll('.tr-truie input[type=checkbox]');
+  var compte=form.querySelector('.tr-compte'), tout=form.querySelector('.tr-tout');
+  function maj(){
+    var n=Array.prototype.filter.call(cases,function(c){return c.checked;}).length;
+    if(compte) compte.textContent=n?n+' cochée'+(n>1?'s':'')+' sur '+cases.length:'Touchez les truies faites';
+    if(tout) tout.textContent=n===cases.length?'Tout décocher':'Tout cocher';
+    form.classList.toggle('tr-choisi',n>0);
+  }
+  cases.forEach(function(c){c.addEventListener('change',maj);});
+  if(tout) tout.addEventListener('click',function(){var t=Array.prototype.every.call(cases,function(c){return c.checked;});cases.forEach(function(c){c.checked=!t;});maj();});
+  maj();
+});
 window.addEventListener('beforeprint',function(){document.querySelectorAll('details.tr-etape').forEach(function(d){d.open=true;});});
 </script>
 {% endblock %}

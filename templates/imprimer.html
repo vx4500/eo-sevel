@@ -1,41 +1,106 @@
 {% extends "base.html" %}{% block title %}Imprimer · EO_Sevel{% endblock %}{% block content %}
-<h1>Imprimer</h1>
-<p class="note">Choisissez quoi imprimer et les colonnes voulues, puis « Imprimer ».</p>
-<form method="get" action="/imprimer/liste" class="card imprimer-form">
-  <fieldset><legend>Quoi imprimer</legend>
-    <label class="imp-choix"><input type="radio" name="portee" value="bande"{% if not truies_choisies %} checked{% endif %}> Une bande entière
-      <select name="bande">{% for b in bandes %}<option{% if b.code == bande_choisie %} selected{% endif %}>{{ b.code }}</option>{% endfor %}</select></label>
-    <label class="imp-choix"><input type="radio" name="portee" value="truies"{% if truies_choisies %} checked{% endif %}> Une ou plusieurs truies
-      <input name="truies" value="{{ truies_choisies or '' }}" placeholder="N° de travail : 409298 409357…" size="34"></label>
-    <label class="imp-choix"><input type="radio" name="portee" value="sans_bande"> Truies sans bande</label>
-    <label class="imp-choix"><input type="radio" name="portee" value="improductives"> Truies improductives (dans aucune bande en cours)</label>
-    <label class="imp-choix"><input type="radio" name="portee" value="toutes"> Toutes les truies présentes</label>
-  </fieldset>
-  <fieldset><legend>Colonnes</legend>
-    <div class="imp-colonnes">{% for c in colonnes %}<label><input type="checkbox" name="col" value="{{ c.cle }}"{% if c.coche %} checked{% endif %}> {{ c.libelle }}</label>{% endfor %}</div>
-    <p class="note"><button type="button" class="ghost" onclick="this.form.querySelectorAll('[name=col]').forEach(x=>x.checked=true)">Tout cocher</button> <button type="button" class="ghost" onclick="this.form.querySelectorAll('[name=col]').forEach(x=>x.checked=false)">Tout décocher</button></p>
-  </fieldset>
-  <fieldset><legend>Présentation</legend>
-    <label>Trier par <select name="tri"><option value="num_travail">N° travail</option><option value="emplacement">Emplacement</option><option value="vanne">N° de vanne</option><option value="bande">Bande</option></select></label>
-    <label>Colonnes vides pour écrire à la main <select name="vides"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-  </fieldset>
-  <p><button type="submit">🖨 Imprimer</button></p>
-</form>
 <style>
-.imprimer-form fieldset{border:1px solid #ddd;border-radius:8px;margin:0 0 14px;padding:10px 14px}
-.imprimer-form legend{font-weight:700;padding:0 6px}
-.imp-choix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
-.imp-colonnes{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 14px}
-.imp-colonnes label{display:flex;align-items:center;gap:6px;font-weight:normal}
+.imp{max-width:980px}
+.imp h1{margin-bottom:4px}
+.imp-etape{background:#fff;border:1px solid #e0e7e1;border-radius:16px;padding:16px 18px;margin:14px 0;box-shadow:0 2px 10px rgba(24,62,47,.05)}
+.imp-etape>h2{display:flex;align-items:center;gap:10px;margin:0 0 12px;font-size:1.1rem}
+.imp-num{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#1e4d3a;color:#fff;font-size:.95rem;font-weight:800;flex:none}
+.imp-portees{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.imp-portee{position:relative;display:flex;flex-direction:column;gap:4px;padding:14px;border:2px solid #dfe6e1;border-radius:14px;background:#fbfcfb;cursor:pointer;color:#1d2b24;font-size:.95rem;transition:border-color .12s,background .12s}
+.imp-portee:hover{border-color:#8fb39d}
+.imp-portee input{position:absolute;opacity:0;pointer-events:none}
+.imp-portee .ico{font-size:1.6rem;line-height:1}
+.imp-portee b{font-size:1rem}
+.imp-portee small{color:#6b7f74;font-size:.8rem;line-height:1.3}
+.imp-portee:has(input:checked){border-color:#1e4d3a;background:#eaf3ed;box-shadow:inset 0 0 0 1px #1e4d3a}
+.imp-portee:has(input:checked)::after{content:"✓";position:absolute;top:10px;right:12px;width:22px;height:22px;border-radius:50%;background:#1e4d3a;color:#fff;display:grid;place-items:center;font-weight:900;font-size:13px}
+.imp-portee:has(input:focus-visible){outline:3px solid #b06a2c;outline-offset:2px}
+.imp-detail{margin-top:12px;display:none}
+.imp-detail.on{display:block}
+.imp-detail select,.imp-detail input{font-size:1rem;padding:10px 12px;border-radius:10px;max-width:420px;width:100%}
+.imp-raccourcis{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.imp-raccourcis button{font-size:.85rem;padding:6px 12px;border-radius:999px}
+.imp-pastilles{display:flex;flex-wrap:wrap;gap:8px}
+.imp-pastille{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:6px;padding:8px 14px;border:2px solid #dfe6e1;border-radius:999px;background:#fff;color:#33463c;font-size:.9rem;font-weight:600;cursor:pointer;user-select:none;transition:background .12s,border-color .12s}
+.imp-pastille:hover{border-color:#8fb39d}
+.imp-pastille input{position:absolute;opacity:0;pointer-events:none}
+.imp-pastille:has(input:checked){background:#1e4d3a;border-color:#1e4d3a;color:#fff}
+.imp-pastille:has(input:checked)::before{content:"✓";font-weight:900}
+.imp-pastille:has(input:focus-visible){outline:3px solid #b06a2c;outline-offset:2px}
+.imp-reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.imp-reglages h3{font-size:.9rem;margin:0 0 8px;color:#556b60}
+.imp-bas{position:sticky;bottom:10px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;padding:12px 16px;border-radius:14px;background:#1e4d3a;color:#fff;box-shadow:0 10px 28px rgba(24,62,47,.28)}
+.imp-bas span{font-weight:600}
+.imp-bas button{background:#b06a2c;color:#fff;font-size:1.05rem;padding:10px 22px;border-radius:10px;font-weight:800}
 </style>
+<div class="imp">
+<h1>Imprimer</h1>
+<p class="note">Trois choix, puis « Imprimer ». Vos colonnes sont gardées pour la prochaine fois.</p>
+<form method="get" action="/imprimer/liste" class="imprimer-form">
+  <section class="imp-etape"><h2><span class="imp-num">1</span>Quelles truies ?</h2>
+    <div class="imp-portees">
+      <label class="imp-portee"><input type="radio" name="portee" value="bande"{% if not truies_choisies %} checked{% endif %}><span class="ico">🐷</span><b>Une bande</b><small>Toutes les truies d’une bande</small></label>
+      <label class="imp-portee"><input type="radio" name="portee" value="truies"{% if truies_choisies %} checked{% endif %}><span class="ico">🔢</span><b>Quelques truies</b><small>Par leur numéro de travail</small></label>
+      <label class="imp-portee"><input type="radio" name="portee" value="toutes"><span class="ico">🏠</span><b>Tout l’élevage</b><small>Toutes les truies présentes</small></label>
+      <label class="imp-portee"><input type="radio" name="portee" value="sans_bande"><span class="ico">❔</span><b>Sans bande</b><small>Truies rattachées à aucune bande</small></label>
+      <label class="imp-portee"><input type="radio" name="portee" value="improductives"><span class="ico">⏸</span><b>Improductives</b><small>Dans aucune bande en cours</small></label>
+    </div>
+    <div class="imp-detail" data-pour="bande"><select name="bande" aria-label="Bande">{% for b in bandes %}<option{% if b.code == bande_choisie %} selected{% endif %}>{{ b.code }}</option>{% endfor %}</select></div>
+    <div class="imp-detail" data-pour="truies"><input name="truies" value="{{ truies_choisies or '' }}" placeholder="N° de travail : 409298 409357…" aria-label="Numéros de travail"></div>
+  </section>
+
+  <section class="imp-etape"><h2><span class="imp-num">2</span>Quelles colonnes ?</h2>
+    <div class="imp-raccourcis">
+      <button type="button" class="ghost" data-jeu="num_travail rang bande emplacement">Essentiel</button>
+      <button type="button" class="ghost" data-jeu="num_travail rang emplacement vanne derniere_ia echo">Saillies</button>
+      <button type="button" class="ghost" data-jeu="num_travail rang emplacement derniere_mb nes_vifs dernier_sevrage">Maternité</button>
+      <button type="button" class="ghost" data-jeu="num_travail num_national rfid race pere mere naissance">Identité</button>
+      <button type="button" class="ghost" data-jeu="*">Tout</button>
+      <button type="button" class="ghost" data-jeu="">Rien</button>
+    </div>
+    <div class="imp-pastilles">{% for c in colonnes %}<label class="imp-pastille"><input type="checkbox" name="col" value="{{ c.cle }}"{% if c.coche %} checked{% endif %}>{{ c.libelle }}</label>{% endfor %}</div>
+  </section>
+
+  <section class="imp-etape"><h2><span class="imp-num">3</span>Présentation</h2>
+    <div class="imp-reglages">
+      <div><h3>Trier par</h3><div class="imp-pastilles">
+        <label class="imp-pastille"><input type="radio" name="tri" value="num_travail" checked>N° travail</label>
+        <label class="imp-pastille"><input type="radio" name="tri" value="emplacement">Emplacement</label>
+        <label class="imp-pastille"><input type="radio" name="tri" value="vanne">N° de vanne</label>
+        <label class="imp-pastille"><input type="radio" name="tri" value="bande">Bande</label>
+      </div></div>
+      <div><h3>Colonnes vides pour écrire à la main</h3><div class="imp-pastilles">
+        {% for n in ["0","1","2","3","4"] %}<label class="imp-pastille"><input type="radio" name="vides" value="{{ n }}"{% if n == "0" %} checked{% endif %}>{{ n }}</label>{% endfor %}
+      </div></div>
+    </div>
+  </section>
+
+  <div class="imp-bas"><span id="imp-resume">—</span><button type="submit">🖨 Imprimer</button></div>
+</form>
+</div>
 <script>
-/* Choisir une bande ou taper un numéro coche le bon choix ; on garde les colonnes cochées pour la prochaine fois. */
+/* Le détail du choix (bande, numéros) s'affiche sous la carte choisie ; on
+   garde les colonnes cochées pour la prochaine fois. */
 (function(){
   var f=document.querySelector('.imprimer-form'); if(!f) return;
-  f.querySelector('[name=bande]').addEventListener('change',function(){f.querySelector('[value=bande]').checked=true;});
-  f.querySelector('[name=truies]').addEventListener('input',function(){f.querySelector('[value=truies]').checked=true;});
-  try{ var g=JSON.parse(localStorage.getItem('eo-imprimer-colonnes')||'null'); if(Array.isArray(g)&&g.length){ f.querySelectorAll('[name=col]').forEach(function(x){x.checked=g.indexOf(x.value)>=0;}); } }catch(e){}
+  var cols=f.querySelectorAll('[name=col]'), resume=document.getElementById('imp-resume');
+  function choix(){var r=f.querySelector('[name=portee]:checked');return r?r.value:'';}
+  function maj(){
+    var c=choix();
+    f.querySelectorAll('.imp-detail').forEach(function(d){d.classList.toggle('on',d.dataset.pour===c);});
+    var qui={bande:'Bande '+f.querySelector('[name=bande]').value,truies:(f.querySelector('[name=truies]').value.trim()||'aucun numéro')+'',toutes:'Tout l’élevage',sans_bande:'Truies sans bande',improductives:'Truies improductives'}[c]||'';
+    var n=Array.prototype.filter.call(cols,function(x){return x.checked;}).length;
+    resume.textContent=qui+' · '+n+' colonne'+(n>1?'s':'');
+  }
+  try{ var g=JSON.parse(localStorage.getItem('eo-imprimer-colonnes')||'null'); if(Array.isArray(g)&&g.length){ cols.forEach(function(x){x.checked=g.indexOf(x.value)>=0;}); } }catch(e){}
+  f.querySelectorAll('[data-jeu]').forEach(function(b){b.addEventListener('click',function(){
+    var j=b.dataset.jeu, liste=j.split(' ');
+    cols.forEach(function(x){x.checked=j==='*'||liste.indexOf(x.value)>=0;}); maj();});});
+  f.querySelector('[name=bande]').addEventListener('change',function(){f.querySelector('[value=bande]').checked=true;maj();});
+  f.querySelector('[name=truies]').addEventListener('input',function(){f.querySelector('[value=truies]').checked=true;maj();});
+  f.addEventListener('change',maj);
   f.addEventListener('submit',function(){ try{ localStorage.setItem('eo-imprimer-colonnes',JSON.stringify(Array.from(f.querySelectorAll('[name=col]:checked')).map(function(x){return x.value;}))); }catch(e){} });
+  maj();
 })();
 </script>
 {% endblock %}

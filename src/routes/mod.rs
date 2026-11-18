@@ -14764,23 +14764,68 @@ async fn quotidien(
     let mut ctx = context(&session);
     ctx.insert("jour".into(), json!(jour));
     ctx.insert("controles".into(), Value::Array(rows_to_json(rows)?));
-    let page = query
-        .get("page")
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(1)
-        .clamp(1, 1_000_000);
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM controlequotidien WHERE categorie='note_libre'")
-            .fetch_one(&state.pool)
-            .await?;
-    let notes=sqlx::query("SELECT id,date,note,utilisateur FROM controlequotidien WHERE categorie='note_libre' ORDER BY date DESC,id DESC LIMIT 30 OFFSET ?").bind((page-1)*30).fetch_all(&state.pool).await?;
+    use chrono::Datelike;
+    // Planning des notes : un mois en grille (lundi en premier), chaque jour
+    // avec ses notes ; la liste du mois en dessous garde la modification.
+    let jour_date = NaiveDate::parse_from_str(&jour, "%Y-%m-%d").unwrap_or(today);
+    let premier = query
+        .get("mois")
+        .and_then(|m| NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").ok())
+        .unwrap_or_else(|| jour_date.with_day(1).unwrap_or(jour_date));
+    let suivant = premier
+        .checked_add_months(chrono::Months::new(1))
+        .unwrap_or(premier);
+    let precedent = premier
+        .checked_sub_months(chrono::Months::new(1))
+        .unwrap_or(premier);
+    let notes: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id,date,note,utilisateur FROM controlequotidien WHERE categorie='note_libre' AND date>=? AND date<? ORDER BY date,id",
+    )
+    .bind(premier.format("%Y-%m-%d").to_string())
+    .bind(suivant.format("%Y-%m-%d").to_string())
+    .fetch_all(&state.pool)
+    .await?;
+    let debut_grille = premier - chrono::Duration::days(premier.weekday().num_days_from_monday() as i64);
+    let mut semaines = Vec::new();
+    let mut d = debut_grille;
+    while d < suivant {
+        let mut semaine = Vec::new();
+        for _ in 0..7 {
+            let cle = d.format("%Y-%m-%d").to_string();
+            let du_jour: Vec<Value> = notes
+                .iter()
+                .filter(|n| n.1 == cle)
+                .map(|n| json!({"id": n.0, "note": n.2}))
+                .collect();
+            semaine.push(json!({
+                "date": cle,
+                "jour": d.day(),
+                "dans_mois": d.month() == premier.month(),
+                "aujourdhui": d == today,
+                "notes": du_jour,
+            }));
+            d += chrono::Duration::days(1);
+        }
+        semaines.push(Value::Array(semaine));
+    }
+    const MOIS_FR: [&str; 12] = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+    ctx.insert("planning_semaines".into(), Value::Array(semaines));
+    ctx.insert(
+        "planning_titre".into(),
+        json!(format!("{} {}", MOIS_FR[premier.month0() as usize], premier.year())),
+    );
+    ctx.insert("mois_precedent".into(), json!(precedent.format("%Y-%m").to_string()));
+    ctx.insert("mois_suivant".into(), json!(suivant.format("%Y-%m").to_string()));
     ctx.insert(
         "historique_notes".into(),
-        Value::Array(rows_to_json(notes)?),
+        Value::Array(
+            notes
+                .iter()
+                .rev()
+                .map(|n| json!({"id": n.0, "date": n.1, "note": n.2, "utilisateur": n.3}))
+                .collect(),
+        ),
     );
-    ctx.insert("page".into(), json!(page));
-    ctx.insert("plus_notes".into(), json!(page * 30 < total));
-    ctx.insert("total_notes".into(), json!(total));
     ctx.insert("cours".into(), crate::cours::suivi(&state.pool).await?);
     render(&state, "quotidien.html", Value::Object(ctx))
 }

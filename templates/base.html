@@ -65,6 +65,9 @@
     #onglets-section{max-width:1320px;width:100%;min-width:0;margin:14px auto 0;padding:0 18px;
       overflow-x:auto;-webkit-overflow-scrolling:touch}
     #onglets-section[hidden]{display:none}
+    /* Sur ordinateur, le menu déroulant du haut donne déjà ces pages : les
+       onglets ne servent que sur téléphone, où ce menu est caché. */
+    @media(min-width:851px){ #onglets-section{display:none!important}}
     .fil-ariane{min-width:0}
     .rust-main{min-width:0}
 

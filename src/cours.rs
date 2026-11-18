@@ -3,7 +3,9 @@
 //!   (adresse `/api/cours`, paramètre `eo_compare_adresse`) ;
 //! - cadran de Plérin : Réseau des Nouvelles des Marchés de FranceAgriMer ;
 //! - céréales : note hebdomadaire « Situation des cours et marchés » du RNM
-//!   (FranceAgriMer), publiée le jeudi en PDF.
+//!   (FranceAgriMer), publiée le jeudi en PDF ;
+//! - blé et maïs Euronext (MATIF), échéance la plus proche : cours du marché
+//!   (différé de 15 min), relevé toutes les 30 min pendant la séance.
 //! Relevé automatique une fois par jour, ou à la demande depuis la page.
 
 use chrono::{Local, NaiveDate, Timelike};
@@ -19,6 +21,12 @@ const RNM_PRIX: &str = "https://rnm.franceagrimer.fr/prix";
 const RNM_PLERIN: &str = "70178";
 /// Dernière note hebdomadaire « Situation des cours et marchés » (PDF).
 const RNM_NOTE: &str = "https://rnm.franceagrimer.fr/prix?MESSAGE=1779";
+/// Tableau des échéances d'un contrat à terme Euronext (code produit).
+const EURONEXT: &str = "https://live.euronext.com/fr/ajax/getPricesFutures/commodities-futures";
+const EURONEXT_BLE: &str = "https://live.euronext.com/fr/product/commodities-futures/EBM-DPAR";
+const EURONEXT_MAIS: &str = "https://live.euronext.com/fr/product/commodities-futures/EMA-DPAR";
+/// Contrats Euronext suivis : (produit, code du contrat).
+const MATIF: [(&str, &str); 2] = [("ble_matif", "EBM"), ("mais_matif", "EMA")];
 
 pub struct Produit {
     pub code: &'static str,
@@ -29,9 +37,11 @@ pub struct Produit {
 }
 
 /// Ordre d'affichage sur la page.
-pub const PRODUITS: [Produit; 5] = [
+pub const PRODUITS: [Produit; 7] = [
     Produit { code: "porc_cooperl", libelle: "Prix de base Cooperl", unite: "€/kg", source: "Saisie dans EO_Compare", lien: EO_COMPARE },
     Produit { code: "porc_plerin", libelle: "Cadran de Plérin, porc base 56 TMP", unite: "€/kg", source: "FranceAgriMer (RNM)", lien: RNM_PRIX },
+    Produit { code: "ble_matif", libelle: "Blé meunier Euronext (MATIF)", unite: "€/t", source: "Euronext, toutes les 30 min", lien: EURONEXT_BLE },
+    Produit { code: "mais_matif", libelle: "Maïs Euronext (MATIF)", unite: "€/t", source: "Euronext, toutes les 30 min", lien: EURONEXT_MAIS },
     Produit { code: "ble_rouen", libelle: "Blé tendre FOB Rouen", unite: "€/t", source: "FranceAgriMer (RNM), hebdomadaire", lien: RNM_NOTE },
     Produit { code: "orge_rouen", libelle: "Orge fourragère rendu Rouen", unite: "€/t", source: "FranceAgriMer (RNM), hebdomadaire", lien: RNM_NOTE },
     Produit { code: "mais_bordeaux", libelle: "Maïs rendu Bordeaux", unite: "€/t", source: "FranceAgriMer (RNM), hebdomadaire", lien: RNM_NOTE },
@@ -129,6 +139,107 @@ fn lire_eo_compare(json: &Value) -> Vec<Releve> {
         .collect()
 }
 
+/// Tableau des échéances Euronext : la première échéance cotée, au dernier
+/// cours de la séance s'il y en a un, sinon au cours de compensation de la
+/// séance précédente. Rend le relevé et l'échéance (« Dec 2026 »).
+fn lire_euronext(page: &str, produit: &'static str, aujourdhui: NaiveDate) -> Option<(Releve, String)> {
+    let echeance = Regex::new(r"md=\d{2}-\d{2}-\d{4}[^>]*>([^<]+)</a>").unwrap();
+    let cellule = Regex::new(r#"<td class="[^"]*text-right[^"]*">\s*([^<]*?)\s*</td>"#).unwrap();
+    for ligne in page.split("<tr").skip(1) {
+        let Some(nom) = echeance.captures(ligne).map(|c| c[1].trim().to_string()) else { continue };
+        let cases: Vec<&str> = cellule.captures_iter(ligne).map(|c| c.get(1).map_or("", |m| m.as_str())).collect();
+        // Achat, Vente, Dernier, Heure, +/-, Volume, Ouvert, Haut, Bas, Compensation.
+        let dernier = cases.get(2).and_then(|v| nombre(v));
+        let compensation = cases.get(9).and_then(|v| nombre(v));
+        let (prix, date) = match (dernier, compensation) {
+            (Some(p), _) => (p, aujourdhui),
+            (None, Some(p)) => (p, seance_precedente(aujourdhui)),
+            _ => continue,
+        };
+        if (50.0..=1000.0).contains(&prix) {
+            return Some((Releve { produit, date, prix }, nom));
+        }
+    }
+    None
+}
+
+/// Jour ouvré précédent (le cours de compensation date de la dernière séance).
+fn seance_precedente(jour: NaiveDate) -> NaiveDate {
+    use chrono::Datelike;
+    let mut d = jour - chrono::Duration::days(1);
+    while d.weekday().number_from_monday() > 5 {
+        d -= chrono::Duration::days(1);
+    }
+    d
+}
+
+/// Séance Euronext des céréales : 10 h 45 – 18 h 30 en semaine (heure de Paris).
+fn seance_ouverte(maintenant: chrono::NaiveDateTime) -> bool {
+    use chrono::Datelike;
+    let minutes = maintenant.hour() * 60 + maintenant.minute();
+    maintenant.weekday().number_from_monday() <= 5 && (10 * 60 + 45..=18 * 60 + 45).contains(&minutes)
+}
+
+async fn relever_matif(client: &reqwest::Client, pool: &SqlitePool, erreurs: &mut Vec<String>) -> Vec<Releve> {
+    let mut releves = Vec::new();
+    let aujourdhui = Local::now().date_naive();
+    for (produit, code) in MATIF {
+        let url = format!("{EURONEXT}/{code}/DPAR");
+        match reponse(client.get(&url).send().await, "Euronext").await {
+            Ok(r) => {
+                let page = r.text().await.unwrap_or_default();
+                match lire_euronext(&page, produit, aujourdhui) {
+                    Some((releve, echeance)) => {
+                        let _ = crate::sms_free::ecrire_parametre(pool, &format!("cours_echeance_{produit}"), &echeance).await;
+                        releves.push(releve);
+                    }
+                    None => erreurs.push(format!("Euronext : cours {code} introuvable")),
+                }
+            }
+            Err(e) => erreurs.push(e),
+        }
+    }
+    releves
+}
+
+async fn enregistrer(pool: &SqlitePool, releves: &[Releve], maintenant: &str, erreurs: &mut Vec<String>) {
+    for r in releves {
+        let res = sqlx::query(
+            "INSERT INTO cours_releve(produit,date,prix,releve_le) VALUES(?,?,?,?)
+             ON CONFLICT(produit,date) DO UPDATE SET prix=excluded.prix, releve_le=excluded.releve_le",
+        )
+        .bind(r.produit)
+        .bind(r.date.format("%Y-%m-%d").to_string())
+        .bind(r.prix)
+        .bind(maintenant)
+        .execute(pool)
+        .await;
+        if let Err(e) = res {
+            erreurs.push(e.to_string());
+        }
+    }
+}
+
+fn client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .user_agent("Mozilla/5.0 (compatible; EO_Sevel suivi des cours)")
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// Relevé des seuls cours Euronext, pendant la séance.
+pub async fn actualiser_matif(pool: &SqlitePool) {
+    let Ok(client) = client() else { return };
+    let mut erreurs = Vec::new();
+    let releves = relever_matif(&client, pool, &mut erreurs).await;
+    let maintenant = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    enregistrer(pool, &releves, &maintenant, &mut erreurs).await;
+    if !erreurs.is_empty() {
+        tracing::warn!(erreurs=%erreurs.join(" ; "), "Relevé des cours Euronext");
+    }
+}
+
 fn pdf_en_texte(pdf: Vec<u8>) -> Result<String, String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -213,31 +324,14 @@ async fn relever_sources(client: &reqwest::Client, pool: &SqlitePool, erreurs: &
 /// (une source en panne n'empêche pas de relever les autres).
 pub async fn actualiser(pool: &SqlitePool) -> Vec<String> {
     let mut erreurs = Vec::new();
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .user_agent("Mozilla/5.0 (compatible; EO_Sevel suivi des cours)")
-        .build()
-    {
+    let client = match client() {
         Ok(c) => c,
-        Err(e) => return vec![e.to_string()],
+        Err(e) => return vec![e],
     };
-    let releves = relever_sources(&client, pool, &mut erreurs).await;
+    let mut releves = relever_sources(&client, pool, &mut erreurs).await;
+    releves.extend(relever_matif(&client, pool, &mut erreurs).await);
     let maintenant = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    for r in &releves {
-        let res = sqlx::query(
-            "INSERT INTO cours_releve(produit,date,prix,releve_le) VALUES(?,?,?,?)
-             ON CONFLICT(produit,date) DO UPDATE SET prix=excluded.prix, releve_le=excluded.releve_le",
-        )
-        .bind(r.produit)
-        .bind(r.date.format("%Y-%m-%d").to_string())
-        .bind(r.prix)
-        .bind(&maintenant)
-        .execute(pool)
-        .await;
-        if let Err(e) = res {
-            erreurs.push(e.to_string());
-        }
-    }
+    enregistrer(pool, &releves, &maintenant, &mut erreurs).await;
     let _ = crate::sms_free::ecrire_parametre(pool, "cours_dernier_releve", &maintenant).await;
     let _ = crate::sms_free::ecrire_parametre(pool, "cours_erreurs", &erreurs.join(" ; ")).await;
     if !erreurs.is_empty() {
@@ -265,6 +359,8 @@ pub async fn boucle(pool: SqlitePool) {
         };
         if a_faire {
             actualiser(&pool).await;
+        } else if seance_ouverte(maintenant) {
+            actualiser_matif(&pool).await;
         }
         tokio::time::sleep(Duration::from_secs(1800)).await;
     }
@@ -274,8 +370,8 @@ pub async fn boucle(pool: SqlitePool) {
 pub async fn suivi(pool: &SqlitePool) -> sqlx::Result<Value> {
     let mut lignes = Vec::new();
     for p in &PRODUITS {
-        let rows: Vec<(String, f64)> =
-            sqlx::query_as("SELECT date, prix FROM cours_releve WHERE produit=? ORDER BY date DESC LIMIT 20")
+        let rows: Vec<(String, f64, Option<String>)> =
+            sqlx::query_as("SELECT date, prix, releve_le FROM cours_releve WHERE produit=? ORDER BY date DESC LIMIT 20")
                 .bind(p.code)
                 .fetch_all(pool)
                 .await?;
@@ -298,6 +394,14 @@ pub async fn suivi(pool: &SqlitePool) -> sqlx::Result<Value> {
             String::new()
         };
         let porc = p.unite == "€/kg";
+        let echeance = crate::proxmox::parametre(pool, &format!("cours_echeance_{}", p.code)).await;
+        // Graphique de l'historique : jusqu'à un an de relevés, du plus ancien au plus récent.
+        let serie: Vec<(String, f64)> = sqlx::query_as(
+            "SELECT date, prix FROM (SELECT date, prix FROM cours_releve WHERE produit=? ORDER BY date DESC LIMIT 260) ORDER BY date",
+        )
+        .bind(p.code)
+        .fetch_all(pool)
+        .await?;
         lignes.push(json!({
             "code": p.code,
             "libelle": p.libelle,
@@ -306,6 +410,10 @@ pub async fn suivi(pool: &SqlitePool) -> sqlx::Result<Value> {
             "lien": p.lien,
             "porc": porc,
             "date": rows.first().map(|r| r.0.clone()),
+            // Cours Euronext : l'heure du relevé compte (cours de la séance).
+            "heure": if p.code.ends_with("_matif") { rows.first().and_then(|r| r.2.as_ref()).and_then(|h| h.get(11..16)).map(str::to_string) } else { None },
+            "echeance": echeance,
+            "serie": serie.iter().map(|r| json!({"date": r.0, "prix": r.1})).collect::<Vec<_>>(),
             "prix": rows.first().map(|r| r.1),
             "variation": variation,
             "courbe": courbe,
@@ -347,6 +455,26 @@ mod tests {
 
         let page = r#"<tr><td class="tdcotr">22/10/26 </td> <td class="tdcotr">156.20 </td><td class="tdcotr">156.20 </td>"#;
         assert_eq!(lire_plerin(page), vec![Releve { produit: "porc_plerin", date: d(2026, 10, 22), prix: 1.562 }]);
+
+        // Euronext avant l'ouverture : pas de dernier cours, compensation de
+        // la séance précédente (lundi → vendredi).
+        let ligne = |dernier: &str| format!(
+            r#"<tr data-lasttradesdate="-"><td class="text-left"><a href="/fr/x?md=01-12-2026" class="b">Dec 2026</a></td>
+            <td class="text-right"> 235,75 </td><td class="text-right"> 234,25 </td><td class="text-right"> {dernier} </td>
+            <td class="text-right"> - </td><td class="text-ui-pistachio-green text-right">0.00</td><td class="text-right"> - </td>
+            <td class="text-right"> - </td><td class="text-right"> - </td><td class="text-right"> - </td>
+            <td class="text-right"> 233,50 </td><td class="text-right"> 108 754 </td></tr>"#);
+        let lundi = d(2026, 11, 16);
+        assert_eq!(
+            lire_euronext(&format!("<table>{}", ligne("-")), "ble_matif", lundi),
+            Some((Releve { produit: "ble_matif", date: d(2026, 11, 13), prix: 233.5 }, "Dec 2026".into()))
+        );
+        assert_eq!(
+            lire_euronext(&format!("<table>{}", ligne("236,25")), "ble_matif", lundi).map(|r| r.0),
+            Some(Releve { produit: "ble_matif", date: lundi, prix: 236.25 })
+        );
+        assert!(seance_ouverte(d(2026, 11, 18).and_hms_opt(11, 0, 0).unwrap()));
+        assert!(!seance_ouverte(d(2026, 11, 21).and_hms_opt(11, 0, 0).unwrap()));
 
         let json = json!({"cooperl": [{"date": "2026-10-19", "prix": 1.5}], "porc": []});
         assert_eq!(lire_eo_compare(&json), vec![Releve { produit: "porc_cooperl", date: d(2026, 10, 19), prix: 1.5 }]);
