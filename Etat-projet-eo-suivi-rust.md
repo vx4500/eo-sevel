@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.79.0** — vaccins et soins du plan sanitaire sur le Planning, pointables d'un clic.
+Version actuelle : **2.79.1** — pastilles vaccins et soins aussi sur la frise de l'accueil et de Places et flux.
 
+
+Version Rust 2.79.1 : les pastilles 💉/💊 n'étaient construites que par le handler /planning. Déplacées dans accueil::ajouter_soins, appelé par frise_bandes (Planning, Places et flux) et enrichir (accueils cockpit et flux). Fenêtre « Fait » sortie dans templates/soins_pop.html, incluse par accueil_frise.html quand une bande a des soins ; le retour après Fait revient sur la page d'origine (?ok=soin, message affiché par le script).
 
 Version Rust 2.79.0 : page Planning — (1) conduite::soins_planning : vaccins et traitements du plan sanitaire des truies (actes placés depuis l'IA, la mise-bas ou le sevrage) pour chaque bande active, plus les soins de portée non faits ; état Fait le / À venir / Aujourd'hui / En retard (≤ 21 j) / Non pointé ; un acte pointé plus de 21 j avant sa date prévue (et encore d'actualité) est signalé « à vérifier » (cas réel : Pigfen et Sebacil de B2.33 pointés le 27/09 pour fin novembre). (2) Tableau « Échéances, vaccins et soins » avec ces lignes. (3) Frise : pastilles 💉/💊 regroupées (écart < 3 %), rouge en retard, orange à vérifier, pâles si faites ; clic → fenêtre avec « ✓ Fait » (date, doses, POST /soins/fait avec retour=/planning?ok=soin) et « + » vers /soins. accueil::position_frise partagé. soins::fait accepte un retour. Tests : planning_montre_les_vaccins_et_soins, planning_sur_copie_reelle (ignoré).
 

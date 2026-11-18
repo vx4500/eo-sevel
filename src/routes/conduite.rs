@@ -1912,7 +1912,10 @@ mod tests {
         assert!(page.contains("class=\"soin retard\""), "repère rouge sur la frise");
         assert!(page.contains("data-soins='[{&quot;acte_id&quot;") || page.contains("data-soins='[{\"acte_id\""), "données lisibles par le script");
         assert!(page.contains("data-soins=") && page.contains("action=\"/soins/fait\""), "pastille cliquable avec Fait");
-        assert!(page.contains("value=\"/planning?ok=soin\""), "retour au planning après Fait");
+        assert!(page.contains("class=\"soin-retour\""), "retour vers la page après Fait");
+        // Mêmes pastilles sur la frise de Places et flux.
+        let Html(flux_page) = flux(State(state2.clone()), Extension(super::super::documents::tests::session())).await.unwrap();
+        assert!(flux_page.contains("data-soins=") && flux_page.contains("id=\"soin-pop\""), "pastilles sur Places et flux");
         // « Fait » depuis la fenêtre : enregistré, retour au planning.
         let eryseng: i64 = sqlx::query_scalar("SELECT id FROM acteprotocole WHERE libelle='Eryseng Parvo'").fetch_one(&state2.pool).await.unwrap();
         let session = super::super::documents::tests::session();

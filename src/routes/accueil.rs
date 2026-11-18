@@ -80,6 +80,65 @@ fn planning(bandes: &mut [Value]) -> Value {
     json!({"mois": mois, "aujourdhui": format!("{:.2}", pct(today))})
 }
 
+/// Pastilles 💉/💊 des vaccins et soins du plan sanitaire sur la frise.
+pub(super) async fn ajouter_soins(pool: &SqlitePool, bandes: &mut [Value]) -> AppResult<()> {
+    let soins = super::conduite::soins_planning(pool).await?;
+    for b in bandes.iter_mut() {
+        // Repères 💉/💊 sur la frise, regroupés quand ils tombent à moins
+        // de 3 % de largeur (≈ 16 jours) les uns des autres.
+        let mut groupes: Vec<(f64, f64, Vec<&Value>)> = Vec::new();
+        for s in soins.iter().filter(|s| s["bande_id"] == b["id"]) {
+            let Some(pct) = s["date"].as_str().and_then(parse_stored_date).and_then(position_frise) else { continue };
+            match groupes.last_mut() {
+                Some((debut, fin, liste)) if pct - *debut < 3.0 => {
+                    *fin = pct;
+                    liste.push(s);
+                }
+                _ => groupes.push((pct, pct, vec![s])),
+            }
+        }
+        let marques: Vec<Value> = groupes
+            .into_iter()
+            .map(|(debut, fin, liste)| {
+                let vaccins = liste.iter().filter(|s| s["vaccin"] == true).count();
+                let soins_n = liste.len() - vaccins;
+                let nombre = |icone: &str, n: usize| match n {
+                    0 => String::new(),
+                    1 => icone.to_string(),
+                    n => format!("{icone}{n}"),
+                };
+                let texte = [nombre("💉", vaccins), nombre("💊", soins_n)].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
+                let titre = liste
+                    .iter()
+                    .map(|s| format!("{} — {} : {}", s["date"].as_str().and_then(parse_stored_date).map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default(), s["type"].as_str().unwrap_or(""), s["etat"].as_str().unwrap_or("")))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let details: Vec<Value> = liste
+                    .iter()
+                    .map(|s| json!({
+                        "acte_id": s["acte_id"], "bande_id": s["bande_id"], "qui": s["qui"], "nombre": s["nombre"],
+                        "libelle": s["type"], "etat": s["etat"], "vaccin": s["vaccin"],
+                        "fait": s["fait"] == true && s["a_verifier"] != true, "en_retard": s["en_retard"],
+                        "date": s["date"].as_str().and_then(parse_stored_date).map(|d| d.format("%d/%m/%Y").to_string()),
+                    }))
+                    .collect();
+                json!({
+                    "details": details,
+                    "bande": b["code"],
+                    "pct": format!("{:.2}", (debut + fin) / 2.0),
+                    "texte": texte,
+                    "titre": titre,
+                    "fait": liste.iter().all(|s| s["fait"] == true && s["a_verifier"] != true),
+                    "en_retard": liste.iter().any(|s| s["en_retard"] == true),
+                    "a_verifier": liste.iter().any(|s| s["a_verifier"] == true),
+                })
+            })
+            .collect();
+        b["soins"] = Value::Array(marques);
+    }
+    Ok(())
+}
+
 /// Frise des bandes actives pour une page qui n'a pas le contexte du tableau
 /// de bord (Places et flux) : mêmes vues de bande, mêmes segments.
 pub(super) async fn frise_bandes(pool: &SqlitePool) -> AppResult<(Value, Vec<Value>)> {
@@ -96,6 +155,7 @@ pub(super) async fn frise_bandes(pool: &SqlitePool) -> AppResult<(Value, Vec<Val
         bandes.push(serde_json::to_value(band_view(&band, count, schedule, flux, actual_stage, reproduction)).unwrap_or_default());
     }
     let frise = planning(&mut bandes);
+    ajouter_soins(pool, &mut bandes).await?;
     Ok((frise, bandes))
 }
 
@@ -160,6 +220,7 @@ pub(super) async fn enrichir(pool: &SqlitePool, ctx: &mut Map<String, Value>, mu
     ctx.insert("soupe".into(), soupe);
 
     let frise = planning(&mut bandes);
+    ajouter_soins(pool, &mut bandes).await?;
     ctx.insert("frise".into(), frise);
     let mut interventions: Vec<Value> = bandes
         .iter()

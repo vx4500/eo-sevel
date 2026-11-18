@@ -1,0 +1,52 @@
+<dialog id="soin-pop" class="soin-pop"><form method="dialog" class="soin-pop-tete"><h2 id="soin-pop-titre">Vaccins et soins</h2><button class="soin-pop-x" aria-label="Fermer">✕</button></form><div id="soin-pop-liste"></div><p class="soin-pop-pied"><a href="/soins">+ Ouvrir la page Soins</a></p></dialog>
+<template id="soin-pop-ligne"><div class="soin-pop-ligne"><div class="quoi"><b></b><small></small></div>{% if session.peut_modifier %}<form method="post" action="/soins/fait"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="retour" value="/planning?ok=soin" class="soin-retour"><input type="hidden" name="acte_id"><input type="hidden" name="bande_id"><input type="hidden" name="qui"><label>Date<input type="date" name="date"></label><label>Doses<input type="number" name="doses" min="0" step="1" placeholder="0"></label><button>✓ Fait</button></form>{% endif %}<a class="soin-pop-plus" href="/soins" title="Ouvrir la page Soins">+</a></div></template>
+<style>
+.soin-pop{border:0;border-radius:14px;padding:18px 20px;width:min(560px,calc(100vw - 32px));box-shadow:0 18px 50px rgba(0,0,0,.25)}
+.soin-pop::backdrop{background:rgba(20,40,30,.35)}
+.soin-pop-tete{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px}.soin-pop-tete h2{margin:0;font-size:20px}
+.soin-pop-x{background:none;border:0;font-size:20px;cursor:pointer;color:inherit;padding:4px 8px}
+.soin-pop-ligne{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:12px 0;border-top:1px solid #e3ebe5}
+.soin-pop-ligne .quoi{flex:1 1 100%}.soin-pop-ligne .quoi small{display:block;color:#5d6f63;margin-top:2px}
+.soin-pop-ligne.retard .quoi small{color:#b3261e;font-weight:700}
+.soin-pop-ligne form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;flex:1;margin:0}
+.soin-pop-ligne label{display:flex;flex-direction:column;font-size:12px;gap:2px}.soin-pop-ligne input[type=number]{width:80px}
+.soin-pop-ligne form button{background:#2f6b4f;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
+.soin-pop-plus{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:#eef4f0;color:#1f4b36;font-size:20px;font-weight:700;text-decoration:none;margin-left:auto}
+.soin-pop-plus:hover{background:#dbe9e0}
+.soin-pop-pied{margin:10px 0 0;text-align:right}
+.soin-ok{background:#e5f3ea;border:1px solid #9cc9ad;border-radius:10px;padding:10px 14px;margin:0 0 12px;font-weight:700;color:#1f4b36}
+</style>
+<script>
+(function(){
+  var pop=document.getElementById('soin-pop'), liste=document.getElementById('soin-pop-liste'), modele=document.getElementById('soin-pop-ligne');
+  if(!pop||!modele)return;
+  var ok=/[?&]ok=soin\b/.test(location.search);
+  if(ok){var frise=document.querySelector('.acc-defile');if(frise){var m=document.createElement('p');m.className='soin-ok';m.textContent='✓ Soin enregistré comme fait.';frise.parentNode.insertBefore(m,frise);}}
+  var aujourdhui=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  document.querySelectorAll('.acc-frise .soin[data-soins]').forEach(function(bouton){
+    bouton.addEventListener('click',function(){
+      var soins=[];try{soins=JSON.parse(bouton.dataset.soins)}catch(e){}
+      document.getElementById('soin-pop-titre').textContent='Vaccins et soins · '+bouton.dataset.bande;
+      liste.innerHTML='';
+      soins.forEach(function(s){
+        var ligne=modele.content.firstElementChild.cloneNode(true);
+        if(s.en_retard)ligne.classList.add('retard');
+        ligne.querySelector('.quoi b').textContent=(s.vaccin?'💉 ':'💊 ')+s.libelle;
+        ligne.querySelector('.quoi small').textContent=(s.date||'')+' · '+s.etat;
+        var f=ligne.querySelector('form');
+        if(f){
+          if(s.fait){f.remove();}
+          else{
+            f.querySelector('[name=acte_id]').value=s.acte_id;f.querySelector('[name=bande_id]').value=s.bande_id;
+            f.querySelector('[name=qui]').value=s.qui;f.querySelector('[name=date]').value=aujourdhui;f.querySelector('[name=retour]').value=location.pathname+'?ok=soin';
+            if(s.qui==='truies'&&s.nombre)f.querySelector('[name=doses]').value=s.nombre;
+          }
+        }
+        liste.appendChild(ligne);
+      });
+      if(pop.showModal)pop.showModal();else pop.setAttribute('open','');
+    });
+  });
+  pop.addEventListener('click',function(e){if(e.target===pop)pop.close();});
+})();
+</script>
