@@ -28,10 +28,21 @@ fn date(v: &Value) -> Option<NaiveDate> {
 
 /// Frise des bandes : fenêtre de 18 mois (7 avant aujourd'hui, 11 après),
 /// positions en % pour le gabarit.
-fn planning(bandes: &mut [Value]) -> Value {
+fn fenetre() -> (NaiveDate, NaiveDate) {
     let today = Local::now().date_naive();
     let debut = (today - Duration::days(213)).with_day(1).unwrap_or(today);
-    let fin = debut + Duration::days(548);
+    (debut, debut + Duration::days(548))
+}
+
+/// Position d'une date sur la frise, en %, ou rien si elle sort de la fenêtre.
+pub(super) fn position_frise(d: NaiveDate) -> Option<f64> {
+    let (debut, fin) = fenetre();
+    (debut..=fin).contains(&d).then(|| (d - debut).num_days() as f64 / (fin - debut).num_days() as f64 * 100.0)
+}
+
+fn planning(bandes: &mut [Value]) -> Value {
+    let today = Local::now().date_naive();
+    let (debut, fin) = fenetre();
     let total = (fin - debut).num_days() as f64;
     let pct = |d: NaiveDate| (((d - debut).num_days() as f64 / total) * 100.0).clamp(0.0, 100.0);
     // Étapes (index dans `etapes`) qui bornent chaque période.

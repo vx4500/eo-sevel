@@ -918,6 +918,94 @@ pub(super) async fn soins_a_faire(pool: &SqlitePool, jours: i64, retard_max: i64
     Ok(lignes.into_iter().map(|(_, ligne)| ligne).collect())
 }
 
+/// Vaccins et soins du plan sanitaire de chaque bande active, pour la page
+/// Planning : date prévue et état (fait, en retard, à venir). Truies : actes
+/// placés depuis l'IA, la mise-bas ou le sevrage ; porcelets : soins de portée
+/// pas encore faits.
+pub(super) async fn soins_planning(pool: &SqlitePool) -> AppResult<Vec<Value>> {
+    let aujourd_hui = Local::now().date_naive();
+    let calendrier = load_band_schedule(pool).await?;
+    let liste_etapes = toutes_etapes(pool, calendrier).await?;
+    let faits = actes_faits(pool).await;
+    let mut lignes: Vec<(NaiveDate, Value)> = Vec::new();
+    let etat_de = |date: NaiveDate| {
+        if date > aujourd_hui {
+            "À venir"
+        } else if date == aujourd_hui {
+            "Aujourd'hui"
+        } else if (aujourd_hui - date).num_days() <= 21 {
+            "En retard"
+        } else {
+            "Non pointé"
+        }
+    };
+    for bande in charger_bandes(pool, 0).await?.iter().filter(|b| b.active) {
+        let Some(date_mb) = bande.date_mb else {
+            continue;
+        };
+        for etape in liste_etapes.iter().filter(|e| e.acte_id.is_some()) {
+            let date = etape.date(date_mb);
+            let fait = realise(bande, etape, &faits);
+            // Pointé bien avant la date prévue : sans doute un autre cycle ou
+            // une erreur de bande, à vérifier plutôt qu'à croire « fait ».
+            let avance = etape
+                .acte_id
+                .and_then(|a| faits.get(&(a, bande.id)))
+                .and_then(|d| parse_stored_date(d))
+                .map(|d| (date - d).num_days())
+                .filter(|j| *j > 21 && (aujourd_hui - date).num_days() <= 21);
+            let etat = match (&fait, avance) {
+                (Some(f), Some(j)) => format!("{} — {j} j avant la date prévue, à vérifier", f.replacen("fait", "Pointé", 1)),
+                (Some(f), None) => f.replacen("fait", "Fait", 1),
+                (None, _) => etat_de(date).to_string(),
+            };
+            lignes.push((date, json!({
+                "bande_id": bande.id,
+                "bande": bande.code,
+                "date": date.to_string(),
+                "type": &etape.libelle,
+                "vaccin": etape.libelle.starts_with("Vaccin"),
+                "fait": fait.is_some(),
+                "en_retard": etat == "En retard",
+                "a_verifier": avance.is_some(),
+                "acte_id": etape.acte_id,
+                "qui": "truies",
+                "nombre": bande.truies,
+                "etat": etat,
+            })));
+        }
+    }
+    let portees: Vec<(Option<String>, i64, i64, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT MIN(date(sp.date_prevue)),a.id,COALESCE(sp.bande_id,0),a.libelle||COALESCE(' ('||a.produit||')',''),a.categorie,b.code,COUNT(*) \
+         FROM soinportee sp JOIN acteprotocole a ON a.id=sp.protocole_id LEFT JOIN bande b ON b.id=sp.bande_id \
+         WHERE sp.date_realisee IS NULL AND date(sp.date_prevue)>=date('now','localtime','-21 days') GROUP BY a.id,sp.bande_id",
+    )
+    .fetch_all(pool)
+    .await?;
+    for (date, acte_id, bande_id, libelle, categorie, bande, nombre) in portees {
+        let Some(date) = date.as_deref().and_then(parse_stored_date) else {
+            continue;
+        };
+        let vaccin = categorie.as_deref() == Some("vaccin");
+        let etat = etat_de(date);
+        lignes.push((date, json!({
+            "bande_id": bande_id,
+            "bande": bande.unwrap_or_else(|| "—".into()),
+            "date": date.to_string(),
+            "type": format!("Porcelets, {} : {libelle} — {nombre} portée{}", if vaccin { "vaccin" } else { "soin" }, if nombre > 1 { "s" } else { "" }),
+            "vaccin": vaccin,
+            "fait": false,
+            "en_retard": etat == "En retard",
+            "acte_id": acte_id,
+            "qui": "portees",
+            "nombre": 0,
+            "etat": etat,
+        })));
+    }
+    lignes.sort_by_key(|(date, _)| *date);
+    Ok(lignes.into_iter().map(|(_, ligne)| ligne).collect())
+}
+
 async fn truies_etape(pool: &SqlitePool, bande: &BandeCycle, code: &str, acte_id: i64) -> AppResult<Vec<Value>> {
     // Chaque requête prend les truies de la bande qui ont encore cette étape
     // à faire dans le cycle en cours.
@@ -1780,6 +1868,64 @@ mod tests {
         assert!(page.contains("dépassé de"), "la bande en retard doit l'afficher");
     }
 
+    #[tokio::test]
+    async fn planning_montre_les_vaccins_et_soins() {
+        let state = super::super::documents::tests::state().await;
+        let mb = (Local::now().date_naive() + Duration::days(20)).to_string();
+        let bande = sqlx::query("INSERT INTO bande(code,date_mb,active) VALUES('B9.03',?,1)")
+            .bind(&mb)
+            .execute(&state.pool)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+        for (libelle, jour, categorie) in [("Eryseng Parvo", 86, "vaccin"), ("Sebacil", 104, "traitement"), ("Suigen", 60, "vaccin")] {
+            sqlx::query("INSERT INTO acteprotocole(libelle,cible,reference,jour,categorie,actif) VALUES(?,'toutes_femelles','gestation',?,?,1)")
+                .bind(libelle)
+                .bind(jour)
+                .bind(categorie)
+                .execute(&state.pool)
+                .await
+                .unwrap();
+        }
+        let suigen: i64 = sqlx::query_scalar("SELECT id FROM acteprotocole WHERE libelle='Suigen'").fetch_one(&state.pool).await.unwrap();
+        let sebacil: i64 = sqlx::query_scalar("SELECT id FROM acteprotocole WHERE libelle='Sebacil'").fetch_one(&state.pool).await.unwrap();
+        let fait = Local::now().date_naive() - Duration::days(30);
+        for (acte, date) in [(suigen, fait), (sebacil, Local::now().date_naive() - Duration::days(40))] {
+            sqlx::query("INSERT INTO acterealise(acte_id,bande_id,date_realise) VALUES(?,?,?)")
+                .bind(acte)
+                .bind(bande)
+                .bind(date.to_string())
+                .execute(&state.pool)
+                .await
+                .unwrap();
+        }
+        let state2 = state.clone();
+        let Html(page) = super::super::planning(State(state), Extension(super::super::documents::tests::session()), Query(HashMap::new()))
+            .await
+            .unwrap();
+        assert!(page.contains("Échéances, vaccins et soins"));
+        assert!(page.contains("💉 Vaccin : Eryseng Parvo"), "vaccin dans les échéances");
+        assert!(page.contains("💊 Traitement : Sebacil"), "soin dans les échéances");
+        assert!(page.contains("En retard</b>"), "vaccin passé non pointé en retard");
+        assert!(page.contains(&format!("Fait le {}", fait.format("%d&#x2f;%m"))), "vaccin pointé");
+        assert!(page.contains("j avant la date prévue, à vérifier"), "soin pointé bien trop tôt signalé");
+        assert!(page.contains("class=\"soin retard\""), "repère rouge sur la frise");
+        assert!(page.contains("data-soins='[{&quot;acte_id&quot;") || page.contains("data-soins='[{\"acte_id\""), "données lisibles par le script");
+        assert!(page.contains("data-soins=") && page.contains("action=\"/soins/fait\""), "pastille cliquable avec Fait");
+        assert!(page.contains("value=\"/planning?ok=soin\""), "retour au planning après Fait");
+        // « Fait » depuis la fenêtre : enregistré, retour au planning.
+        let eryseng: i64 = sqlx::query_scalar("SELECT id FROM acteprotocole WHERE libelle='Eryseng Parvo'").fetch_one(&state2.pool).await.unwrap();
+        let session = super::super::documents::tests::session();
+        let mut form = HashMap::new();
+        for (k, v) in [("csrf_token", session.csrf.clone()), ("acte_id", eryseng.to_string()), ("bande_id", bande.to_string()), ("qui", "truies".into()), ("retour", "/planning?ok=soin".into())] {
+            form.insert(k.to_string(), v);
+        }
+        let reponse = super::super::soins::fait(State(state2.clone()), Extension(session), Form(form)).await.unwrap();
+        assert_eq!(reponse.headers().get("location").and_then(|v| v.to_str().ok()), Some("/planning?ok=soin"));
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM acterealise WHERE acte_id=? AND bande_id=?").bind(eryseng).bind(bande).fetch_one(&state2.pool).await.unwrap();
+        assert_eq!(n, 1);
+    }
+
     #[test]
     fn groupe_de_bande() {
         assert_eq!(groupe("B2.12"), "2");
@@ -1907,6 +2053,26 @@ mod essai_base_reelle {
                 .collect();
             println!("semaine du {debut} : {etapes:?}");
         }
+        Ok(())
+    }
+
+    /// Page Planning complète sur une copie de la base réelle, écrite dans
+    /// `EO_TEST_SORTIE` : `EO_TEST_BASE=… EO_TEST_SORTIE=… cargo test -- --ignored planning_sur_copie_reelle`.
+    #[tokio::test]
+    #[ignore]
+    async fn planning_sur_copie_reelle() -> anyhow::Result<()> {
+        use super::super::documents::tests::session;
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).foreign_keys(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: chemin.into(), secure_cookies: false },
+            pool,
+            crate::templates::build()?,
+        );
+        let html = super::super::planning(State(state), Extension(session()), Query(HashMap::new())).await.map_err(|e| anyhow::anyhow!("{e:?}"))?.0;
+        std::fs::write(std::env::var("EO_TEST_SORTIE")?, html)?;
         Ok(())
     }
 }

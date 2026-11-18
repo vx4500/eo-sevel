@@ -13756,6 +13756,7 @@ async fn pharmacie_regler(
 async fn planning(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
     let events=generic_rows(&state.pool,"SELECT e.id,e.date,e.type,t.num_travail,b.code AS bande,e.produit,e.note FROM evenement e LEFT JOIN truie t ON t.id=e.truie_id LEFT JOIN bande b ON b.id=e.bande_id WHERE date(e.date)>=date('now','localtime','-30 days') ORDER BY e.date LIMIT 500").await?;
     let tasks=generic_rows(&state.pool,"SELECT id,titre,type,bande_code,echeance,fait,note FROM tache WHERE fait=0 ORDER BY echeance IS NULL,echeance,id").await?;
@@ -13769,10 +13770,67 @@ async fn planning(
             calculated.push(json!({"bande":band.code,"type":date["nom"],"date":date["date"],"etat":date["etat"]}));
         }
     }
+    // Vaccins et soins du plan sanitaire, avec les étapes de conduite.
+    let soins = conduite::soins_planning(&state.pool).await?;
+    calculated.extend(soins.iter().cloned().map(|mut s| {
+        s["soin"] = json!(true);
+        s
+    }));
     calculated.sort_by_key(|v| v["date"].as_str().unwrap_or_default().to_string());
     // Frise des bandes (comme l'accueil) et détail de chaque bande.
     let (frise, mut frise_bandes) = accueil::frise_bandes(&state.pool).await?;
     for b in frise_bandes.iter_mut() {
+        // Repères 💉/💊 sur la frise, regroupés quand ils tombent à moins
+        // de 3 % de largeur (≈ 16 jours) les uns des autres.
+        let mut groupes: Vec<(f64, f64, Vec<&Value>)> = Vec::new();
+        for s in soins.iter().filter(|s| s["bande_id"] == b["id"]) {
+            let Some(pct) = s["date"].as_str().and_then(parse_stored_date).and_then(accueil::position_frise) else { continue };
+            match groupes.last_mut() {
+                Some((debut, fin, liste)) if pct - *debut < 3.0 => {
+                    *fin = pct;
+                    liste.push(s);
+                }
+                _ => groupes.push((pct, pct, vec![s])),
+            }
+        }
+        let marques: Vec<Value> = groupes
+            .into_iter()
+            .map(|(debut, fin, liste)| {
+                let vaccins = liste.iter().filter(|s| s["vaccin"] == true).count();
+                let soins_n = liste.len() - vaccins;
+                let nombre = |icone: &str, n: usize| match n {
+                    0 => String::new(),
+                    1 => icone.to_string(),
+                    n => format!("{icone}{n}"),
+                };
+                let texte = [nombre("💉", vaccins), nombre("💊", soins_n)].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
+                let titre = liste
+                    .iter()
+                    .map(|s| format!("{} — {} : {}", s["date"].as_str().and_then(parse_stored_date).map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default(), s["type"].as_str().unwrap_or(""), s["etat"].as_str().unwrap_or("")))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let details: Vec<Value> = liste
+                    .iter()
+                    .map(|s| json!({
+                        "acte_id": s["acte_id"], "bande_id": s["bande_id"], "qui": s["qui"], "nombre": s["nombre"],
+                        "libelle": s["type"], "etat": s["etat"], "vaccin": s["vaccin"],
+                        "fait": s["fait"] == true && s["a_verifier"] != true, "en_retard": s["en_retard"],
+                        "date": s["date"].as_str().and_then(parse_stored_date).map(|d| d.format("%d/%m/%Y").to_string()),
+                    }))
+                    .collect();
+                json!({
+                    "details": details,
+                    "bande": b["code"],
+                    "pct": format!("{:.2}", (debut + fin) / 2.0),
+                    "texte": texte,
+                    "titre": titre,
+                    "fait": liste.iter().all(|s| s["fait"] == true && s["a_verifier"] != true),
+                    "en_retard": liste.iter().any(|s| s["en_retard"] == true),
+                    "a_verifier": liste.iter().any(|s| s["a_verifier"] == true),
+                })
+            })
+            .collect();
+        b["soins"] = Value::Array(marques);
         let porcs: i64 = b["flux"]["emplacements"].as_array().into_iter().flatten()
             .filter(|e| e["animaux"] == "Porcs").filter_map(|e| e["effectif"].as_i64()).sum();
         b["porcs"] = json!(porcs);
@@ -13787,6 +13845,8 @@ async fn planning(
     ctx.insert("evenements".into(), Value::Array(events));
     ctx.insert("taches".into(), Value::Array(tasks));
     ctx.insert("echeances".into(), Value::Array(calculated));
+    ctx.insert("avec_soins".into(), json!(!soins.is_empty()));
+    ctx.insert("soin_ok".into(), json!(query.get("ok").map(String::as_str) == Some("soin")));
     render(&state, "planning.html", Value::Object(ctx))
 }
 async fn stock(

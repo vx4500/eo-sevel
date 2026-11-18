@@ -254,7 +254,7 @@ pub(super) async fn fait(
         }
     }
     tx.commit().await?;
-    Ok(Redirect::to("/soins?ok=fait").into_response())
+    Ok(Redirect::to(&retour(&form, "/soins?ok=fait")).into_response())
 }
 
 /// Annule un soin de bande (remet les doses en stock).
