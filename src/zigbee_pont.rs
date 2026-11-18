@@ -210,6 +210,9 @@ async fn traiter(pool: &SqlitePool, cache: &Arc<Mutex<Cache>>, sujet: &str, char
     if reste == "bridge/devices" {
         return appareils(pool, cache, charge).await;
     }
+    if let Some(action) = reste.strip_prefix("bridge/response/device/") {
+        return reponse_pont(pool, action, charge).await;
+    }
     if reste.starts_with("bridge/") {
         return Ok(());
     }
@@ -358,6 +361,36 @@ async fn etat_appareil(
     Ok(())
 }
 
+/// Réponse de Zigbee2MQTT à une demande (renommer, supprimer) : notée sur
+/// la dernière demande de ce type pour que la page l'affiche.
+async fn reponse_pont(pool: &SqlitePool, action: &str, charge: &[u8]) -> Result<()> {
+    let v: Value = serde_json::from_slice(charge).unwrap_or(Value::Null);
+    let texte = if v.get("status").and_then(Value::as_str) == Some("ok") {
+        "réussi".to_string()
+    } else {
+        format!("refusé : {}", v.get("error").and_then(Value::as_str).unwrap_or("erreur inconnue"))
+    };
+    sqlx::query(
+        "UPDATE zigbee_commande SET resultat=? WHERE id=(SELECT MAX(id) FROM zigbee_commande WHERE ieee=? AND envoye IS NOT NULL)",
+    )
+    .bind(&texte)
+    .bind(format!("bridge/request/device/{action}"))
+    .execute(pool)
+    .await?;
+    tracing::info!(action, texte, "pont Zigbee : réponse");
+    Ok(())
+}
+
+/// Sujet MQTT d'une commande : demande au pont (`bridge/request/…`) ou
+/// commande d'un appareil (`<ieee>/set`).
+pub fn sujet_commande(cible: &str) -> String {
+    if cible.starts_with("bridge/request/") {
+        format!("{BASE}/{cible}")
+    } else {
+        format!("{BASE}/{cible}/set")
+    }
+}
+
 async fn appareils(pool: &SqlitePool, cache: &Arc<Mutex<Cache>>, charge: &[u8]) -> Result<()> {
     let Value::Array(liste) = serde_json::from_slice::<Value>(charge)? else {
         return Ok(());
@@ -424,7 +457,7 @@ async fn envoyer_commandes(pool: SqlitePool, client: AsyncClient) {
                 "abandonnée (trop ancienne)".to_string()
             } else {
                 match client
-                    .publish(format!("{BASE}/{ieee}/set"), QoS::AtLeastOnce, false, charge.clone())
+                    .publish(sujet_commande(&ieee), QoS::AtLeastOnce, false, charge.clone())
                     .await
                 {
                     Ok(()) => "publiée".to_string(),
@@ -862,6 +895,12 @@ mod tests {
         assert_eq!(en_nombre(&serde_json::json!(false)), Some(0.0));
         assert_eq!(en_nombre(&serde_json::json!(21.5)), Some(21.5));
         assert_eq!(en_nombre(&serde_json::json!("toggle")), None);
+    }
+
+    #[test]
+    fn les_demandes_au_pont_vont_sur_bridge_request() {
+        assert_eq!(sujet_commande("bridge/request/device/rename"), "zigbee2mqtt/bridge/request/device/rename");
+        assert_eq!(sujet_commande("0x00124b0029"), "zigbee2mqtt/0x00124b0029/set");
     }
 
     #[test]

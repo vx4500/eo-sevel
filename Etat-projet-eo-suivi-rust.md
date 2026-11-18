@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.79.1** — pastilles vaccins et soins aussi sur la frise de l'accueil et de Places et flux.
+Version actuelle : **2.80.0** — modules Zigbee : renommer et supprimer depuis la page Zigbee.
 
+
+Version Rust 2.80.0 : page Zigbee, menu « Renommer ou supprimer » par module. POST /ambiance/zigbee/renommer (nom 1–50 car., sans / # +, unique) : demande bridge/request/device/rename {from: ieee, to} déposée dans zigbee_commande (cible « bridge/request/device/… »), nom mis à jour tout de suite dans zigbee_appareil et dans les ipx_point rattachés. POST /ambiance/zigbee/supprimer : bridge/request/device/remove {id, force} (forcé si sur pile ou hors ligne), points ipx retirés, present=0. Pont : zigbee_pont::sujet_commande publie sur bridge/request/… ; les réponses bridge/response/device/* sont notées dans zigbee_commande.resultat et affichées en haut de la page (30 dernières minutes). Tests : renommer_puis_supprimer_un_module, les_demandes_au_pont_vont_sur_bridge_request.
 
 Version Rust 2.79.1 : les pastilles 💉/💊 n'étaient construites que par le handler /planning. Déplacées dans accueil::ajouter_soins, appelé par frise_bandes (Planning, Places et flux) et enrichir (accueils cockpit et flux). Fenêtre « Fait » sortie dans templates/soins_pop.html, incluse par accueil_frise.html quand une bande a des soins ; le retour après Fait revient sur la page d'origine (?ok=soin, message affiché par le script).
 

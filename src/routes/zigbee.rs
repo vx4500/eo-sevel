@@ -247,6 +247,34 @@ pub(super) async fn page(
         ),
     );
     contexte.insert("ok".into(), json!(parametres.get("ok")));
+    // Renommages et suppressions de la dernière demi-heure, avec la réponse
+    // de Zigbee2MQTT.
+    let demandes: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT ieee, charge, resultat FROM zigbee_commande WHERE ieee LIKE 'bridge/request/device/%' AND demande>=? ORDER BY id DESC LIMIT 6",
+    )
+    .bind(ts - 1800)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let demandes: Vec<Value> = demandes
+        .into_iter()
+        .map(|(cible, charge, resultat)| {
+            let c: Value = serde_json::from_str(&charge).unwrap_or(Value::Null);
+            let texte = if cible.ends_with("/rename") {
+                format!("Renommer en « {} »", c["to"].as_str().unwrap_or(""))
+            } else {
+                format!("Supprimer {}", c["id"].as_str().unwrap_or(""))
+            };
+            let statut = match resultat.as_deref() {
+                Some("réussi") => "ok",
+                Some(r) if r.starts_with("refusé") || r.starts_with("échec") || r.starts_with("abandonn") => "erreur",
+                _ => "attente",
+            };
+            let etat = resultat.unwrap_or_else(|| "en attente".into());
+            json!({"texte": texte, "etat": etat, "statut": statut})
+        })
+        .collect();
+    contexte.insert("demandes".into(), Value::Array(demandes));
     render(&state, "ambiance_zigbee.html", Value::Object(contexte))
 }
 
@@ -374,6 +402,110 @@ pub(super) async fn rattacher(
         format!("« {nom} » rattaché : {libelle}")
     };
     Ok(retour(&message, Some(&ieee)))
+}
+
+/// Nom Zigbee2MQTT valable : 1 à 50 caractères, sans « / », « # » ni « + »
+/// (réservés par MQTT et par les sujets de Zigbee2MQTT).
+fn nom_valable(nom: &str) -> bool {
+    let n = nom.chars().count();
+    (1..=50).contains(&n) && !nom.contains(['/', '#', '+']) && !nom.starts_with("0x") && nom.trim() == nom
+}
+
+/// Renomme un module : dans Zigbee2MQTT (friendly_name) et tout de suite
+/// dans EO_Sevel, avec les points qui portent son nom.
+pub(super) async fn renommer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let pool = &state.pool;
+    let ieee = form_text(&form, "ieee").unwrap_or_default();
+    let ancien: String = sqlx::query_scalar("SELECT nom FROM zigbee_appareil WHERE ieee=?")
+        .bind(&ieee)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let nouveau = form_text(&form, "nom").map(|n| n.trim().to_string()).unwrap_or_default();
+    if !nom_valable(&nouveau) {
+        return Err(AppError::Invalid("Nom : 1 à 50 caractères, sans « / », « # » ni « + »".into()));
+    }
+    if nouveau == ancien {
+        return Ok(retour("Nom inchangé", Some(&ieee)));
+    }
+    let pris: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM zigbee_appareil WHERE nom=? AND ieee<>? AND present=1")
+        .bind(&nouveau)
+        .bind(&ieee)
+        .fetch_one(pool)
+        .await?;
+    if pris > 0 {
+        return Err(AppError::Invalid(format!("Un autre module s'appelle déjà « {nouveau} »")));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO zigbee_commande(ieee,charge,demande) VALUES('bridge/request/device/rename',?,?)")
+        .bind(json!({"from": ieee, "to": nouveau}).to_string())
+        .bind(maintenant())
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE zigbee_appareil SET nom=? WHERE ieee=?").bind(&nouveau).bind(&ieee).execute(&mut *tx).await?;
+    // Points rattachés : « Ancien » ou « Ancien — suffixe ».
+    sqlx::query(
+        "UPDATE ipx_point SET nom=?1||substr(nom,length(?2)+1) WHERE hote='zigbee' AND chemin LIKE ?3 AND (nom=?2 OR nom LIKE ?2||' — %')",
+    )
+    .bind(&nouveau)
+    .bind(&ancien)
+    .bind(format!("{ieee}/%"))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    db::journal(pool, &session.nom, "renommer", "module zigbee", &format!("{ancien} → {nouveau}"), "/ambiance/zigbee").await;
+    Ok(retour(&format!("« {ancien} » renommé « {nouveau} »"), Some(&ieee)))
+}
+
+/// Supprime un module : retiré de Zigbee2MQTT (forcé s'il est sur pile ou
+/// hors ligne, car il ne répondrait pas), détaché de ses salles et caché
+/// de la page. S'il revient dans la liste de Zigbee2MQTT, il réapparaît.
+pub(super) async fn supprimer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let pool = &state.pool;
+    let ieee = form_text(&form, "ieee").unwrap_or_default();
+    let (nom, alimentation, disponible): (String, Option<String>, Option<i64>) =
+        sqlx::query_as("SELECT nom, alimentation, disponible FROM zigbee_appareil WHERE ieee=?")
+            .bind(&ieee)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(AppError::NotFound)?;
+    let force = disponible == Some(0) || alimentation.as_deref().is_some_and(|a| a.to_lowercase().contains("batter"));
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO zigbee_commande(ieee,charge,demande) VALUES('bridge/request/device/remove',?,?)")
+        .bind(json!({"id": ieee, "force": force}).to_string())
+        .bind(maintenant())
+        .execute(&mut *tx)
+        .await?;
+    let points: Vec<i64> = sqlx::query_scalar("SELECT id FROM ipx_point WHERE hote='zigbee' AND chemin LIKE ?")
+        .bind(format!("{ieee}/%"))
+        .fetch_all(&mut *tx)
+        .await?;
+    for id in points {
+        for sql in [
+            "UPDATE ipx_commande_journal SET point_id=NULL WHERE point_id=?",
+            "DELETE FROM eclairage_etat WHERE point_id=?",
+            "DELETE FROM eclairage_sortie WHERE point_id=?",
+            "DELETE FROM ipx_point WHERE id=?",
+        ] {
+            sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+        }
+    }
+    sqlx::query("UPDATE zigbee_appareil SET present=0 WHERE ieee=?").bind(&ieee).execute(&mut *tx).await?;
+    tx.commit().await?;
+    db::journal(pool, &session.nom, "supprimer", "module zigbee", &format!("{nom} ({ieee})"), "/ambiance/zigbee").await;
+    Ok(retour(&format!("« {nom} » supprimé"), None))
 }
 
 /// Allume ou éteint un interrupteur pour vérifier ce qu'il commande.
@@ -799,6 +931,44 @@ mod tests {
         let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ipx_point WHERE chemin LIKE '0xa1/%'")
             .fetch_one(&state.pool).await?;
         assert_eq!(reste, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn renommer_puis_supprimer_un_module() -> anyhow::Result<()> {
+        use super::super::documents::tests::session;
+        let state = base().await?;
+        rattacher(State(state.clone()), Extension(session()),
+            Form(f(&[("ieee", "0xa1"), ("usage", "ambiance"), ("salle_id", "1")]))).await?;
+        let html = page(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("Renommer ou supprimer") && html.contains("/ambiance/zigbee/supprimer"));
+
+        // Nom refusé : caractère réservé, ou déjà pris.
+        assert!(renommer(State(state.clone()), Extension(session()), Form(f(&[("ieee", "0xa1"), ("nom", "PS/1")]))).await.is_err());
+        assert!(renommer(State(state.clone()), Extension(session()), Form(f(&[("ieee", "0xa1"), ("nom", "tri")]))).await.is_err());
+
+        renommer(State(state.clone()), Extension(session()), Form(f(&[("ieee", "0xa1"), ("nom", "Sonde PS 1")]))).await?;
+        let (cible, charge): (String, String) = sqlx::query_as("SELECT ieee, charge FROM zigbee_commande ORDER BY id DESC LIMIT 1")
+            .fetch_one(&state.pool).await?;
+        assert_eq!(cible, "bridge/request/device/rename");
+        assert_eq!(serde_json::from_str::<Value>(&charge)?, json!({"from": "0xa1", "to": "Sonde PS 1"}));
+        let nom: String = sqlx::query_scalar("SELECT nom FROM zigbee_appareil WHERE ieee='0xa1'").fetch_one(&state.pool).await?;
+        assert_eq!(nom, "Sonde PS 1");
+        let points: Vec<String> = sqlx::query_scalar("SELECT nom FROM ipx_point WHERE chemin LIKE '0xa1/%' ORDER BY nom")
+            .fetch_all(&state.pool).await?;
+        assert!(points.iter().all(|n| n.starts_with("Sonde PS 1")), "{points:?}");
+        let html = page(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(html.contains("Renommer en « Sonde PS 1 »"), "demande affichée");
+
+        supprimer(State(state.clone()), Extension(session()), Form(f(&[("ieee", "0xa1")]))).await?;
+        let (cible, charge): (String, String) = sqlx::query_as("SELECT ieee, charge FROM zigbee_commande ORDER BY id DESC LIMIT 1")
+            .fetch_one(&state.pool).await?;
+        assert_eq!(cible, "bridge/request/device/remove");
+        assert_eq!(serde_json::from_str::<Value>(&charge)?, json!({"id": "0xa1", "force": true}), "sonde sur pile : forcé");
+        let reste: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ipx_point WHERE chemin LIKE '0xa1/%'").fetch_one(&state.pool).await?;
+        assert_eq!(reste, 0, "détachée de sa salle");
+        let html = page(State(state.clone()), Extension(session()), Query(HashMap::new())).await?.0;
+        assert!(!html.contains("id=\"zb-0xa1\""), "plus affichée");
         Ok(())
     }
 }

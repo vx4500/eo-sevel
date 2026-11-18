@@ -235,6 +235,8 @@ pub fn router(state: AppState) -> Router {
         .route("/ambiance/zigbee", get(zigbee::page))
         .route("/ambiance/zigbee/rattacher", post(zigbee::rattacher))
         .route("/ambiance/zigbee/commander", post(zigbee::commander))
+        .route("/ambiance/zigbee/renommer", post(zigbee::renommer))
+        .route("/ambiance/zigbee/supprimer", post(zigbee::supprimer))
         .route("/ambiance/zigbee/electricite", get(zigbee::electricite))
         .route(
             "/ambiance/zigbee/electricite/reglages",

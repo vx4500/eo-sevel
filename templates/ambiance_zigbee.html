@@ -24,6 +24,9 @@
 .zb-pile.faible i{background:#a3361a}
 .zb-lien{font-size:.85rem}
 .zb-lien.rattache{color:#1f6a43;font-weight:700}
+.zb-demandes{display:flex;flex-direction:column;gap:4px}
+.zb-carte .zb-supprimer{background:#fff;color:#a3361a;border:1px solid #e3b3a3}
+.zb-carte .zb-supprimer:hover{background:#fbeee9}
 .zb-carte details summary{cursor:pointer;font-size:.85rem;color:var(--vert2);font-weight:700}
 .zb-carte form{display:flex;flex-direction:column;gap:6px;margin:8px 0 0}
 .zb-ligne{display:flex;gap:6px}.zb-ligne>*{flex:1;min-width:0}
@@ -32,6 +35,7 @@
 </style>
 
 {% if ok %}<div class="card"><p style="margin:0"><b>{{ ok }}</b></p></div>{% endif %}
+{% if demandes %}<div class="card zb-demandes"><b>Demandes à Zigbee2MQTT</b>{% for d in demandes %}<span>{{ d.texte }} : {% if d.statut == 'ok' %}<b style="color:#2f6b4f">✔ réussi</b>{% elif d.statut == 'erreur' %}<b style="color:#a3361a">✖ {{ d.etat }}</b>{% else %}{{ d.etat }}…{% endif %}</span>{% endfor %}</div>{% endif %}
 
 <div class="zb-etat{% if not pont.actif %} ko{% endif %}">
   <span class="zb-pastille"></span>
@@ -105,6 +109,19 @@
           {% endif %}
           <button>Enregistrer</button>
         </form>
+      </details>
+      <details class="zb-gerer">
+        <summary>Renommer ou supprimer</summary>
+        <form method="post" action="/ambiance/zigbee/renommer" data-no-ajax>
+          <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ieee" value="{{ a.ieee }}">
+          <label>Nom du module<input name="nom" value="{{ a.nom }}" maxlength="50" required pattern="[^/#+]+" title="Sans « / », « # » ni « + »"></label>
+          <button>Renommer</button>
+        </form>
+        <form method="post" action="/ambiance/zigbee/supprimer" data-no-ajax data-nom="{{ a.nom }}" onsubmit="return confirm('Supprimer « '+this.dataset.nom+' » ? Il sera retiré de Zigbee2MQTT et détaché de sa salle. Pour le revoir, il faudra le réappairer.')">
+          <input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ieee" value="{{ a.ieee }}">
+          <button class="zb-supprimer">🗑 Supprimer ce module</button>
+        </form>
+        <small class="muted">Adresse : {{ a.ieee }}</small>
       </details>
       {% endif %}
     </div>
