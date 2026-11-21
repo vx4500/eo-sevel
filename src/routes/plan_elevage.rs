@@ -103,13 +103,14 @@ pub(super) async fn page(
     .await?;
     let zigbee = generic_rows(
         &state.pool,
+        // Modules supprimés ou disparus de Zigbee2MQTT (present=0) : pas proposés.
         "SELECT ieee, nom, categorie FROM zigbee_appareil \
-         WHERE categorie IN ('sonde','variateur','interrupteur') ORDER BY nom",
+         WHERE categorie IN ('sonde','variateur','interrupteur') AND present=1 ORDER BY nom COLLATE NOCASE",
     )
     .await?;
     let compteurs = generic_rows(
         &state.pool,
-        "SELECT ieee, nom FROM zigbee_appareil WHERE categorie='compteur' ORDER BY nom",
+        "SELECT ieee, nom FROM zigbee_appareil WHERE categorie='compteur' AND present=1 ORDER BY nom COLLATE NOCASE",
     )
     .await?;
     let cases = generic_rows(

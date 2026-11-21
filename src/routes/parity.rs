@@ -1460,13 +1460,22 @@ pub(super) async fn saisie_rapide(
             let stade = form_text(&form, "stade")
                 .or(stade_case)
                 .map(|s| super::normalize_death_stage(&s));
+            // Poids facultatif (kg, total des porcs déclarés).
+            let poids = match form_text(&form, "poids") {
+                None => None,
+                Some(_) => Some(
+                    form_f64(&form, "poids")
+                        .filter(|p| *p > 0.0 && *p <= 50_000.0)
+                        .ok_or_else(|| AppError::Invalid("Poids : un nombre de kilos, par exemple 45 ou 12,5".into()))?,
+                ),
+            };
             sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par,note) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?)")
                 .bind(&band)
                 .bind(&date)
                 .bind(stade)
                 .bind(case_id)
                 .bind(&cause)
-                .bind(form_f64(&form, "poids"))
+                .bind(poids)
                 .bind(number)
                 .bind(&session.nom)
                 .bind(form_text(&form, "note"))
@@ -2571,6 +2580,31 @@ mod perte_porcelet_tests {
     /// des porcelets sous la mère — au lieu du nombre né vivant moins les
     /// pertes déjà déclarées. Une perte plausible (inférieure aux 10 nés
     /// vifs) doit désormais être acceptée.
+    #[tokio::test]
+    async fn perte_porc_enregistre_le_poids() -> anyhow::Result<()> {
+        let (state, _, _) = test_state().await?;
+        sqlx::query("INSERT INTO causeperte(libelle) SELECT 'Autre' WHERE NOT EXISTS(SELECT 1 FROM causeperte WHERE libelle='Autre')")
+            .execute(&state.pool)
+            .await?;
+        let bande: i64 = sqlx::query_scalar("SELECT id FROM bande WHERE code='BTEST'").fetch_one(&state.pool).await?;
+        let form = |poids: &str| -> HashMap<String, String> {
+            [("csrf_token", "csrf-test"), ("type", "perte_bande"), ("bande_id", &bande.to_string()), ("nombre", "2"), ("cause", "Autre"), ("poids", poids), ("date", "2026-08-10")]
+                .into_iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect()
+        };
+        saisie_rapide(State(state.clone()), Extension(session()), Form(form("92,5"))).await?;
+        let poids: Option<f64> = sqlx::query_scalar("SELECT poids FROM declarationmort ORDER BY id DESC LIMIT 1").fetch_one(&state.pool).await?;
+        assert_eq!(poids, Some(92.5));
+        // Sans poids : accepté, poids vide.
+        saisie_rapide(State(state.clone()), Extension(session()), Form(form(""))).await?;
+        let poids: Option<f64> = sqlx::query_scalar("SELECT poids FROM declarationmort ORDER BY id DESC LIMIT 1").fetch_one(&state.pool).await?;
+        assert_eq!(poids, None);
+        // Poids absurde : refusé.
+        assert!(saisie_rapide(State(state.clone()), Extension(session()), Form(form("-3"))).await.is_err());
+        Ok(())
+    }
+
     #[tokio::test]
     async fn perte_porcelet_sous_la_mere_est_acceptee_avec_une_case_maternite() -> anyhow::Result<()>
     {

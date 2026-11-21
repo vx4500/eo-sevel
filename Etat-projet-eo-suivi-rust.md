@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.81.1** — bibliothèques mises à jour pour corriger des failles de sécurité.
+Version actuelle : **2.81.2** — poids des porcs morts à la saisie, liste Zigbee du plan sans modules supprimés.
 
+
+Version Rust 2.81.2 : (1) saisie rapide « Perte porc » : champ Poids (kg, facultatif, total si plusieurs porcs), contrôlé (> 0 et ≤ 50 000) et enregistré dans declarationmort.poids ; outil MCP declarer_mort : paramètre poids, repris dans la confirmation. Tests perte_porc_enregistre_le_poids et outil MCP. (2) Plan de l'élevage : listes « Appareil Zigbee » et compteurs limitées aux modules present=1 (les modules supprimés n'y figurent plus).
 
 Version Rust 2.81.1 : audit OSV du Cargo.lock (18/11) — mises à jour compatibles : rustls 0.23.43→0.23.46, rustls-webpki 0.103.14→0.103.17, tokio 1.53.1→1.54.1, webpki-roots 1.0.9→1.0.12, zstd 0.13.3→0.13.5, zstd-safe 7.2.4→7.4.1, zstd-sys 2.0.16→2.1.3, quinn-proto 0.11.19, quinn-udp 0.5.16. Restent : rsa 0.9.10 (RUSTSEC-2023-0071, non compilé pour la cible), chrono (non maintenu, informatif), libsqlite3-sys 0.30.1 (RUSTSEC-2026-0459, local ; demande sqlx plus récent).
 

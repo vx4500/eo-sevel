@@ -74,6 +74,7 @@ fn outils() -> Value {
              "salle": {"type": "string", "description": "nom complet ou abrégé"}, "case": {"type": "string", "description": "numéro de vanne ou nom de la case (facultatif)"},
              "nombre": {"type": "integer"}, "cause": {"type": "string", "description": "une cause configurée (la liste est renvoyée si elle est inconnue)"},
              "stade": {"type": "string", "description": "facultatif : déduit de la salle"},
+             "poids": {"type": "number", "description": "facultatif : poids en kg (total si plusieurs porcs), ex. « un mort de 45 kilos »"},
              "date": {"type": "string", "description": "AAAA-MM-JJ, aujourd'hui par défaut"},
              "confirme": confirme}, "required": ["salle", "nombre", "cause"]}},
         {"name": "transferer_porcs",
@@ -944,13 +945,23 @@ async fn appeler(state: &AppState, nom: &str, a: &Value) -> Result<String, Strin
                 .or(stade_from_case(pool, case_id).await.map_err(|e| e.to_string())?)
                 .map(|s| normalize_death_stage(&s));
             let bande = code_bande(pool, bande_de_la_case(pool, case_id, &date).await.map_err(|e| e.to_string())?).await;
-            let resume = format!("{nombre} porc(s) mort(s) le {date} en {salle}, case {case} ({}), cause {cause}{}. Reste {} porcs dans la case.",
-                stade.as_deref().unwrap_or("stade inconnu"), bande.as_deref().map(|b| format!(", bande {b}")).unwrap_or_default(), present - nombre);
+            let poids = match a.get("poids").filter(|v| !v.is_null()) {
+                None => None,
+                Some(v) => Some(
+                    v.as_f64()
+                        .or_else(|| v.as_str().and_then(|t| t.trim().replace(',', ".").parse().ok()))
+                        .filter(|p| *p > 0.0 && *p <= 50_000.0)
+                        .ok_or_else(|| "Poids : un nombre de kilos, par exemple 45.".to_string())?,
+                ),
+            };
+            let resume = format!("{nombre} porc(s) mort(s) le {date} en {salle}, case {case} ({}), cause {cause}{}{}. Reste {} porcs dans la case.",
+                stade.as_deref().unwrap_or("stade inconnu"), bande.as_deref().map(|b| format!(", bande {b}")).unwrap_or_default(),
+                poids.map(|p| format!(", {} kg", format!("{p}").replace('.', ","))).unwrap_or_default(), present - nombre);
             if a.get("confirme").and_then(Value::as_bool) != Some(true) {
                 return Ok(format!("À CONFIRMER (rien n'est enregistré) : {resume}"));
             }
-            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,nombre,declare_par) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?)")
-                .bind(&bande).bind(&date).bind(&stade).bind(case_id).bind(&cause).bind(nombre).bind(AUTEUR)
+            sqlx::query("INSERT INTO declarationmort(horodatage,bande_code,date,stade,case_id,cause,poids,nombre,declare_par) VALUES(CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?)")
+                .bind(&bande).bind(&date).bind(&stade).bind(case_id).bind(&cause).bind(poids).bind(nombre).bind(AUTEUR)
                 .execute(pool).await.map_err(|e| e.to_string())?;
             journaliser(pool, "declarer_mort", &salle, &resume).await;
             Ok(format!("Enregistré : {resume}"))
@@ -1213,9 +1224,13 @@ mod tests {
         assert_eq!(case_pig_count(&pool, 137).await?, 60);
         let (e, t) = outil(&state, &jeton, "cases_salle", json!({"salle":"eng3"})).await;
         assert!(!e && t.contains("\"porcs\":20"), "{t}");
-        let (e, t) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Eng 3","nombre":1,"cause":"respiratoire","confirme":true})).await;
-        assert!(!e && t.starts_with("Enregistré"), "{t}");
+        let (e, t) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Eng 3","nombre":1,"cause":"respiratoire","poids":45.5,"confirme":true})).await;
+        assert!(!e && t.starts_with("Enregistré") && t.contains("45,5 kg"), "{t}");
         assert_eq!(case_pig_count(&pool, 138).await?, 19);
+        let poids: Option<f64> = sqlx::query_scalar("SELECT poids FROM declarationmort ORDER BY id DESC LIMIT 1").fetch_one(&pool).await?;
+        assert_eq!(poids, Some(45.5));
+        let (e, _) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Eng 3","nombre":1,"cause":"respiratoire","poids":-2,"confirme":true})).await;
+        assert!(e, "poids négatif refusé");
         Ok(())
     }
 
