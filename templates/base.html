@@ -459,7 +459,7 @@
       </details>
     </div>
     <div class="fab-f" data-for="perte_bande" hidden>
-      <p class="help">Porcs sortis de maternité : choisissez la bande, puis la case si vous la connaissez (les cases de la bande sont proposées en premier).</p>
+      <p class="help">Porcs sortis de maternité : choisissez la bande, puis la case (seules les cases où la bande se trouve sont proposées, avec leur nombre de porcs).</p>
       <label>Numéro de bande
         <select name="bande_id" id="fab-bande-perte-porc" disabled required><option value="">Chargement…</option></select>
       </label>
@@ -580,26 +580,34 @@
   var sowLabel=document.getElementById('fab-truie-label');
   var band=document.getElementById('fab-bande');
   var bandPigLoss=document.getElementById('fab-bande-perte-porc');
-  // Perte porc : cases de la bande choisie en premier, puis les autres.
+  // Perte porc : seulement les cases où la bande choisie est présente
+  // aujourd'hui (avec leur effectif). Si aucune n'est connue, toutes les
+  // cases restent proposées pour ne pas bloquer la saisie.
   var casePigLoss=document.getElementById('fab-case-perte-porc');
   function remplirCasesPertePorc(){
     if(!casePigLoss) return;
     var toutes=(typeof movementCases!=='undefined' && movementCases)?movementCases:[];
     var choix=casePigLoss.value;
     function libelle(r){ return [r.site,r.salle,r.nom].filter(Boolean).join(' · '); }
-    function remplir(ids){
+    function remplir(presentes){
       casePigLoss.replaceChildren(new Option('— case non précisée —',''));
-      var bande=document.createElement('optgroup'); bande.label='Cases de la bande';
-      var autres=document.createElement('optgroup'); autres.label=ids.length?'Autres cases':'Toutes les cases';
-      toutes.forEach(function(r){ (ids.indexOf(String(r.id))>=0?bande:autres).appendChild(new Option(libelle(r),String(r.id))); });
-      if(bande.children.length) casePigLoss.appendChild(bande);
-      if(autres.children.length) casePigLoss.appendChild(autres);
+      if(presentes.length){
+        presentes.forEach(function(r){ casePigLoss.add(new Option(libelle(r)+' · '+r.porcs+' porc'+(r.porcs>1?'s':'')+(r.porcs_case>r.porcs?' (sur '+r.porcs_case+' dans la case)':''),String(r.id))); });
+      } else {
+        var autres=document.createElement('optgroup');
+        autres.label=bandPigLoss.value?'Bande dans aucune case connue : toutes les cases':'Toutes les cases';
+        toutes.forEach(function(r){ autres.appendChild(new Option(libelle(r),String(r.id))); });
+        if(autres.children.length) casePigLoss.appendChild(autres);
+      }
       casePigLoss.value=choix;
+      if(casePigLoss.value!==choix) casePigLoss.value='';
+      // Une seule case : choisie d'office.
+      if(presentes.length===1) casePigLoss.value=String(presentes[0].id);
     }
     if(!bandPigLoss.value){ remplir([]); return; }
     fetch('/api/bande/'+encodeURIComponent(bandPigLoss.value)+'/cases',{credentials:'same-origin'})
       .then(function(r){ return r.ok?r.json():[]; })
-      .then(function(rows){ remplir((rows||[]).map(function(r){ return String(r.id); })); })
+      .then(function(rows){ remplir((rows||[]).filter(function(r){ return r.presente; })); })
       .catch(function(){ remplir([]); });
   }
   if(bandPigLoss) bandPigLoss.addEventListener('change', remplirCasesPertePorc);

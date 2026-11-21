@@ -1231,6 +1231,13 @@ mod tests {
         assert_eq!(poids, Some(45.5));
         let (e, _) = outil(&state, &jeton, "declarer_mort", json!({"salle":"Eng 3","nombre":1,"cause":"respiratoire","poids":-2,"confirme":true})).await;
         assert!(e, "poids négatif refusé");
+        // Perte porc : seules les cases où la bande est présente aujourd'hui.
+        let bande: i64 = sqlx::query_scalar("SELECT bande_id FROM transfert WHERE case_dest_id=138 AND bande_id IS NOT NULL ORDER BY id DESC LIMIT 1").fetch_one(&pool).await?;
+        let axum::Json(cases) = super::api_bande_cases(State(state.clone()), axum::extract::Path(bande)).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let presentes: Vec<(i64, i64)> = cases.as_array().unwrap().iter()
+            .filter(|c| c["presente"] == true).map(|c| (c["id"].as_i64().unwrap(), c["porcs"].as_i64().unwrap())).collect();
+        assert!(presentes.contains(&(138, 19)), "{cases}");
+        assert!(presentes.iter().all(|(_, n)| *n > 0), "{cases}");
         Ok(())
     }
 
@@ -1517,6 +1524,31 @@ mod tests {
         assert!(affecte >= 1);
         let en_mater: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM truie t JOIN casesalle c ON c.id=t.case_id WHERE c.salle_id=7 AND t.reformee=0").fetch_one(&pool).await?;
         println!("truies encore rangées dans une case de la Mater 1 : {en_mater}");
+        Ok(())
+    }
+
+    /// Cases proposées pour une perte porc, bande par bande, sur une copie
+    /// de la base réelle : `EO_TEST_BASE=… cargo test -- --ignored cases_perte_sur_copie --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn cases_perte_sur_copie() -> anyhow::Result<()> {
+        let chemin = std::env::var("EO_TEST_BASE")?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&chemin).foreign_keys(true);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(options).await?;
+        crate::db::init(&pool).await?;
+        let state = AppState::new(
+            Config { bind: "127.0.0.1:8080".parse()?, db_path: chemin.into(), secure_cookies: false },
+            pool.clone(),
+            crate::templates::build()?,
+        );
+        let bandes: Vec<(i64, String)> = sqlx::query_as("SELECT id, code FROM bande WHERE active=1 ORDER BY code").fetch_all(&pool).await?;
+        for (id, code) in bandes {
+            let axum::Json(cases) = super::api_bande_cases(State(state.clone()), axum::extract::Path(id)).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            let toutes = cases.as_array().map(Vec::len).unwrap_or(0);
+            let presentes: Vec<String> = cases.as_array().into_iter().flatten().filter(|c| c["presente"] == true)
+                .map(|c| format!("{} {} ({})", c["salle"].as_str().unwrap_or(""), c["nom"].as_str().unwrap_or(""), c["porcs"])).collect();
+            println!("{code} : {} case(s) proposée(s) sur {toutes} connues : {}", presentes.len(), presentes.join(", "));
+        }
         Ok(())
     }
 }

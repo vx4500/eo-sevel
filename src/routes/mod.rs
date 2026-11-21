@@ -6283,7 +6283,38 @@ async fn api_bande_cases(
     .bind(id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(axum::Json(Value::Array(rows_to_json(rows)?)))
+    // Porcs de la bande encore dans chaque case : entrées moins sorties de la
+    // bande (comme la frise des bandes), plafonnées par l'effectif réel de
+    // la case. Une case partagée par deux bandes compte pour les deux. La
+    // saisie d'une perte ne propose que les cases où la bande est présente.
+    let mut lignes = rows_to_json(rows)?;
+    for ligne in lignes.iter_mut() {
+        let case_id = ligne["id"].as_i64().unwrap_or(0);
+        let porcs_case = case_pig_count(&state.pool, case_id).await?;
+        let net_bande: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(CASE WHEN case_dest_id=?1 AND COALESCE(case_source_id,0)<>?1 THEN COALESCE(nombre,0) \
+                                          WHEN case_source_id=?1 AND COALESCE(case_dest_id,0)<>?1 THEN -COALESCE(nombre,0) ELSE 0 END),0) AS INTEGER) \
+             FROM transfert WHERE bande_id=?2 AND espece='porc' AND (case_dest_id=?1 OR case_source_id=?1)",
+        )
+        .bind(case_id)
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+        // Morts déclarés dans cette case pour cette bande.
+        let morts: i64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(d.nombre),0) AS INTEGER) FROM declarationmort d JOIN bande b ON b.code=d.bande_code \
+             WHERE d.case_id=? AND b.id=?",
+        )
+        .bind(case_id)
+        .bind(id)
+        .fetch_one(&state.pool)
+        .await?;
+        let porcs = (net_bande - morts).min(porcs_case).max(0);
+        ligne["porcs"] = json!(porcs);
+        ligne["porcs_case"] = json!(porcs_case);
+        ligne["presente"] = json!(porcs > 0);
+    }
+    Ok(axum::Json(Value::Array(lignes)))
 }
 
 async fn recherche(

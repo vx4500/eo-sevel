@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.81.2** — poids des porcs morts à la saisie, liste Zigbee du plan sans modules supprimés.
+Version actuelle : **2.81.3** — perte porc : seules les cases où la bande est présente.
 
+
+Version Rust 2.81.3 : /api/bande/{id}/cases renvoie pour chaque case « porcs » (porcs de la bande : transferts entrants − sortants de la bande dans la case − morts déclarés dans la case pour la bande, plafonné par l'effectif de la case), « porcs_case » et « presente ». Saisie rapide « Perte porc » : seules les cases présentes sont proposées, avec leur nombre de porcs (case unique choisie d'office) ; si aucune, toutes les cases restent proposées. Vérifié sur copie : B1.05 en 35G6K Case 1 (252) partagée avec B2.12 (28) = 280. Essai ignoré cases_perte_sur_copie.
 
 Version Rust 2.81.2 : (1) saisie rapide « Perte porc » : champ Poids (kg, facultatif, total si plusieurs porcs), contrôlé (> 0 et ≤ 50 000) et enregistré dans declarationmort.poids ; outil MCP declarer_mort : paramètre poids, repris dans la confirmation. Tests perte_porc_enregistre_le_poids et outil MCP. (2) Plan de l'élevage : listes « Appareil Zigbee » et compteurs limitées aux modules present=1 (les modules supprimés n'y figurent plus).
 
