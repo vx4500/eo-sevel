@@ -3834,8 +3834,15 @@ fn key_dates(date_mb: Option<&str>, schedule: BandSchedule) -> Vec<Value> {
     let Some(date) = date_mb.and_then(parse_stored_date) else {
         return vec![];
     };
-    let today = Local::now().date_naive();
+    key_dates_au(date, schedule, Local::now().date_naive())
+}
+
+/// Étapes de la bande vues depuis `today` : en plus de l'état, chaque étape
+/// porte l'écart en jours avec aujourd'hui, et l'étape en cours son
+/// avancement jusqu'à la suivante (pour la barre du tableau « Dates clés »).
+fn key_dates_au(date: NaiveDate, schedule: BandSchedule, today: NaiveDate) -> Vec<Value> {
     let stages = schedule.stages();
+    let mut prochaine_vue = false;
     stages
         .iter()
         .enumerate()
@@ -3844,7 +3851,30 @@ fn key_dates(date_mb: Option<&str>, schedule: BandSchedule) -> Vec<Value> {
             let next = stages.get(index + 1).map(|(_, d)| date + Duration::days(*d));
             let current = stage_date <= today && next.map(|value| today < value).unwrap_or(true);
             let state = if current { "En cours" } else if stage_date < today { "Fait" } else { "À venir" };
-            json!({"nom": name, "date": stage_date.format("%Y-%m-%d").to_string(), "actuelle": current, "etat": state})
+            let prochaine = state == "À venir" && !prochaine_vue;
+            if prochaine {
+                prochaine_vue = true;
+            }
+            let mut v = json!({
+                "nom": name,
+                "date": stage_date.format("%Y-%m-%d").to_string(),
+                "actuelle": current,
+                "etat": state,
+                "jours": (stage_date - today).num_days(),
+                "prochaine": prochaine,
+            });
+            if current {
+                if let Some(fin) = next.filter(|fin| *fin > stage_date) {
+                    let duree = (fin - stage_date).num_days();
+                    let jour = (today - stage_date).num_days() + 1;
+                    v["jour"] = json!(jour);
+                    v["duree"] = json!(duree);
+                    v["pct"] = json!((jour * 100 / duree).clamp(3, 100));
+                    v["suivante"] = json!(stages[index + 1].0);
+                    v["fin"] = json!(fin.format("%Y-%m-%d").to_string());
+                }
+            }
+            v
         })
         .collect()
 }
@@ -15969,5 +15999,70 @@ mod gte_gttt_rendu_tests {
         assert!(html.contains("table class=\"cmp\"") && html.contains("Évolution"));
         std::fs::write(format!("{sortie}/gte.html"), html)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod dates_cles_tests {
+    use super::*;
+
+    #[test]
+    fn dates_cles_donnent_avancement_et_rendu_vivant() {
+        let mb = NaiveDate::from_ymd_opt(2027, 3, 10).unwrap();
+        let schedule = BandSchedule::default();
+        // Six jours après l'insémination : l'insémination est en cours,
+        // l'échographie est la prochaine étape.
+        let ia = mb - Duration::days(schedule.gestation);
+        let dates = key_dates_au(mb, schedule, ia + Duration::days(5));
+        assert_eq!(dates[0]["etat"], "En cours");
+        assert_eq!(dates[0]["jour"], 6);
+        assert_eq!(dates[0]["suivante"], "Échographie");
+        assert!(dates[0]["pct"].as_i64().unwrap() > 0);
+        assert_eq!(dates[1]["prochaine"], true);
+        assert_eq!(dates[2]["prochaine"], false);
+        assert_eq!(dates[1]["jours"], schedule.echo_after_ia - 5);
+        let env = crate::templates::build().unwrap();
+        for tpl in ["dates_cles.html"] {
+            let html = env
+                .get_template(tpl)
+                .unwrap()
+                .render(minijinja::context! { dates => dates.clone(), dates_titre => "Dates clés" })
+                .unwrap();
+            assert!(html.contains("dc-encours") && html.contains("➜ Prochaine"));
+            assert!(html.contains("Jour 6 sur"));
+            assert!(html.contains("🔍") && html.contains("🏁"));
+            assert!(html.contains("dans ") && html.contains("jours"));
+        }
+        // Après le départ : tout est fait, le départ est en cours, pas de barre.
+        let fin = key_dates_au(mb, schedule, mb + Duration::days(schedule.departure + 10));
+        assert!(fin.iter().all(|d| d["prochaine"] == false));
+        let html = env
+            .get_template("dates_cles.html")
+            .unwrap()
+            .render(minijinja::context! { dates => fin, dates_titre => "X" })
+            .unwrap();
+        assert!(html.contains("il y a 10 jours") && !html.contains("dc-barre\""));
+    }
+
+    /// Écrit le rendu dans `EO_SORTIE` pour une capture d'écran.
+    #[test]
+    #[ignore]
+    fn dates_cles_apercu() {
+        let sortie = std::env::var("EO_SORTIE").unwrap();
+        let mb = NaiveDate::from_ymd_opt(2027, 3, 10).unwrap();
+        let env = crate::templates::build().unwrap();
+        let mut html = String::new();
+        for (titre, jour) in [
+            ("Dates clés de la bande B1.47", NaiveDate::from_ymd_opt(2026, 11, 21).unwrap()),
+            ("Bande en post-sevrage", NaiveDate::from_ymd_opt(2027, 4, 20).unwrap()),
+        ] {
+            let dates = key_dates_au(mb, BandSchedule::default(), jour);
+            html += &env
+                .get_template("dates_cles.html")
+                .unwrap()
+                .render(minijinja::context! { dates => dates, dates_titre => titre })
+                .unwrap();
+        }
+        std::fs::write(sortie, html).unwrap();
     }
 }

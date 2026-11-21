@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.82.0** — poids estimé de chaque bande d'après les poids relevés, date de départ estimée.
+Version actuelle : **2.82.1** — tableaux « Dates clés » plus lisibles (frise, icônes, pastilles, temps restant, avancement).
 
+
+Version Rust 2.82.1 : tableaux « Dates clés » des pages bande et truie regroupés dans templates/dates_cles.html (frise verticale, icône par étape, pastilles Fait / En cours / Prochaine / À venir, temps relatif, barre d'avancement de l'étape en cours). key_dates délègue à key_dates_au(date, calendrier, aujourd'hui) qui ajoute jours, prochaine, et pour l'étape en cours jour, duree, pct, suivante, fin. Tests dates_cles_donnent_avancement_et_rendu_vivant et dates_cles_apercu (ignoré, écrit EO_SORTIE).
 
 Version Rust 2.82.0 : nouveau module routes/croissance.rs. Relevés d'une bande : pesee_bande, declarationmort.poids (par porc), sevrage evenement.poids_moyen, apports venteapport (carcasse → vif par rendement_carcasse_pct, défaut 76,5 ; lots_json par bande, réformes exclues). Avance en jours sur la courbe type gte_periode::poids_a_lage (inverse age_pour_poids), moyenne pondérée par source (pesée 1, vente 0,7, sevrage 0,5, mort 0,3 et ignorée sous 60 % de la courbe), √nombre et ancienneté (e^(−j/60)). Sans relevé : avance moyenne des apports de l'élevage sur 12 mois. Poids de départ : poids_cible de la bande, sinon poids vif moyen des apports de l'année (116 kg sur copie). Comparaison aux bandes habituelles (et non au calendrier J215 : premiers apports réels vers J185). Affiché : carte « Poids estimé de la bande » (/bande/{id}) et colonne « Poids estimé » du Planning. Vérifié sur copie : B2.12 porc mort 78 kg → ≈ 78 kg, départ ≈ 13/01/2027, 2 j de retard.
 

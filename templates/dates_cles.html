@@ -1,0 +1,40 @@
+<style>
+.dc-table td{vertical-align:middle;padding:9px 12px}
+.dc-table tr.dc td{transition:background .15s}
+.dc-table tbody tr.dc:hover td{background:#f6faf7}
+.dc-etape{position:relative;padding-left:58px!important;min-height:44px}
+.dc-etape::before{content:"";position:absolute;left:27px;top:0;bottom:0;width:3px;background:#dfe7e2}
+.dc-table tbody tr.dc:first-child .dc-etape::before{top:50%}
+.dc-table tbody tr.dc:last-child .dc-etape::before{bottom:50%}
+.dc-fait .dc-etape::before,.dc-encours .dc-etape::before{background:#52b788}
+.dc-ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:17px;background:#fff;border:2px solid #cfdad3;z-index:1}
+.dc-fait .dc-ic{background:#e9f7ef;border-color:#52b788}
+.dc-encours .dc-ic{background:#fff4e0;border-color:#e8912d;box-shadow:0 0 0 0 rgba(232,145,45,.55);animation:dc-pouls 2s infinite}
+.dc-prochaine .dc-ic{border-color:#3d7fd9;background:#eaf2fd}
+@keyframes dc-pouls{0%{box-shadow:0 0 0 0 rgba(232,145,45,.55)}70%{box-shadow:0 0 0 10px rgba(232,145,45,0)}100%{box-shadow:0 0 0 0 rgba(232,145,45,0)}}
+@media (prefers-reduced-motion:reduce){.dc-encours .dc-ic{animation:none}}
+.dc-nom{font-weight:600;color:var(--ink)}
+.dc-fait .dc-nom,.dc-fait .dc-date b{color:#5f6f68;font-weight:500}
+.dc-table tbody tr.dc-encours td{background:#fff6e6}
+.dc-table tbody tr.dc-encours td:first-child{box-shadow:inset 4px 0 0 #e8912d}
+.dc-encours .dc-nom{font-weight:800;color:#8a4b12}
+.dc-table tbody tr.dc-prochaine td{background:#f5f9ff}
+.dc-barre{height:7px;border-radius:9px;background:#f1dfc6;margin:7px 0 3px;max-width:320px;overflow:hidden}
+.dc-barre i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#e8912d,#c8823f)}
+.dc-sous{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.dc-date b{font-variant-numeric:tabular-nums}
+.dc-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.dc-fait .dc-badge{background:#e3f4ea;color:#1e6b45}
+.dc-encours .dc-badge{background:#e8912d;color:#fff}
+.dc-avenir .dc-badge{background:#eef1f4;color:#55636e}
+.dc-avenir.dc-prochaine .dc-badge{background:#3d7fd9;color:#fff}
+</style>
+{% set dc_icones = {"Insémination": "🐗", "Échographie": "🔍", "Gestante": "🤰", "Entrée maternité": "🏠", "Mise-bas": "🐷", "Sevrage": "🍼", "Transfert engraissement": "🚚", "Aliment finition": "🌾", "Départ abattoir": "🏁"} %}
+<section class="card"><h2>{{ dates_titre }}</h2><div class="rust-scroll"><table class="dc-table"><thead><tr><th>Étape</th><th>Date</th><th>État</th></tr></thead><tbody>
+{% for d in dates %}{% set j = d.jours %}
+<tr class="dc {% if d.actuelle %}dc-encours{% elif d.etat == 'Fait' %}dc-fait{% elif d.prochaine %}dc-avenir dc-prochaine{% else %}dc-avenir{% endif %}">
+<td class="dc-etape"><span class="dc-ic" aria-hidden="true">{{ dc_icones[d.nom] or "•" }}</span><span class="dc-nom">{{ d.nom }}</span>{% if d.actuelle and d.duree %}<div class="dc-barre" title="{{ d.pct }} %"><i style="width:{{ d.pct }}%"></i></div><span class="dc-sous">Jour {{ d.jour }} sur {{ d.duree }} · {{ d.suivante }} le {{ d.fin|date_fr }}</span>{% endif %}</td>
+<td class="dc-date"><b>{{ d.date|date_fr }}</b><span class="dc-sous">{% if j == 0 %}aujourd'hui{% elif j == 1 %}demain{% elif j == -1 %}hier{% elif j > 1 %}dans {{ j }} jours{% elif j is number %}il y a {{ j|abs }} jours{% endif %}</span></td>
+<td><span class="dc-badge">{% if d.actuelle %}● En cours{% elif d.etat == 'Fait' %}✓ Fait{% elif d.prochaine %}➜ Prochaine{% else %}⏳ À venir{% endif %}</span></td>
+</tr>{% endfor %}
+</tbody></table></div></section>
