@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Correctifs et versions</h1>
+<section class="card"><h2>2.82.0 — Poids estimé des bandes</h2><ul><li>Les poids saisis (porc mort pesé, pesée, poids au sevrage, apports à l'abattoir) servent à estimer le poids des autres porcs de la bande.</li><li>Page de la bande : carte « Poids estimé » avec le poids du jour, la date de départ estimée et l'avance ou le retard sur vos bandes habituelles. Planning : colonne « Poids estimé ».</li></ul></section>
 <section class="card"><h2>2.81.3 — Perte porc : les bonnes cases</h2><ul><li>Saisie rapide « Perte porc » : après le choix de la bande, seules les cases où elle se trouve sont proposées, avec son nombre de porcs (une case partagée entre deux bandes apparaît pour les deux). S'il n'y en a qu'une, elle est choisie d'office.</li></ul></section>
 <section class="card"><h2>2.81.2 — Poids des porcs morts</h2><ul><li>Saisie rapide « Perte porc » : nouveau champ Poids (facultatif, poids total si plusieurs porcs). L'assistant vocal accepte aussi le poids (« un mort en Engr3, respiratoire, 45 kilos »).</li><li>Plan de l'élevage : la liste des appareils Zigbee ne propose plus les modules supprimés.</li></ul></section>
 <section class="card"><h2>2.81.1 — Mises à jour de sécurité</h2><ul><li>Bibliothèques mises à jour pour corriger des failles connues : chiffrement des connexions (rustls, certificats), tokio et compression des pages (zstd).</li></ul></section>

@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.81.3** — perte porc : seules les cases où la bande est présente.
+Version actuelle : **2.82.0** — poids estimé de chaque bande d'après les poids relevés, date de départ estimée.
 
+
+Version Rust 2.82.0 : nouveau module routes/croissance.rs. Relevés d'une bande : pesee_bande, declarationmort.poids (par porc), sevrage evenement.poids_moyen, apports venteapport (carcasse → vif par rendement_carcasse_pct, défaut 76,5 ; lots_json par bande, réformes exclues). Avance en jours sur la courbe type gte_periode::poids_a_lage (inverse age_pour_poids), moyenne pondérée par source (pesée 1, vente 0,7, sevrage 0,5, mort 0,3 et ignorée sous 60 % de la courbe), √nombre et ancienneté (e^(−j/60)). Sans relevé : avance moyenne des apports de l'élevage sur 12 mois. Poids de départ : poids_cible de la bande, sinon poids vif moyen des apports de l'année (116 kg sur copie). Comparaison aux bandes habituelles (et non au calendrier J215 : premiers apports réels vers J185). Affiché : carte « Poids estimé de la bande » (/bande/{id}) et colonne « Poids estimé » du Planning. Vérifié sur copie : B2.12 porc mort 78 kg → ≈ 78 kg, départ ≈ 13/01/2027, 2 j de retard.
 
 Version Rust 2.81.3 : /api/bande/{id}/cases renvoie pour chaque case « porcs » (porcs de la bande : transferts entrants − sortants de la bande dans la case − morts déclarés dans la case pour la bande, plafonné par l'effectif de la case), « porcs_case » et « presente ». Saisie rapide « Perte porc » : seules les cases présentes sont proposées, avec leur nombre de porcs (case unique choisie d'office) ; si aucune, toutes les cases restent proposées. Vérifié sur copie : B1.05 en 35G6K Case 1 (252) partagée avec B2.12 (28) = 280. Essai ignoré cases_perte_sur_copie.
 

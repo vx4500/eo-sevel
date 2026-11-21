@@ -6,14 +6,15 @@
 <section class="acc-carte" style="display:flex;flex-direction:column;gap:12px;min-width:0"><div class="acc-tete"><div><h2>Conduite des bandes</h2></div></div>
 {% set bandes = frise_bandes %}{% set etiq = 190 %}{% set haut = 56 %}{% include "accueil_frise.html" %}</section>
 <section class="acc-carte" style="min-width:0"><h2>Les bandes en détail</h2>
-<div class="rust-scroll"><table class="pl-detail"><thead><tr><th>Bande</th><th>Stade</th><th>Animaux</th><th>Prochaine étape</th><th>Gestation</th><th>Maternité</th><th>Post-sevrage</th><th>Engraissement</th><th>Finition</th></tr></thead><tbody>
+<div class="rust-scroll"><table class="pl-detail"><thead><tr><th>Bande</th><th>Stade</th><th>Animaux</th><th>Prochaine étape</th><th>Poids estimé</th><th>Gestation</th><th>Maternité</th><th>Post-sevrage</th><th>Engraissement</th><th>Finition</th></tr></thead><tbody>
 {% for b in frise_bandes %}<tr>
 <td><a href="/bande/{{ b.id }}"><b>{{ b.code }}</b></a>{% if b.salles %}<small>{{ b.salles }}</small>{% endif %}</td>
 <td>{{ b.stade or '—' }}</td>
 <td>{% if b.truies %}{{ b.truies }} truies{% endif %}{% if b.truies and b.porcs %}<br>{% endif %}{% if b.porcs %}{{ b.porcs }} porcs{% endif %}{% if not b.truies and not b.porcs %}—{% endif %}</td>
 <td>{% if b.prochaine %}<b>{{ b.prochaine }}</b><small>{{ b.prochaine_date|date_fr }}{% if b.prochaine_delai %} · {{ b.prochaine_delai }}{% endif %}</small>{% else %}—{% endif %}</td>
+<td>{% if b.croissance %}<b>≈ {{ b.croissance.poids|int }} kg</b><small>{% if b.croissance.depart_passe %}{% if b.croissance.ventes_faites %}départs en cours{% else %}poids de départ atteint{% endif %}{% else %}départ ≈ {{ b.croissance.date_depart|date_fr }}{% endif %}{% if b.croissance.ecart_elevage %} · {% if b.croissance.ecart_elevage > 0 %}{{ b.croissance.ecart_elevage }} j d’avance{% else %}{{ b.croissance.ecart_elevage|abs }} j de retard{% endif %}{% endif %}{% if not b.croissance.propre %} · estimé sans pesée{% endif %}</small>{% else %}—{% endif %}</td>
 {% for nom in ['Gestation','Maternité','Post-sevrage','Engraissement','Finition'] %}{% set seg = b.segments|selectattr('nom','equalto',nom)|first %}<td>{% if seg %}<span class="{% if seg.en_cours %}actuel{% elif seg.passe %}passe{% endif %}">{{ seg.du|date_fr }} → {{ seg.au|date_fr }}</span>{% if seg.en_cours %}<small>en cours</small>{% endif %}{% else %}—{% endif %}</td>{% endfor %}
-</tr>{% else %}<tr><td colspan="9">Aucune bande active.</td></tr>{% endfor %}
+</tr>{% else %}<tr><td colspan="10">Aucune bande active.</td></tr>{% endfor %}
 </tbody></table></div></section>
 </div>
 <div class="rust-grid"><section class="card"><h2>Échéances, vaccins et soins</h2><div class="rust-scroll"><table><tr><th>Date</th><th>Bande</th><th>Étape</th><th>État</th></tr>{% for e in echeances %}<tr{% if e.en_retard %} style="background:#fdecea"{% endif %}><td>{{ e.date|date_fr }}</td><td>{{ e.bande }}</td><td>{% if e.soin %}{% if e.vaccin %}💉{% else %}💊{% endif %} {% endif %}{{ e.type }}</td><td>{% if e.en_retard %}<b style="color:#b3261e">{{ e.etat }}</b>{% elif e.a_verifier %}<b style="color:#9a5b00">⚠ {{ e.etat }}</b>{% else %}{{ e.etat }}{% endif %}</td></tr>{% else %}<tr><td colspan="4">Aucune date de mise-bas renseignée</td></tr>{% endfor %}</table></div></section>

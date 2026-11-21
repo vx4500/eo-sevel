@@ -31,6 +31,7 @@ mod ameliorations;
 mod automate;
 mod cameras;
 mod conduite;
+mod croissance;
 mod soins;
 mod eclairage;
 mod demo_portal;
@@ -3627,6 +3628,18 @@ async fn bande_detail(
              (SELECT poids_moyen FROM pesee_bande WHERE bande_code=b.code ORDER BY date DESC,id DESC LIMIT 1) AS dernier_poids,\
              (SELECT date FROM pesee_bande WHERE bande_code=b.code ORDER BY date DESC,id DESC LIMIT 1) AS date_pesee \
              FROM bande b WHERE b.id={}", band.id)).await?.into_iter().next()),
+    );
+    // Poids estimé de la bande d'après les poids relevés (pesées, morts
+    // pesés, sevrage, apports) et date de départ au poids cible.
+    let poids_cible: Option<f64> = sqlx::query_scalar("SELECT poids_cible FROM bande WHERE id=?")
+        .bind(band.id)
+        .fetch_one(&state.pool)
+        .await?;
+    ctx.insert(
+        "croissance".into(),
+        croissance::estimation(&state.pool, band.id, &band.code, band.date_mb.as_deref(), poids_cible)
+            .await?
+            .unwrap_or(Value::Null),
     );
     ctx.insert(
         "historique_presta".into(),
@@ -13820,6 +13833,14 @@ async fn planning(
             .filter_map(|e| e["salle"].as_str().or(e["nom"].as_str()).map(str::to_string))
             .fold(Vec::new(), |mut v, s| { if !v.contains(&s) { v.push(s); } v });
         b["salles"] = json!(salles.join(", "));
+        // Poids estimé d'après les poids relevés de la bande.
+        if let Some(id) = b["id"].as_i64() {
+            let infos: Option<(String, Option<String>, Option<f64>)> =
+                sqlx::query_as("SELECT code,date_mb,poids_cible FROM bande WHERE id=?").bind(id).fetch_optional(&state.pool).await?;
+            if let Some((code, mb, cible)) = infos {
+                b["croissance"] = croissance::estimation(&state.pool, id, &code, mb.as_deref(), cible).await?.unwrap_or(Value::Null);
+            }
+        }
     }
     let mut ctx = context(&session);
     ctx.insert("frise".into(), frise);
