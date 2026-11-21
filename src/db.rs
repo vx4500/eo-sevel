@@ -215,6 +215,9 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         // disponibles sans limite pour la vente.
         ("sessionventedirecte", "inventaire_declare_le", "TEXT"),
         ("sessionventedirecte", "annonce_envoyee_le", "TEXT"),
+        // Texte de l'annonce modifié par l'éleveur, gardé pour la vente.
+        ("sessionventedirecte", "annonce_sujet", "TEXT"),
+        ("sessionventedirecte", "annonce_message", "TEXT"),
         ("reglageventedirecte", "kg_par_porc", "REAL"),
         ("clientventedirecte", "desinscrit_le", "TEXT"),
         ("commandeventedirecte", "client_id", "INTEGER"),

@@ -475,6 +475,15 @@ pub(super) async fn annonce_page(
     )
     .fetch_optional(&state.pool)
     .await?;
+    let enregistre: Option<(Option<String>, Option<String>)> = match &active {
+        Some((id, ..)) => sqlx::query_as("SELECT annonce_sujet,annonce_message FROM sessionventedirecte WHERE id=?")
+            .bind(id)
+            .fetch_optional(&state.pool)
+            .await?,
+        None => None,
+    };
+    let (sujet_enregistre, message_enregistre) = enregistre.unwrap_or((None, None));
+    let texte_enregistre = sujet_enregistre.is_some() || message_enregistre.is_some();
     let ouvertes: i64 = sqlx::query_scalar("SELECT COALESCE((SELECT commandes_ouvertes FROM reglageventedirecte WHERE id=1),1)")
         .fetch_one(&state.pool)
         .await?;
@@ -498,13 +507,15 @@ pub(super) async fn annonce_page(
             .fetch_optional(&state.pool)
             .await?
             .flatten();
-    let (sujet, message) = match &active {
+    let (sujet_defaut, message_defaut) = match &active {
         Some((_, nom, limite, livraison, _)) => (
             format!("Les commandes sont ouvertes : {nom}"),
             texte_annonce_defaut(nom, limite.as_deref(), livraison.as_deref()),
         ),
         None => (String::new(), String::new()),
     };
+    let sujet = sujet_enregistre.filter(|v| !v.trim().is_empty()).unwrap_or(sujet_defaut);
+    let message = message_enregistre.filter(|v| !v.trim().is_empty()).unwrap_or(message_defaut);
     let lien = base.as_ref().map(|b| format!("{b}/commande"));
     let apercu = lien
         .as_deref()
@@ -535,6 +546,9 @@ pub(super) async fn annonce_page(
     ctx.insert("envoyes".into(), json!(query.get("envoyes")));
     ctx.insert("echecs".into(), json!(query.get("echecs")));
     ctx.insert("essai".into(), json!(query.get("essai")));
+    ctx.insert("texte_enregistre".into(), json!(texte_enregistre));
+    ctx.insert("flash_annonce".into(), json!(query.get("fait")));
+    ctx.insert("ajoutees".into(), json!(query.get("ajoutees")));
     render(&state, "vente_directe_annonce.html", Value::Object(ctx))
 }
 
@@ -563,6 +577,7 @@ async fn preparer_annonce(
     let message = form_text(form, "message")
         .filter(|v| v.chars().count() <= 5000)
         .ok_or_else(|| AppError::Invalid("Message obligatoire.".into()))?;
+    enregistrer_texte(&state.pool, session_id, &sujet, &message).await?;
     let base = adresse_publique(&state.pool, Some(headers), true)
         .await?
         .ok_or_else(|| AppError::Invalid("Adresse publique du logiciel inconnue : renseignez-la dans Paramètres (https://…) pour que le lien de commande fonctionne chez les clients.".into()))?;
@@ -573,6 +588,149 @@ async fn preparer_annonce(
         message,
         session_id,
     })
+}
+
+async fn enregistrer_texte(pool: &SqlitePool, session_id: i64, sujet: &str, message: &str) -> AppResult<()> {
+    sqlx::query("UPDATE sessionventedirecte SET annonce_sujet=?,annonce_message=? WHERE id=?")
+        .bind(sujet)
+        .bind(message)
+        .bind(session_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+fn retour_annonce(form: &HashMap<String, String>, suite: &str) -> Response {
+    let anciens = if form.get("anciens").map(String::as_str) == Some("1") { "anciens=1&" } else { "" };
+    Redirect::to(&format!("/vente-directe/annonce?{anciens}{suite}")).into_response()
+}
+
+/// « Enregistrer le texte » : garde le sujet et le message modifiés pour la
+/// vente active, sans rien envoyer. Vide = retour au texte proposé.
+pub(super) async fn annonce_enregistrer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let Some(session_id) = vente_active(&state.pool).await? else {
+        return Err(AppError::Invalid("Aucune vente active.".into()));
+    };
+    if form.get("reinitialiser").map(String::as_str) == Some("1") {
+        sqlx::query("UPDATE sessionventedirecte SET annonce_sujet=NULL,annonce_message=NULL WHERE id=?")
+            .bind(session_id)
+            .execute(&state.pool)
+            .await?;
+        return Ok(retour_annonce(&form, "fait=reinitialise"));
+    }
+    let sujet = form_text(&form, "sujet").unwrap_or_default();
+    let message = form_text(&form, "message").unwrap_or_default();
+    if sujet.chars().count() > 200 || message.chars().count() > 5000 {
+        return Err(AppError::Invalid("Texte trop long (sujet 200 caractères, message 5000).".into()));
+    }
+    enregistrer_texte(&state.pool, session_id, &sujet, &message).await?;
+    Ok(retour_annonce(&form, "fait=enregistre"))
+}
+
+/// Adresses saisies à la main : une par ligne (ou séparées par des virgules,
+/// points-virgules, espaces), avec un nom facultatif « Nom <adresse> ».
+fn lire_adresses(texte: &str) -> (Vec<(String, String)>, Vec<String>) {
+    let mut bonnes: Vec<(String, String)> = Vec::new();
+    let mut mauvaises = Vec::new();
+    for ligne in texte.split(['\n', ';', ',']) {
+        let ligne = ligne.trim();
+        if ligne.is_empty() {
+            continue;
+        }
+        let (nom, reste) = match (ligne.find('<'), ligne.rfind('>')) {
+            (Some(a), Some(b)) if a < b => (ligne[..a].trim().trim_matches('"').trim().to_string(), ligne[a + 1..b].to_string()),
+            _ => (String::new(), ligne.to_string()),
+        };
+        let mots: Vec<&str> = reste.split_whitespace().collect();
+        let (nom, emails): (String, Vec<&str>) = if nom.is_empty() {
+            let emails: Vec<&str> = mots.iter().copied().filter(|m| m.contains('@')).collect();
+            let nom = mots.iter().copied().filter(|m| !m.contains('@')).collect::<Vec<_>>().join(" ");
+            (nom, emails)
+        } else {
+            (nom, mots)
+        };
+        if emails.is_empty() {
+            mauvaises.push(ligne.to_string());
+        }
+        for email in emails {
+            let email = email.trim_matches(|c: char| matches!(c, '<' | '>' | '"' | '\'' | '(' | ')')).to_lowercase();
+            let valide = email.len() <= 200
+                && email.split_once('@').is_some_and(|(a, b)| !a.is_empty() && b.contains('.') && !b.starts_with('.') && !b.ends_with('.') && !b.contains('@'));
+            if !valide {
+                mauvaises.push(email);
+            } else if !bonnes.iter().any(|(_, e)| *e == email) {
+                bonnes.push((nom.clone(), email));
+            }
+        }
+    }
+    (bonnes, mauvaises)
+}
+
+/// Ajoute des destinataires à la main : client existant → son accord est
+/// enregistré ; sinon une fiche client est créée (sans commande).
+pub(super) async fn annonce_ajouter_adresses(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let (adresses, mauvaises) = lire_adresses(form.get("adresses").map(String::as_str).unwrap_or(""));
+    if !mauvaises.is_empty() {
+        return Err(AppError::Invalid(format!(
+            "Adresse(s) non reconnue(s), rien n’a été ajouté : {}. Corrigez et réessayez.",
+            mauvaises.join(", ")
+        )));
+    }
+    if adresses.is_empty() {
+        return Err(AppError::Invalid("Saisissez au moins une adresse e-mail.".into()));
+    }
+    let mut tx = state.pool.begin().await?;
+    for (nom, email) in &adresses {
+        let existants: Vec<i64> = sqlx::query_scalar("SELECT id FROM clientventedirecte WHERE lower(trim(email))=?")
+            .bind(email)
+            .fetch_all(&mut *tx)
+            .await?;
+        if existants.is_empty() {
+            let nom = if nom.is_empty() { email.split('@').next().unwrap_or(email).to_string() } else { nom.clone() };
+            sqlx::query("INSERT INTO clientventedirecte(nom,email,telephone,newsletter_email,newsletter_sms,cree_le,token_desinscription) VALUES(?,?,NULL,1,0,CURRENT_TIMESTAMP,?)")
+                .bind(nom)
+                .bind(email)
+                .bind(uuid::Uuid::new_v4().simple().to_string())
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            sqlx::query("UPDATE clientventedirecte SET newsletter_email=1,desinscrit_le=NULL WHERE lower(trim(email))=?")
+                .bind(email)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    tx.commit().await?;
+    db::journal(&state.pool, &session.nom, "ajouter", "annonce_vente_directe", &format!("{} adresse(s)", adresses.len()), "/vente-directe/annonce").await;
+    Ok(retour_annonce(&form, &format!("ajoutees={}", adresses.len())))
+}
+
+/// Retire une adresse de la liste d'annonce (le client reste dans le fichier).
+pub(super) async fn annonce_retirer(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    sqlx::query("UPDATE clientventedirecte SET newsletter_email=0,desinscrit_le=COALESCE(desinscrit_le,CURRENT_TIMESTAMP) WHERE id=?")
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    Ok(retour_annonce(&form, "fait=retire"))
 }
 
 /// Essai : un seul e-mail, à l'adresse expéditrice (celle de l'éleveur).
@@ -686,6 +844,8 @@ mod tests {
             "ALTER TABLE produitventedirecte ADD COLUMN quantite_par_porc REAL;
              ALTER TABLE sessionventedirecte ADD COLUMN inventaire_declare_le TEXT;
              ALTER TABLE sessionventedirecte ADD COLUMN annonce_envoyee_le TEXT;
+             ALTER TABLE sessionventedirecte ADD COLUMN annonce_sujet TEXT;
+             ALTER TABLE sessionventedirecte ADD COLUMN annonce_message TEXT;
              ALTER TABLE reglageventedirecte ADD COLUMN kg_par_porc REAL;
              ALTER TABLE clientventedirecte ADD COLUMN desinscrit_le TEXT;
              INSERT INTO produitventedirecte(id,nom,prix,unite,actif,ordre,quantite_disponible) VALUES
@@ -899,5 +1059,72 @@ mod tests {
         commander(&state, &[("nom_client", "Bob"), ("telephone", "06"), ("email", "bob@example.fr"), ("q_1", "1")]).await;
         let accords: Vec<(String, i64)> = sqlx::query_as("SELECT email,newsletter_email FROM clientventedirecte ORDER BY email").fetch_all(&state.pool).await.unwrap();
         assert_eq!(accords, vec![("alice@example.fr".into(), 1), ("bob@example.fr".into(), 0)]);
+    }
+
+    async fn ordre(state: &AppState) -> Vec<i64> {
+        sqlx::query_scalar("SELECT id FROM produitventedirecte ORDER BY ordre, id").fetch_all(&state.pool).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn produit_deplace_a_la_place_choisie() {
+        let state = vente().await;
+        let deplacer = |id: i64, champs: &'static [(&'static str, &'static str)]| {
+            let state = state.clone();
+            async move { produit_deplacer(State(state), Extension(session()), Path(id), Form(form(champs))).await.unwrap() }
+        };
+        deplacer(3, &[("position", "1")]).await;
+        assert_eq!(ordre(&state).await, vec![3, 1, 2]);
+        deplacer(3, &[("direction", "dernier")]).await;
+        assert_eq!(ordre(&state).await, vec![1, 2, 3]);
+        deplacer(2, &[("direction", "haut")]).await;
+        assert_eq!(ordre(&state).await, vec![2, 1, 3]);
+        deplacer(1, &[("position", "99")]).await;
+        assert_eq!(ordre(&state).await, vec![2, 3, 1]);
+        // Glisser-déposer : ordre complet, identifiants inconnus ignorés, oubliés remis à la fin.
+        produits_ordonner(State(state.clone()), Extension(session()), Form(form(&[("ordre", "1,42,3")]))).await.unwrap();
+        assert_eq!(ordre(&state).await, vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn adresses_saisies_a_la_main() {
+        let (bonnes, mauvaises) = lire_adresses("Marie@Exemple.fr\nJean Martin <jean@exemple.fr>; paul@exemple.fr, marie@exemple.fr\n\npas-une-adresse");
+        assert_eq!(
+            bonnes,
+            vec![
+                (String::new(), "marie@exemple.fr".to_string()),
+                ("Jean Martin".to_string(), "jean@exemple.fr".to_string()),
+                (String::new(), "paul@exemple.fr".to_string()),
+            ]
+        );
+        assert_eq!(mauvaises, vec!["pas-une-adresse".to_string()]);
+        assert_eq!(lire_adresses("a@b").1, vec!["a@b".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn annonce_ajout_d_adresses_et_texte_enregistre() {
+        let state = vente().await;
+        ouvrir_vente(&state).await;
+        sqlx::raw_sql("INSERT INTO clientventedirecte(id,nom,email,newsletter_email,newsletter_sms,cree_le,token_desinscription,desinscrit_le) VALUES(10,'Ancien','ancien@example.fr',0,0,CURRENT_TIMESTAMP,'t10',CURRENT_TIMESTAMP)")
+            .execute(&state.pool)
+            .await
+            .unwrap();
+        // Une adresse invalide : rien n'est ajouté.
+        assert!(annonce_ajouter_adresses(State(state.clone()), Extension(session()), Form(form(&[("adresses", "neuf@example.fr\nfaux")]))).await.is_err());
+        assert!(destinataires_annonce(&state.pool, false).await.unwrap().is_empty());
+        annonce_ajouter_adresses(State(state.clone()), Extension(session()), Form(form(&[("adresses", "Nouveau Client <neuf@example.fr>\nANCIEN@example.fr")]))).await.unwrap();
+        let liste = destinataires_annonce(&state.pool, false).await.unwrap();
+        let emails: Vec<_> = liste.iter().map(|d| (d.1.as_str(), d.2.as_str())).collect();
+        assert_eq!(emails, vec![("Ancien", "ancien@example.fr"), ("Nouveau Client", "neuf@example.fr")]);
+        // Retirer : sort de la liste, même avec les anciens clients.
+        annonce_retirer(State(state.clone()), Extension(session()), Path(10), Form(form(&[]))).await.unwrap();
+        assert_eq!(destinataires_annonce(&state.pool, true).await.unwrap().len(), 1);
+
+        // Texte modifié enregistré puis repris sur la page.
+        annonce_enregistrer(State(state.clone()), Extension(session()), Form(form(&[("sujet", "Porc fermier dispo"), ("message", "Mon texte à moi")]))).await.unwrap();
+        let page = annonce_page(State(state.clone()), Extension(session()), Query(HashMap::new()), headers_publics()).await.unwrap().0;
+        assert!(page.contains("Porc fermier dispo") && page.contains("Mon texte à moi"));
+        annonce_enregistrer(State(state.clone()), Extension(session()), Form(form(&[("reinitialiser", "1")]))).await.unwrap();
+        let page = annonce_page(State(state.clone()), Extension(session()), Query(HashMap::new()), headers_publics()).await.unwrap().0;
+        assert!(!page.contains("Mon texte à moi") && page.contains("Les commandes sont ouvertes"));
     }
 }

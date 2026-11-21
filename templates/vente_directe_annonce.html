@@ -3,6 +3,8 @@
 <h1>Prévenir les clients que les commandes sont ouvertes</h1>
 
 {% if envoyes is not none %}<div class="alert">✓ Annonce envoyée à {{ envoyes }} client{% if envoyes != '1' %}s{% endif %}{% if echecs and echecs != '0' %} — <b>{{ echecs }} échec{% if echecs != '1' %}s{% endif %}</b> (voir l’historique dans <a href="/vente-directe/communications">Communications</a>){% endif %}.</div>{% endif %}
+{% if flash_annonce == 'enregistre' %}<div class="alert">✓ Texte enregistré. Il sera repris la prochaine fois que vous ouvrirez cette page.</div>{% elif flash_annonce == 'reinitialise' %}<div class="alert">✓ Texte proposé remis.</div>{% elif flash_annonce == 'retire' %}<div class="alert">✓ Adresse retirée de la liste.</div>{% endif %}
+{% if ajoutees %}<div class="alert">✓ {{ ajoutees }} adresse{% if ajoutees != '1' %}s{% endif %} ajoutée{% if ajoutees != '1' %}s{% endif %} à la liste.</div>{% endif %}
 {% if essai %}<div class="alert">✓ E-mail d’essai envoyé à {{ expediteur }}. Vérifiez-le avant l’envoi aux clients.</div>{% endif %}
 
 {% if not vente %}
@@ -25,7 +27,16 @@
   </form>
   {% endif %}
   <details{% if destinataires|length <= 15 %} open{% endif %}><summary>Voir la liste</summary>
-  <ul class="an-liste">{% for d in destinataires %}<li>{{ d.nom }} <small>{{ d.email }}</small>{% if not d.accord %} <span class="rust-badge">ancien client</span>{% endif %}</li>{% else %}<li class="muted">Personne pour l’instant. Les clients peuvent cocher « Prévenez-moi » en commandant, ou vous pouvez enregistrer leur accord dans <a href="/vente-directe/communications">Communications</a>.</li>{% endfor %}</ul>
+  <ul class="an-liste">{% for d in destinataires %}<li><span>{{ d.nom }} <small>{{ d.email }}</small>{% if not d.accord %} <span class="rust-badge">ancien client</span>{% endif %}</span><form method="post" action="/vente-directe/annonce/retirer/{{ d.id }}" onsubmit="return confirm('Retirer {{ d.email }} de la liste ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="anciens" value="{% if anciens %}1{% else %}0{% endif %}"><button class="ghost an-retirer" title="Retirer de la liste">✕</button></form></li>{% else %}<li class="muted">Personne pour l’instant. Les clients peuvent cocher « Prévenez-moi » en commandant, ou vous pouvez enregistrer leur accord dans <a href="/vente-directe/communications">Communications</a>.</li>{% endfor %}</ul>
+  </details>
+  <details class="an-ajout"{% if not destinataires %} open{% endif %}><summary><b>➕ Ajouter des adresses e-mail</b></summary>
+  <form method="post" action="/vente-directe/annonce/adresses">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <input type="hidden" name="anciens" value="{% if anciens %}1{% else %}0{% endif %}">
+    <label>Une adresse par ligne, avec le nom si vous voulez<textarea name="adresses" rows="4" required placeholder="marie.dupont@exemple.fr&#10;Jean Martin <jean.martin@exemple.fr>"></textarea></label>
+    <small class="muted">Les adresses sont gardées pour les prochaines ventes. Si la personne est déjà cliente, son accord est enregistré.</small>
+    <button>Ajouter à la liste</button>
+  </form>
   </details>
 </section>
 
@@ -39,6 +50,8 @@
     <label>Message<textarea name="message" rows="9" maxlength="5000" required>{{ message }}</textarea></label>
     <p class="muted">Un bouton « Passer ma commande » vers {% if lien_commande %}<code>{{ lien_commande }}</code>{% else %}la page de commande{% endif %} et un lien de désinscription sont ajoutés automatiquement.</p>
     <div class="rust-actions">
+      <button type="submit" formaction="/vente-directe/annonce/enregistrer" formnovalidate class="ghost">💾 Enregistrer le texte</button>
+      {% if texte_enregistre %}<button type="submit" formaction="/vente-directe/annonce/enregistrer" formnovalidate class="ghost" name="reinitialiser" value="1" onclick="return confirm('Remplacer votre texte par le texte proposé ?')">Revenir au texte proposé</button>{% endif %}
       <button type="submit" formaction="/vente-directe/annonce/essai" formnovalidate class="ghost" {% if not brevo_pret or not adresse %}disabled{% endif %}>M’envoyer un essai{% if expediteur %} ({{ expediteur }}){% endif %}</button>
     </div>
     <h2>3 · Envoyer</h2>
@@ -48,13 +61,16 @@
 </section>
 </div>
 
-{% if apercu %}<details class="card"><summary><b>Aperçu de l’e-mail</b> (message par défaut)</summary><div class="an-apercu">{{ apercu|safe }}</div></details>{% endif %}
+{% if apercu %}<details class="card"><summary><b>Aperçu de l’e-mail</b> ({% if texte_enregistre %}texte enregistré{% else %}texte proposé{% endif %})</summary><div class="an-apercu">{{ apercu|safe }}</div></details>{% endif %}
 {% endif %}
 <style>
 .an-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start}
 label.an-case{display:flex;flex-direction:row;gap:10px;align-items:flex-start;font-weight:600}label.an-case input{width:20px;height:20px;flex:none;margin:2px 0 0}
 .an-anciens{display:flex;flex-direction:column;gap:4px;margin:8px 0}
-.an-liste{max-height:320px;overflow:auto;padding-left:18px}.an-liste small{opacity:.7}
+.an-liste{max-height:320px;overflow:auto;padding-left:0;list-style:none}.an-liste small{opacity:.7}
+.an-liste li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(127,127,127,.15)}
+.an-liste form{margin:0}.an-retirer{padding:2px 8px}
+.an-ajout{margin-top:10px}.an-ajout form{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .an-apercu{border:1px dashed rgba(127,127,127,.5);border-radius:10px;padding:14px;margin-top:10px;background:#fff;color:#222}
 </style>
 {% endblock %}

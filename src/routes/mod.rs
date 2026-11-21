@@ -602,6 +602,7 @@ pub fn router(state: AppState) -> Router {
             "/vente-directe/produit/{id}/deplacer",
             post(produit_deplacer),
         )
+        .route("/vente-directe/produits/ordre", post(produits_ordonner))
         .route(
             "/vente-directe/reglage-livraison",
             post(vente_reglage_livraison),
@@ -674,6 +675,18 @@ pub fn router(state: AppState) -> Router {
             post(vente_directe::tout_disponible),
         )
         .route("/vente-directe/annonce", get(vente_directe::annonce_page))
+        .route(
+            "/vente-directe/annonce/enregistrer",
+            post(vente_directe::annonce_enregistrer),
+        )
+        .route(
+            "/vente-directe/annonce/adresses",
+            post(vente_directe::annonce_ajouter_adresses),
+        )
+        .route(
+            "/vente-directe/annonce/retirer/{id}",
+            post(vente_directe::annonce_retirer),
+        )
         .route(
             "/vente-directe/annonce/essai",
             post(vente_directe::annonce_essai),
@@ -11599,30 +11612,80 @@ async fn produit_deplacer(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let current: Option<i64> =
-        sqlx::query_scalar("SELECT ordre FROM produitventedirecte WHERE id=?")
-            .bind(id)
-            .fetch_optional(&state.pool)
+    let mut ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM produitventedirecte ORDER BY ordre, id")
+            .fetch_all(&state.pool)
             .await?;
-    if let Some(current) = current {
-        let direction = form.get("direction").map(String::as_str).unwrap_or("");
-        let other:Option<(i64,i64)>=match direction{"haut"=>sqlx::query_as("SELECT id,ordre FROM produitventedirecte WHERE ordre<? ORDER BY ordre DESC LIMIT 1").bind(current).fetch_optional(&state.pool).await?,"bas"=>sqlx::query_as("SELECT id,ordre FROM produitventedirecte WHERE ordre>? ORDER BY ordre LIMIT 1").bind(current).fetch_optional(&state.pool).await?,_=>None};
-        if let Some((other_id, other_order)) = other {
-            let mut tx = state.pool.begin().await?;
-            sqlx::query("UPDATE produitventedirecte SET ordre=? WHERE id=?")
-                .bind(other_order)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query("UPDATE produitventedirecte SET ordre=? WHERE id=?")
-                .bind(current)
-                .bind(other_id)
-                .execute(&mut *tx)
-                .await?;
-            tx.commit().await?;
+    if let Some(index) = ids.iter().position(|value| *value == id) {
+        let last = ids.len() - 1;
+        // Place visée (0 = en haut). « position » est la place 1, 2, 3… saisie
+        // par l'utilisateur ; les flèches déplacent d'une place.
+        let target = match form.get("direction").map(String::as_str) {
+            Some("haut") => index.saturating_sub(1),
+            Some("bas") => (index + 1).min(last),
+            Some("premier") => 0,
+            Some("dernier") => last,
+            _ => match form
+                .get("position")
+                .and_then(|value| value.trim().parse::<usize>().ok())
+            {
+                Some(position) => position.clamp(1, last + 1) - 1,
+                None => index,
+            },
+        };
+        if target != index {
+            ids.remove(index);
+            ids.insert(target, id);
+            enregistrer_ordre_produits(&state.pool, &ids).await?;
         }
     }
     Ok(Redirect::to("/vente-directe#produits").into_response())
+}
+
+/// Ordre complet après un glisser-déposer : « ordre » = identifiants dans le
+/// nouvel ordre, séparés par des virgules. Les produits absents de la liste
+/// (ajoutés entre-temps) gardent leur place relative, à la fin.
+async fn produits_ordonner(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let existants: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM produitventedirecte ORDER BY ordre, id")
+            .fetch_all(&state.pool)
+            .await?;
+    let mut ids: Vec<i64> = Vec::new();
+    for value in form.get("ordre").map(String::as_str).unwrap_or("").split(',') {
+        if let Ok(id) = value.trim().parse::<i64>() {
+            if existants.contains(&id) && !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    for id in &existants {
+        if !ids.contains(id) {
+            ids.push(*id);
+        }
+    }
+    if ids != existants {
+        enregistrer_ordre_produits(&state.pool, &ids).await?;
+    }
+    Ok(Redirect::to("/vente-directe#produits").into_response())
+}
+
+async fn enregistrer_ordre_produits(pool: &SqlitePool, ids: &[i64]) -> AppResult<()> {
+    let mut tx = pool.begin().await?;
+    for (index, id) in ids.iter().enumerate() {
+        sqlx::query("UPDATE produitventedirecte SET ordre=? WHERE id=?")
+            .bind(index as i64 + 1)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
 async fn vente_reglage_livraison(

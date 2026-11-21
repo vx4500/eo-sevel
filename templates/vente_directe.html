@@ -72,10 +72,14 @@
 </section>
 
 <section id="produits"><h2>Produits ({{ produits|length }})</h2>
-<div class="vd-produits">
-{% for p in produits %}<details class="vd-pli vd-produit{% if not p.actif %} inactif{% endif %}">
+{% if session.peut_modifier and produits|length > 1 %}<p class="muted vd-aide-ordre">Pour changer l’ordre affiché aux clients : attrapez un produit par la poignée ⠿ et glissez-le à sa place, ou utilisez les flèches, ou ouvrez « Modifier » et choisissez sa place.</p>
+<form method="post" action="/vente-directe/produits/ordre" id="f-ordre" hidden><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="ordre" value=""></form>{% endif %}
+<div class="vd-produits" id="vd-produits">
+{% for p in produits %}<details class="vd-pli vd-produit{% if not p.actif %} inactif{% endif %}" data-id="{{ p.id }}">
   <summary>
-    <span class="vd-ordre"><form class="inline" method="post" action="/vente-directe/produit/{{ p.id }}/deplacer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="direction" value="haut" class="ghost" title="Monter">↑</button><button name="direction" value="bas" class="ghost" title="Descendre">↓</button></form></span>
+    {% if session.peut_modifier and produits|length > 1 %}<span class="vd-poignee" title="Glisser pour déplacer" aria-hidden="true">⠿</span>{% endif %}
+    <span class="vd-place">{{ loop.index }}</span>
+    <span class="vd-ordre"><form class="inline" method="post" action="/vente-directe/produit/{{ p.id }}/deplacer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button name="direction" value="haut" class="ghost" title="Monter d’une place" {% if loop.first %}disabled{% endif %}>↑</button><button name="direction" value="bas" class="ghost" title="Descendre d’une place" {% if loop.last %}disabled{% endif %}>↓</button></form></span>
     {% if p.image_mime %}<img src="/vente-directe/produit/{{ p.id }}/image" alt="" loading="lazy">{% else %}<span class="vd-sans-image">📷</span>{% endif %}
     <b class="vd-nom">{{ p.nom }}</b>
     <span class="vd-prix">{{ p.prix|euro }} / {{ p.unite }}</span>
@@ -84,6 +88,7 @@
     <span class="vd-modifier">Modifier ▾</span>
   </summary>
   <div class="vd-edition">
+    {% if session.peut_modifier and produits|length > 1 %}<form method="post" action="/vente-directe/produit/{{ p.id }}/deplacer"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Place dans la liste</h3><label>Mettre à la place n°<input type="number" name="position" min="1" max="{{ produits|length }}" value="{{ loop.index }}" required></label><small class="muted">1 = en haut, {{ produits|length }} = en bas</small><div class="rust-actions"><button>Déplacer</button><button name="direction" value="premier" class="ghost" formnovalidate>Tout en haut</button><button name="direction" value="dernier" class="ghost" formnovalidate>Tout en bas</button></div></form>{% endif %}
     <form method="post" action="/vente-directe/produit/{{ p.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Produit et tarif</h3><label>Nom<input name="nom" value="{{ p.nom }}" required></label><label>Prix<input name="prix" value="{{ p.prix }}" inputmode="decimal" required></label><label>Unité<select name="unite"><option value="kg" {% if p.unite == 'kg' %}selected{% endif %}>kg</option><option value="pièce" {% if p.unite == 'pièce' %}selected{% endif %}>pièce</option></select></label><label class="vd-case"><input type="checkbox" name="actif" {% if p.actif %}checked{% endif %}> visible par les clients</label><button>Enregistrer</button></form>
     <form method="post" action="/vente-directe/produit/{{ p.id }}/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Reste disponible</h3><label>Quantité restante<input name="quantite_disponible" value="{{ p.quantite_disponible if p.quantite_disponible is not none else '' }}" inputmode="decimal" placeholder="quantité"></label><label class="vd-case"><input type="checkbox" name="stock_illimite" {% if p.quantite_disponible is none %}checked{% endif %}> illimité</label><button>Enregistrer</button></form>
     <form method="post" action="/vente-directe/produit/{{ p.id }}/image" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Photo</h3><input type="file" name="image" accept="image/jpeg,image/png,image/webp" {% if not p.image_mime %}required{% endif %}><small class="muted">JPEG, PNG ou WebP · 5 Mo maximum</small><div class="rust-actions"><button>Importer l’image</button>{% if p.image_mime %}<button name="supprimer_image" value="1" class="ghost danger" formnovalidate>Retirer</button>{% endif %}</div></form>
@@ -120,6 +125,49 @@
   <div class="rust-scroll"><table class="rust-sortable"><thead><tr><th>Rang</th><th>Produit</th><th>Quantité</th><th>Kg</th><th>Chiffre d’affaires</th><th>Prix moyen</th><th>Commandes</th></tr></thead><tbody>{% for p in produits_vendus %}<tr><td><b>{{ loop.index }}</b></td><td>{{ p.produit }}</td><td>{{ p.quantite_vendue }} {{ p.unite }}</td><td>{{ p.kg_vendus }}</td><td>{{ p.chiffre_affaires|euro }}</td><td>{{ p.prix_moyen|euro }}/{{ p.unite }}</td><td>{{ p.commandes }}</td></tr>{% else %}<tr><td colspan="7" class="rust-empty">Aucune vente pour ces filtres</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
+<script>
+/* Glisser-déposer des produits par la poignée ⠿ (souris et doigt). Au lâcher,
+   le nouvel ordre complet part par le formulaire caché #f-ordre. */
+(function(){
+  var liste = document.getElementById('vd-produits'), form = document.getElementById('f-ordre');
+  if(!liste || !form) return;
+  var glisse = null, depart = '';
+  function ordre(){ return Array.prototype.map.call(liste.querySelectorAll(':scope > .vd-produit'), function(d){ return d.dataset.id; }).join(','); }
+  function renumeroter(){ Array.prototype.forEach.call(liste.querySelectorAll(':scope > .vd-produit .vd-place'), function(s, i){ s.textContent = i + 1; }); }
+  liste.addEventListener('click', function(e){ if(e.target.closest('.vd-poignee')) e.preventDefault(); });
+  liste.addEventListener('pointerdown', function(e){
+    var p = e.target.closest('.vd-poignee'); if(!p) return;
+    e.preventDefault();
+    glisse = p.closest('.vd-produit'); depart = ordre();
+    glisse.classList.add('vd-glisse'); document.body.classList.add('vd-glisse-en-cours');
+    try { p.setPointerCapture(e.pointerId); } catch(_){}
+  });
+  liste.addEventListener('pointermove', function(e){
+    if(!glisse) return;
+    e.preventDefault();
+    var autres = liste.querySelectorAll(':scope > .vd-produit');
+    for(var i = 0; i < autres.length; i++){
+      var d = autres[i]; if(d === glisse) continue;
+      var r = d.getBoundingClientRect();
+      if(e.clientY >= r.top && e.clientY <= r.bottom){
+        if(e.clientY < r.top + r.height / 2) liste.insertBefore(glisse, d); else liste.insertBefore(glisse, d.nextSibling);
+        renumeroter(); break;
+      }
+    }
+    // défilement automatique près des bords de l'écran
+    if(e.clientY < 60) window.scrollBy(0, -12); else if(e.clientY > window.innerHeight - 60) window.scrollBy(0, 12);
+  });
+  function fin(){
+    if(!glisse) return;
+    glisse.classList.remove('vd-glisse'); document.body.classList.remove('vd-glisse-en-cours');
+    glisse = null;
+    var nouveau = ordre();
+    if(nouveau !== depart){ form.elements.ordre.value = nouveau; if(form.requestSubmit) form.requestSubmit(); else form.submit(); }
+  }
+  liste.addEventListener('pointerup', fin);
+  liste.addEventListener('pointercancel', fin);
+})();
+</script>
 <style>
 .vd-sous{margin-top:-6px;opacity:.8}
 .vd-etapes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:12px 0}
@@ -148,7 +196,13 @@
 .vd-epuise{color:#cf222e;font-weight:700}.vd-badge{font-size:12px;padding:2px 8px;border-radius:20px;background:rgba(127,127,127,.2);font-weight:400}
 .vd-modifier{font-weight:400;font-size:.9em;opacity:.7}
 .vd-produit.inactif{opacity:.6}
-.vd-ordre form{display:flex;gap:2px;margin:0}.vd-ordre button{padding:2px 6px}
+.vd-ordre form{display:flex;gap:2px;margin:0}.vd-ordre button{padding:2px 6px}.vd-ordre button:disabled{opacity:.3}
+.vd-poignee{cursor:grab;touch-action:none;user-select:none;font-size:1.3em;line-height:1;padding:4px 6px;opacity:.6}
+.vd-poignee:hover{opacity:1}
+.vd-place{min-width:1.6em;text-align:right;font-weight:400;opacity:.6;font-size:.9em}
+.vd-produit.vd-glisse{opacity:.85;outline:2px dashed var(--vert2,#2d6a4f);background:rgba(26,127,55,.08)!important}
+body.vd-glisse-en-cours{cursor:grabbing;user-select:none}
+.vd-aide-ordre{font-size:.9em;margin:0 0 8px}
 .vd-edition{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)}
 .vd-edition form{display:flex;flex-direction:column;gap:8px;margin:0}.vd-edition h3{margin:0;font-size:1em}
 .vd-case{display:flex;gap:6px;align-items:center}
