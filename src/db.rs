@@ -208,6 +208,15 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
         ("produitventedirecte", "quantite_disponible", "REAL"),
         ("produitventedirecte", "image_data", "BLOB"),
         ("produitventedirecte", "image_mime", "TEXT"),
+        // Quantité vendable obtenue par cochon (kg ou pièces) : sert à
+        // estimer le nombre de cochons à tuer d'après les commandes.
+        ("produitventedirecte", "quantite_par_porc", "REAL"),
+        // Tant que l'inventaire n'est pas déclaré, tous les morceaux sont
+        // disponibles sans limite pour la vente.
+        ("sessionventedirecte", "inventaire_declare_le", "TEXT"),
+        ("sessionventedirecte", "annonce_envoyee_le", "TEXT"),
+        ("reglageventedirecte", "kg_par_porc", "REAL"),
+        ("clientventedirecte", "desinscrit_le", "TEXT"),
         ("commandeventedirecte", "client_id", "INTEGER"),
         (
             "commandeventedirecte",

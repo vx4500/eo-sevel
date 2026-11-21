@@ -1094,6 +1094,9 @@ pub(super) async fn parametres_maj(
         "mail_sauvegarde",
         "accueil_style",
     ];
+    if let Some(url) = form.get("public_url") {
+        super::vente_directe::verifier_adresse_publique(url)?;
+    }
     let mut tx = state.pool.begin().await?;
     for key in allowed {
         if let Some(value) = form.get(key) {
@@ -2082,13 +2085,13 @@ pub(super) async fn sauvegarde_restaurer(
 }
 
 #[derive(Clone)]
-struct CommSettings {
+pub(super) struct CommSettings {
     api_key: String,
-    sender_email: String,
+    pub(super) sender_email: String,
     sender_name: String,
     sms_sender: String,
 }
-async fn comm_settings(pool: &SqlitePool) -> AppResult<CommSettings> {
+pub(super) async fn comm_settings(pool: &SqlitePool) -> AppResult<CommSettings> {
     let row:Option<(Option<String>,Option<String>,String,String)>=sqlx::query_as("SELECT brevo_api_key,sender_email,sender_name,sms_sender FROM reglagecommunicationventedirecte WHERE id=1").fetch_optional(pool).await?;
     let Some((key, email, name, sms)) = row else {
         return Err(AppError::Invalid(
@@ -2109,7 +2112,23 @@ async fn comm_settings(pool: &SqlitePool) -> AppResult<CommSettings> {
     })
 }
 
-async fn brevo_send(
+#[cfg(test)]
+thread_local! {
+    /// En test, aucun appel réseau : les envois sont gardés ici
+    /// (destinataire, sujet, contenu) pour être vérifiés.
+    static ENVOIS_DE_TEST: std::cell::RefCell<Vec<(String, String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+#[cfg(test)]
+pub(super) fn envois_de_test() -> Vec<(String, String, String)> {
+    ENVOIS_DE_TEST.with(|e| e.borrow().clone())
+}
+#[cfg(test)]
+pub(super) fn vider_envois_de_test() {
+    ENVOIS_DE_TEST.with(|e| e.borrow_mut().clear());
+}
+
+pub(super) async fn brevo_send(
     settings: &CommSettings,
     channel: &str,
     to: &str,
@@ -2117,6 +2136,13 @@ async fn brevo_send(
     subject: &str,
     content: &str,
 ) -> Result<String, String> {
+    #[cfg(test)]
+    {
+        let _ = (&settings.api_key, name, channel);
+        ENVOIS_DE_TEST.with(|e| e.borrow_mut().push((to.to_string(), subject.to_string(), content.to_string())));
+        return Ok("{\"messageId\":\"test\"}".into());
+    }
+    #[allow(unreachable_code)]
     if crate::demo_portal::enabled() {
         return Err("Envoi externe désactivé en démonstration".into());
     }
@@ -2148,7 +2174,7 @@ async fn brevo_send(
     }
 }
 
-async fn log_message(
+pub(super) async fn log_message(
     pool: &SqlitePool,
     client_id: Option<i64>,
     channel: &str,
@@ -2179,6 +2205,8 @@ pub(super) struct RecapCommande<'a> {
     pub code: &'a str,
     pub total: f64,
     pub lignes: &'a [(String, f64, String, f64)],
+    /// Adresse publique du site (https://…) ; sans elle, pas de lien.
+    pub adresse: Option<&'a str>,
 }
 
 pub(super) async fn envoyer_recap_commande(
@@ -2194,34 +2222,56 @@ pub(super) async fn envoyer_recap_commande(
         code,
         total,
         lignes,
+        adresse,
     } = recap;
     let settings = comm_settings(pool).await?;
-    let public_url: Option<String> =
-        sqlx::query_scalar("SELECT valeur FROM parametre WHERE cle='public_url'")
-            .fetch_optional(pool)
-            .await?;
-    let path = format!("/commande/modifier/{token}");
-    let link = public_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!("{}{path}", value.trim_end_matches('/')))
-        .unwrap_or(path);
+    let vente: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT s.nom,s.date_limite_commandes,s.date_livraison FROM commandeventedirecte c JOIN sessionventedirecte s ON s.id=c.session_vente_id WHERE c.id=?",
+    )
+    .bind(order_id)
+    .fetch_optional(pool)
+    .await?;
+    let (nom_vente, limite, livraison) = vente.unwrap_or((None, None, None));
+    let date_fr = |d: &str| {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .map(|d| d.format("%d/%m/%Y").to_string())
+            .unwrap_or_else(|_| d.to_string())
+    };
     let mut list = String::new();
     for (product, quantity, unit, amount) in lignes {
         list.push_str(&format!(
-            "<li><strong>{}</strong> — {:.2} {} — {:.2} €</li>",
+            "<li><strong>{}</strong> — {} {} — {:.2} €</li>",
             escape_html(product),
-            quantity,
+            format!("{quantity:.3}").trim_end_matches('0').trim_end_matches('.'),
             escape_html(unit),
             amount
         ));
     }
+    let mut infos = String::new();
+    if let Some(nom) = nom_vente.as_deref() {
+        infos.push_str(&format!("<p>Vente : <strong>{}</strong></p>", escape_html(nom)));
+    }
+    if let Some(d) = livraison.as_deref() {
+        infos.push_str(&format!("<p>Livraison prévue le {}.</p>", escape_html(&date_fr(d))));
+    }
+    let jusqua = limite
+        .as_deref()
+        .map(|d| format!(" jusqu’au <strong>{}</strong>", escape_html(&date_fr(d))))
+        .unwrap_or_else(|| " jusqu’à la fin des commandes".into());
+    let lien = match adresse {
+        Some(base) => {
+            let link = format!("{}/commande/modifier/{token}", base.trim_end_matches('/'));
+            format!(
+                "<p style=\"margin:20px 0\"><a href=\"{0}\" style=\"background:#1a7f37;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold\">Voir ou modifier ma commande</a></p><p style=\"font-size:13px;color:#555\">Lien direct : {0}</p>",
+                escape_html(&link)
+            )
+        }
+        None => "<p>Pour modifier votre commande, reprenez le lien affiché après votre commande ou contactez-nous.</p>".into(),
+    };
     let content = format!(
-        "<h1>Récapitulatif de votre commande n°{order_id}</h1><p>Bonjour {},</p><ul>{list}</ul><p><strong>Total : {total:.2} €</strong></p><h2>Modifier votre commande</h2><p>Utilisez le code <strong style=\"font-size:1.3em;letter-spacing:.12em\">{}</strong> jusqu’à la date limite de la vente.</p><p><a href=\"{}\">Consulter ou modifier ma commande</a></p><p>Après la date limite ou la clôture de la vente, le lien restera consultable mais les modifications seront bloquées.</p>",
+        "<div style=\"font-family:Arial,sans-serif;font-size:16px;line-height:1.5\"><h1 style=\"font-size:22px\">Votre commande n°{order_id}</h1><p>Bonjour {},</p><p>Merci, votre commande est bien enregistrée.</p>{infos}<ul>{list}</ul><p><strong>Total : {total:.2} €</strong></p><h2 style=\"font-size:18px\">Votre code pour modifier la commande</h2><p style=\"font-size:26px;font-weight:bold;letter-spacing:.15em\">{}</p><p>Vous pouvez changer votre commande{jusqua} avec ce code.</p>{lien}<p style=\"font-size:13px;color:#555\">Après la date limite, la commande reste consultable mais ne peut plus être modifiée.</p></div>",
         escape_html(nom_client),
         escape_html(code),
-        escape_html(&link)
     );
     let subject = format!("Votre commande n°{order_id} — récapitulatif et code");
     let result = brevo_send(
@@ -2410,7 +2460,7 @@ pub(super) async fn desinscription(
     if token.trim().is_empty() {
         return Err(AppError::NotFound);
     }
-    let result=sqlx::query("UPDATE clientventedirecte SET newsletter_email=0,newsletter_sms=0 WHERE token_desinscription=? AND token_desinscription<>''").bind(token).execute(&state.pool).await?;
+    let result=sqlx::query("UPDATE clientventedirecte SET newsletter_email=0,newsletter_sms=0,desinscrit_le=COALESCE(desinscrit_le,CURRENT_TIMESTAMP) WHERE token_desinscription=? AND token_desinscription<>''").bind(token).execute(&state.pool).await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }

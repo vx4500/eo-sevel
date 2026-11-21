@@ -1,9 +1,99 @@
-{% extends "base.html" %}{% block content %}
-<div style="max-width:900px;margin:auto">{% if reglage.logo %}<img src="/vente-directe/enseigne-logo" alt="Logo de l'élevage" style="max-height:90px;max-width:280px;object-fit:contain;display:block;margin-bottom:10px"/>{% endif %}<h1>Commande de porc</h1><p class="help"><b>Vous avez déjà commandé ?</b> Le récapitulatif de votre commande contient le lien « Modifier ma commande » et votre code personnel.</p>
-{% if session_active %}<div class="card"><b>{{ session_active.nom }}</b>{% if session_active.date_livraison %}<p>Livraison prévue le {{ session_active.date_livraison|date_fr }}</p>{% endif %}{% if session_active.date_limite_commandes %}<p>Commande modifiable jusqu’au {{ session_active.date_limite_commandes|date_fr }}.</p>{% endif %}{% if reglage.texte_livraison %}<p>{{ reglage.texte_livraison }}</p>{% endif %}</div>{% endif %}
-{% if ok %}<div class="alert">Votre commande a bien été enregistrée.</div>{% endif %}{% if error and error != 'fermee' %}<div class="alert danger">{% if error == 'stock-insuffisant' %}Le stock vient de changer : réduisez une quantité et réessayez.{% elif error == 'commande-vide' %}Choisissez au moins un produit.{% else %}Commande impossible.{% endif %}</div>{% endif %}
-{% if not reglage.commandes_ouvertes %}<section class="alert danger" role="status"><h2>⏹ Fin de la vente</h2><p>{{ reglage.message_fermeture or 'Cette vente est terminée. Les commandes sont fermées.' }}</p></section>{% else %}
-<form method="post" action="/commande" class="card"><div style="position:absolute;left:-10000px" aria-hidden="true"><label>Site web<input name="website" tabindex="-1" autocomplete="off"></label></div><div class="rust-grid"><label>Nom<input name="nom_client" maxlength="160" required></label><label>Téléphone<input name="telephone" maxlength="40" required></label><label>E-mail<input type="email" name="email" maxlength="200"></label></div><h2>Produits</h2><div class="rust-scroll"><table><tr><th>Visuel</th><th>Produit</th><th>Prix</th><th>Disponible</th><th>Quantité</th></tr>{% for p in produits %}<tr><td>{% if p.image_mime %}<img src="/vente-directe/produit/{{ p.id }}/image" alt="{{ p.nom }}" loading="lazy" style="width:120px;height:85px;object-fit:cover;border-radius:8px">{% else %}—{% endif %}</td><td><b>{{ p.nom }}</b></td><td>{{ p.prix|euro }}/{{ p.unite }}</td><td>{% if p.quantite_disponible is not none %}{{ p.quantite_disponible }}{% else %}Sur commande{% endif %}</td><td><input name="q_{{ p.id }}" type="number" min="0" step="0.01" value="0" style="max-width:110px"></td></tr>{% else %}<tr><td colspan="5" class="rust-empty">Aucun produit disponible actuellement</td></tr>{% endfor %}</table></div><label>Notes<textarea name="notes" maxlength="1000"></textarea></label><button type="submit">Envoyer la commande</button></form>
+{% extends "base.html" %}{% block title %}Commande de viande de porc{% endblock %}{% block content %}
+<div class="cl-page">
+{% if reglage.logo %}<img class="cl-logo" src="/vente-directe/enseigne-logo" alt="Logo de l'élevage">{% endif %}
+<h1>Commande de viande de porc</h1>
+
+{% if not reglage.commandes_ouvertes %}
+<section class="cl-ferme" role="status"><h2>Les commandes sont fermées</h2><p>{{ reglage.message_fermeture or 'Cette vente est terminée. Les commandes sont fermées.' }}</p></section>
+{% else %}
+{% if session_active %}<section class="cl-infos">
+  <b>{{ session_active.nom }}</b>
+  <ul>
+    {% if session_active.date_limite_commandes %}<li>📝 Commandes jusqu’au <b>{{ session_active.date_limite_commandes|date_fr }}</b> (modifiables jusqu’à cette date)</li>{% endif %}
+    {% if session_active.date_livraison %}<li>🚚 Livraison le <b>{{ session_active.date_livraison|date_fr }}</b></li>{% endif %}
+  </ul>
+  {% if reglage.texte_livraison %}<p>{{ reglage.texte_livraison }}</p>{% endif %}
+</section>{% endif %}
+
+{% if error and error != 'fermee' %}<div class="alert danger">{% if error == 'stock-insuffisant' %}Un morceau n’est plus disponible en quantité suffisante : réduisez la quantité et réessayez.{% elif error == 'commande-vide' %}Choisissez au moins un produit.{% else %}Commande impossible.{% endif %}</div>{% endif %}
+
+<form method="post" action="/commande" id="cl-form">
+  <div style="position:absolute;left:-10000px" aria-hidden="true"><label>Site web<input name="website" tabindex="-1" autocomplete="off"></label></div>
+
+  <h2><span class="cl-etape">1</span> Choisissez vos morceaux</h2>
+  <div class="cl-produits">
+  {% for p in produits %}
+    <div class="cl-produit">
+      {% if p.image_mime %}<img src="/vente-directe/produit/{{ p.id }}/image" alt="" loading="lazy">{% endif %}
+      <div class="cl-produit-texte">
+        <b>{{ p.nom }}</b>
+        <span class="cl-prix">{{ p.prix|euro }} / {{ p.unite }}</span>
+        {% if p.quantite_disponible is not none %}<small class="cl-reste">Il reste {{ p.quantite_disponible }} {{ p.unite }}</small>{% endif %}
+      </div>
+      <label class="cl-quantite"><span>{% if p.unite == 'kg' %}kg{% else %}nombre{% endif %}</span>
+        <input name="q_{{ p.id }}" type="number" inputmode="decimal" min="0" step="{% if p.unite == 'kg' %}0.1{% else %}1{% endif %}" {% if p.quantite_disponible is not none %}max="{{ p.quantite_disponible }}"{% endif %} value="0" data-prix="{{ p.prix }}" aria-label="Quantité de {{ p.nom }}">
+      </label>
+    </div>
+  {% else %}<p class="rust-empty">Aucun produit disponible pour le moment.</p>{% endfor %}
+  </div>
+
+  <h2><span class="cl-etape">2</span> Vos coordonnées</h2>
+  <div class="cl-coord">
+    <label>Nom et prénom<input name="nom_client" maxlength="160" autocomplete="name" required></label>
+    <label>Téléphone<input name="telephone" type="tel" maxlength="40" autocomplete="tel" required></label>
+    <label>E-mail <small>(pour recevoir le récapitulatif et le code de modification)</small><input type="email" name="email" maxlength="200" autocomplete="email"></label>
+    <label class="cl-case"><input type="checkbox" name="prevenir" value="1"> Prévenez-moi par e-mail quand les prochaines commandes ouvrent</label>
+    <label>Remarque <small>(facultatif)</small><textarea name="notes" maxlength="1000" rows="2"></textarea></label>
+  </div>
+
+  <div class="cl-envoi">
+    <span>Total estimé : <b id="cl-total">0,00 €</b></span>
+    <button type="submit">Envoyer ma commande</button>
+  </div>
+  <p class="muted cl-note">Vous avez déjà commandé ? Ouvrez le lien « Voir ou modifier ma commande » reçu par e-mail. Le prix au kilo est appliqué au poids réel à la livraison. Après l’envoi, vous recevez un code pour modifier votre commande jusqu’à la date limite.</p>
+</form>
+<script>
+(function(){
+  var form = document.getElementById('cl-form'), total = document.getElementById('cl-total');
+  if(!form || !total) return;
+  function maj(){
+    var t = 0;
+    form.querySelectorAll('input[data-prix]').forEach(function(i){
+      var q = parseFloat(String(i.value).replace(',', '.')) || 0;
+      t += q * (parseFloat(i.dataset.prix) || 0);
+      i.closest('.cl-produit').classList.toggle('choisi', q > 0);
+    });
+    total.textContent = t.toLocaleString('fr-FR', {style:'currency', currency:'EUR'});
+  }
+  form.addEventListener('input', maj); maj();
+})();
+</script>
 {% endif %}
 </div>
+<style>
+.cl-page{max-width:760px;margin:auto}
+.cl-logo{max-height:90px;max-width:280px;object-fit:contain;display:block;margin-bottom:10px}
+.cl-infos,.cl-ferme{border-radius:12px;padding:14px 18px;margin:10px 0 18px;border:1px solid rgba(26,127,55,.45);background:rgba(26,127,55,.08)}
+.cl-ferme{border-color:rgba(207,34,46,.45);background:rgba(207,34,46,.07)}
+.cl-infos ul{margin:6px 0 0;padding-left:0;list-style:none}.cl-infos p{margin:6px 0 0}
+.cl-etape{display:inline-flex;align-items:center;justify-content:center;width:1.6em;height:1.6em;border-radius:50%;background:var(--vert2,#2d6a4f);color:#fff;font-size:.8em;margin-right:6px}
+.cl-produits{display:flex;flex-direction:column;gap:8px}
+.cl-produit{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(127,127,127,.3);border-radius:12px}
+.cl-produit.choisi{border-color:var(--vert2,#2d6a4f);background:rgba(26,127,55,.06)}
+.cl-produit img{width:72px;height:56px;object-fit:cover;border-radius:8px;flex:none}
+.cl-produit-texte{flex:1;display:flex;flex-direction:column;min-width:0}
+.cl-prix{font-weight:700}.cl-reste{opacity:.75}
+.cl-quantite{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin:0}
+.cl-quantite span{font-size:.8em;opacity:.7}
+.cl-quantite input{width:90px;font-size:1.1em;text-align:right}
+.cl-coord{display:flex;flex-direction:column;gap:10px}
+.cl-coord small{font-weight:400;opacity:.7}
+.cl-coord label.cl-case{display:flex;flex-direction:row;gap:10px;align-items:center;font-weight:400}
+.cl-coord label.cl-case input{width:22px;height:22px;flex:none;margin:0}
+.cl-envoi{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;margin-top:16px;border-radius:12px;background:var(--card,#fff);border:1px solid rgba(127,127,127,.35);box-shadow:0 -4px 12px rgba(0,0,0,.08)}
+.cl-envoi b{font-size:1.25em}
+.cl-envoi button{font-size:1.05em;padding:10px 20px}
+.cl-note{font-size:.9em}
+@media (max-width:520px){.cl-produit img{width:56px;height:44px}.cl-quantite input{width:76px}}
+</style>
 {% endblock %}

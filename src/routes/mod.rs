@@ -74,6 +74,7 @@ mod soupe_pilotage;
 mod surfaces;
 mod traitement_stock;
 mod ventes;
+mod vente_directe;
 
 /// Encodage minimal pour glisser un message dans une redirection.
 fn encode_query(value: &str) -> String {
@@ -659,6 +660,28 @@ pub fn router(state: AppState) -> Router {
             get(vente_preparation_imprimer),
         )
         .route("/vente-directe/commande/{id}/statut", post(commande_statut))
+        .route(
+            "/vente-directe/commande/{id}/renvoyer-code",
+            post(vente_directe::renvoyer_code),
+        )
+        .route("/vente-directe/rendements", post(vente_directe::rendements))
+        .route(
+            "/vente-directe/inventaire-declarer",
+            post(vente_directe::inventaire_declarer),
+        )
+        .route(
+            "/vente-directe/tout-disponible",
+            post(vente_directe::tout_disponible),
+        )
+        .route("/vente-directe/annonce", get(vente_directe::annonce_page))
+        .route(
+            "/vente-directe/annonce/essai",
+            post(vente_directe::annonce_essai),
+        )
+        .route(
+            "/vente-directe/annonce/envoyer",
+            post(vente_directe::annonce_envoyer),
+        )
         .route(
             "/vente-directe/commande/{id}/supprimer",
             post(commande_supprimer),
@@ -11257,11 +11280,41 @@ async fn vente_directe(
         "filtres_ventes".into(),
         json!({"debut":debut,"fin":fin,"session_id":session_id,"tri":tri}),
     );
+    // Vente en cours : disponibilité, estimation des cochons, annonce.
+    let vente = generic_rows(
+        &state.pool,
+        "SELECT s.id,s.nom,s.date_livraison,s.date_limite_commandes,s.inventaire_declare_le,s.annonce_envoyee_le,
+           (SELECT COUNT(*) FROM commandeventedirecte c WHERE c.session_vente_id=s.id AND c.statut<>'annulee') AS commandes,
+           ROUND(COALESCE((SELECT SUM(c.total) FROM commandeventedirecte c WHERE c.session_vente_id=s.id AND c.statut<>'annulee'),0),2) AS chiffre_affaires
+         FROM sessionventedirecte s WHERE s.active=1 ORDER BY s.id DESC LIMIT 1",
+    )
+    .await?
+    .into_iter()
+    .next();
+    if let Some(id) = vente.as_ref().and_then(|v| v.get("id")).and_then(Value::as_i64) {
+        ctx.insert(
+            "estimation".into(),
+            vente_directe::estimation_vente(&state.pool, id).await?,
+        );
+    }
+    ctx.insert("vente".into(), vente.unwrap_or(Value::Null));
+    let nb_limites: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM produitventedirecte WHERE quantite_disponible IS NOT NULL",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    ctx.insert("nb_limites".into(), json!(nb_limites));
+    ctx.insert(
+        "adresse_ok".into(),
+        json!(vente_directe::adresse_publique_configuree(&state.pool).await?),
+    );
+    ctx.insert("flash_inventaire".into(), json!(query.contains_key("inventaire")));
     render(&state, "vente_directe.html", Value::Object(ctx))
 }
 async fn vente_directe_commandes(
     State(state): State<AppState>,
     Extension(session): Extension<SessionData>,
+    Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Html<String>> {
     require_writer(&session)?;
     let orders = match generic_rows(&state.pool,"SELECT c.id,c.cree_le,c.nom_client,c.telephone,c.email,c.notes,c.statut,c.total,c.session_vente_id,c.recap_envoye_le,c.code_modification,s.nom AS session_nom,(SELECT GROUP_CONCAT(l.nom_produit||' × '||l.quantite||' '||l.unite,', ') FROM lignecommandeventedirecte l WHERE l.commande_id=c.id) AS lignes,ROUND(COALESCE((SELECT SUM(l.quantite) FROM lignecommandeventedirecte l WHERE l.commande_id=c.id AND lower(trim(l.unite)) IN ('kg','kilogramme','kilogrammes','kilo','kilos')),0),2) AS kg_commandes FROM commandeventedirecte c LEFT JOIN sessionventedirecte s ON s.id=c.session_vente_id ORDER BY c.cree_le DESC,c.id DESC LIMIT 500").await {
@@ -11283,6 +11336,14 @@ async fn vente_directe_commandes(
     let mut ctx = context(&session);
     ctx.insert("commandes".into(), Value::Array(orders));
     ctx.insert("sessions_vente".into(), Value::Array(sessions));
+    ctx.insert(
+        "flash_code".into(),
+        json!({
+            "cmd": query.get("cmd").and_then(|v| v.parse::<i64>().ok()),
+            "code_envoye": query.get("code").map(String::as_str) == Some("envoye"),
+            "code_erreur": query.get("code_erreur"),
+        }),
+    );
     render(&state, "vente_directe_commandes.html", Value::Object(ctx))
 }
 
@@ -12091,6 +12152,7 @@ async fn commande_client_modifier_page(
 async fn commande_client_modifier(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    headers: HeaderMap,
     Form(form): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
     let order = client_order_by_token(&state.pool, &token).await?;
@@ -12232,15 +12294,17 @@ async fn commande_client_modifier(
         })
         .collect::<Vec<_>>();
     if let Some(to) = email {
+        let adresse = vente_directe::adresse_publique(&state.pool, Some(&headers), false).await?;
         let recap = parity::RecapCommande {
             order_id: id,
             client_id: order.get("client_id").and_then(Value::as_i64),
             destinataire: &to,
             nom_client: &name,
             token: &token,
-            code: &code,
+            code: expected,
             total,
             lignes: &summary,
+            adresse: adresse.as_deref(),
         };
         if let Err(error) = parity::envoyer_recap_commande(&state.pool, recap).await {
             tracing::warn!(%error, commande_id=id, "récapitulatif de commande non envoyé");
@@ -12279,6 +12343,7 @@ async fn commande_page(
 
 async fn commande_post(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Form(form): Form<HashMap<String, String>>,
 ) -> AppResult<Response> {
     if !module_actif(&state.pool, "module_vente_directe", true).await? {
@@ -12353,16 +12418,23 @@ async fn commande_post(
     } else {
         None
     };
+    // Case « Prévenez-moi des prochaines ventes » : accord explicite pour
+    // l'annonce d'ouverture des commandes. Décochée, l'accord existant
+    // n'est pas retiré (le lien de désinscription sert à cela).
+    let prevenir = email.is_some() && form.get("prevenir").map(String::as_str) == Some("1");
     let client_id = if let Some(id) = existing_client {
-        sqlx::query("UPDATE clientventedirecte SET nom=?,telephone=? WHERE id=?")
+        sqlx::query("UPDATE clientventedirecte SET nom=?,telephone=?,newsletter_email=CASE WHEN ? THEN 1 ELSE newsletter_email END,desinscrit_le=CASE WHEN ? THEN NULL ELSE desinscrit_le END,token_desinscription=CASE WHEN trim(token_desinscription)='' THEN ? ELSE token_desinscription END WHERE id=?")
             .bind(&name)
             .bind(&phone)
+            .bind(prevenir)
+            .bind(prevenir)
+            .bind(&unsubscribe_token)
             .bind(id)
             .execute(&mut *tx)
             .await?;
         id
     } else {
-        sqlx::query("INSERT INTO clientventedirecte(nom,email,telephone,newsletter_email,newsletter_sms,cree_le,token_desinscription) VALUES(?,?,?,0,0,CURRENT_TIMESTAMP,?)").bind(&name).bind(&email).bind(&phone).bind(unsubscribe_token).execute(&mut *tx).await?.last_insert_rowid()
+        sqlx::query("INSERT INTO clientventedirecte(nom,email,telephone,newsletter_email,newsletter_sms,cree_le,token_desinscription) VALUES(?,?,?,?,0,CURRENT_TIMESTAMP,?)").bind(&name).bind(&email).bind(&phone).bind(prevenir).bind(unsubscribe_token).execute(&mut *tx).await?.last_insert_rowid()
     };
     let order_id=sqlx::query("INSERT INTO commandeventedirecte(client_id,session_vente_id,nom_client,telephone,email,notes,statut,total,cree_le,token_modification,code_modification) VALUES(?,?,?,?,?,?,'nouvelle',?,CURRENT_TIMESTAMP,?,?)").bind(client_id).bind(session_id).bind(&name).bind(&phone).bind(&email).bind(form_text(&form,"notes")).bind(total).bind(&modification_token).bind(&modification_code).execute(&mut *tx).await?.last_insert_rowid();
     let mut summary = Vec::new();
@@ -12373,6 +12445,7 @@ async fn commande_post(
     }
     tx.commit().await?;
     if let Some(to) = email {
+        let adresse = vente_directe::adresse_publique(&state.pool, Some(&headers), false).await?;
         let recap = parity::RecapCommande {
             order_id,
             client_id: Some(client_id),
@@ -12382,6 +12455,7 @@ async fn commande_post(
             code: &modification_code,
             total,
             lignes: &summary,
+            adresse: adresse.as_deref(),
         };
         if let Err(error) = parity::envoyer_recap_commande(&state.pool, recap).await {
             tracing::warn!(%error, commande_id=order_id, "récapitulatif de commande non envoyé");
@@ -15015,6 +15089,8 @@ async fn vente_session_creer(
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    // Nouvelle vente : tous les morceaux disponibles jusqu'à l'inventaire.
+    vente_directe::ouvrir_sans_limite(&mut tx, id).await?;
     sqlx::query("INSERT INTO reglageventedirecte(id,date_livraison) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET date_livraison=excluded.date_livraison").bind(delivery_date).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO reglageventedirecte(id,commandes_ouvertes) VALUES(1,1) ON CONFLICT(id) DO UPDATE SET commandes_ouvertes=1")
         .execute(&mut *tx)
@@ -15031,15 +15107,19 @@ async fn vente_session_activer(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT date_livraison FROM sessionventedirecte WHERE id=?")
+    let row: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT date_livraison,inventaire_declare_le FROM sessionventedirecte WHERE id=?")
             .bind(id)
             .fetch_optional(&state.pool)
             .await?;
-    let Some((date,)) = row else {
+    let Some((date, inventaire)) = row else {
         return Err(AppError::NotFound);
     };
     let mut tx = state.pool.begin().await?;
+    // Vente sans inventaire déclaré : tout est disponible sans limite.
+    if inventaire.is_none() {
+        vente_directe::ouvrir_sans_limite(&mut tx, id).await?;
+    }
     sqlx::query("UPDATE sessionventedirecte SET active=CASE WHEN id=? THEN 1 ELSE 0 END")
         .bind(id)
         .execute(&mut *tx)
@@ -15939,7 +16019,7 @@ mod commandes_clients_tests {
         let page = vente_directe(State(state.clone()), Extension(super::documents::tests::session()), Query(HashMap::new())).await?.0;
         std::fs::write("/var/tmp/vente-directe.html", &page)?;
         assert!(page.contains("vd-etat") && page.contains("vd-produit"));
-        let html = vente_directe_commandes(State(state), Extension(super::documents::tests::session())).await?.0;
+        let html = vente_directe_commandes(State(state), Extension(super::documents::tests::session()), Query(HashMap::new())).await?.0;
         std::fs::write("/var/tmp/commandes.html", &html)?;
         let nouvelles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM commandeventedirecte WHERE statut='nouvelle'").fetch_one(&pool).await?;
         if nouvelles > 0 {

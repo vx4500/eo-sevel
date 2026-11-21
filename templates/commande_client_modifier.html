@@ -1,7 +1,44 @@
-{% extends "base.html" %}{% block content %}
-<main style="max-width:900px;margin:auto"><h1>Commande n°{{ commande.id }}</h1>
+{% extends "base.html" %}{% block title %}Modifier ma commande{% endblock %}{% block content %}
+<main class="cl-page"><h1>Ma commande n°{{ commande.id }}</h1>
 {% if erreur %}<div class="alert danger">{{ erreur }}</div>{% endif %}
-{% if not commande.modification_ouverte %}<section class="card"><h2>Modifications fermées</h2><p>La date limite est dépassée ou la session de vente est terminée.</p><a href="/commande/confirmation/{{ token }}">Voir le récapitulatif</a></section>
-{% elif not verifie %}<form class="card" method="post"><h2>Vérification</h2><p>Saisissez le code reçu dans le récapitulatif envoyé par courriel.</p><input type="hidden" name="action" value="verifier"><label>Code de modification<input name="code_modification" maxlength="16" autocomplete="one-time-code" required autofocus></label><button>Ouvrir ma commande</button></form>
-{% else %}<form class="card" method="post"><input type="hidden" name="action" value="enregistrer"><input type="hidden" name="code_modification" value="{{ commande.code_modification }}"><p>Modifiable jusqu’au {{ commande.date_limite_commandes|date_fr }}. Un nouveau récapitulatif sera envoyé après enregistrement.</p><div class="rust-grid"><label>Nom<input name="nom_client" value="{{ commande.nom_client }}" maxlength="160" required></label><label>Téléphone<input name="telephone" value="{{ commande.telephone }}" maxlength="40" required></label><label>E-mail<input type="email" name="email" value="{{ commande.email or '' }}" maxlength="200"></label></div><h2>Produits</h2><div class="rust-scroll"><table><thead><tr><th>Produit</th><th>Prix</th><th>Disponible</th><th>Quantité</th></tr></thead><tbody>{% for p in produits %}<tr><td><b>{{ p.nom }}</b></td><td>{{ p.prix|euro }}/{{ p.unite }}</td><td>{% if p.quantite_disponible is not none %}{{ (p.quantite_disponible or 0) + (p.quantite_commande or 0) }}{% else %}Sur commande{% endif %}</td><td><input name="q_{{ p.id }}" type="number" min="0" step="0.01" value="{{ p.quantite_commande }}"></td></tr>{% endfor %}</tbody></table></div><label>Notes<textarea name="notes" maxlength="1000">{{ commande.notes or '' }}</textarea></label><button>Enregistrer toute la commande</button></form>{% endif %}
-</main>{% endblock %}
+{% if not commande.modification_ouverte %}<section class="card"><h2>Modifications fermées</h2><p>La date limite est dépassée ou la vente est terminée.</p><a class="button" href="/commande/confirmation/{{ token }}">Voir le récapitulatif</a></section>
+{% elif not verifie %}<form class="card cl-verif" method="post"><h2>Entrez votre code</h2><p>Le code (8 caractères) est dans l’e-mail reçu après votre commande et sur la page de confirmation.</p><input type="hidden" name="action" value="verifier"><label>Code de modification<input name="code_modification" maxlength="16" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required autofocus></label><button>Ouvrir ma commande</button><p class="muted">Code perdu ? Contactez l’éleveur : il peut vous le renvoyer.</p></form>
+{% else %}<form method="post" id="cl-form"><input type="hidden" name="action" value="enregistrer"><input type="hidden" name="code_modification" value="{{ commande.code_modification }}">
+<p class="cl-infos">Modifiable jusqu’au <b>{{ commande.date_limite_commandes|date_fr }}</b>. Un nouveau récapitulatif vous sera envoyé par e-mail. Mettez 0 pour retirer un morceau.</p>
+<h2>Morceaux</h2>
+<div class="cl-produits">{% for p in produits %}
+  <div class="cl-produit{% if p.quantite_commande %} choisi{% endif %}">
+    <div class="cl-produit-texte"><b>{{ p.nom }}</b><span class="cl-prix">{{ p.prix|euro }} / {{ p.unite }}</span>{% if p.quantite_disponible is not none %}<small class="cl-reste">Maximum {{ (p.quantite_disponible or 0) + (p.quantite_commande or 0) }} {{ p.unite }}</small>{% endif %}</div>
+    <label class="cl-quantite"><span>{% if p.unite == 'kg' %}kg{% else %}nombre{% endif %}</span><input name="q_{{ p.id }}" type="number" inputmode="decimal" min="0" step="{% if p.unite == 'kg' %}0.1{% else %}1{% endif %}" value="{{ p.quantite_commande }}" data-prix="{{ p.prix }}" aria-label="Quantité de {{ p.nom }}"></label>
+  </div>{% endfor %}</div>
+<h2>Coordonnées</h2>
+<div class="cl-coord"><label>Nom et prénom<input name="nom_client" value="{{ commande.nom_client }}" maxlength="160" required></label><label>Téléphone<input name="telephone" type="tel" value="{{ commande.telephone }}" maxlength="40" required></label><label>E-mail<input type="email" name="email" value="{{ commande.email or '' }}" maxlength="200"></label><label>Remarque<textarea name="notes" maxlength="1000" rows="2">{{ commande.notes or '' }}</textarea></label></div>
+<div class="cl-envoi"><span>Total estimé : <b id="cl-total"></b></span><button>Enregistrer ma commande</button></div>
+</form>
+<script>
+(function(){
+  var form = document.getElementById('cl-form'), total = document.getElementById('cl-total');
+  if(!form || !total) return;
+  function maj(){ var t = 0; form.querySelectorAll('input[data-prix]').forEach(function(i){ var q = parseFloat(String(i.value).replace(',', '.')) || 0; t += q * (parseFloat(i.dataset.prix) || 0); i.closest('.cl-produit').classList.toggle('choisi', q > 0); }); total.textContent = t.toLocaleString('fr-FR', {style:'currency', currency:'EUR'}); }
+  form.addEventListener('input', maj); maj();
+})();
+</script>
+{% endif %}
+</main>
+<style>
+.cl-page{max-width:760px;margin:auto}
+.cl-infos{border-radius:12px;padding:12px 16px;border:1px solid rgba(26,127,55,.45);background:rgba(26,127,55,.08)}
+.cl-verif input[name=code_modification]{font-size:1.5em;letter-spacing:.2em;text-transform:uppercase;max-width:260px}
+.cl-produits{display:flex;flex-direction:column;gap:8px}
+.cl-produit{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid rgba(127,127,127,.3);border-radius:12px}
+.cl-produit.choisi{border-color:var(--vert2,#2d6a4f);background:rgba(26,127,55,.06)}
+.cl-produit-texte{flex:1;display:flex;flex-direction:column;min-width:0}
+.cl-prix{font-weight:700}.cl-reste{opacity:.75}
+.cl-quantite{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin:0}
+.cl-quantite span{font-size:.8em;opacity:.7}
+.cl-quantite input{width:90px;font-size:1.1em;text-align:right}
+.cl-coord{display:flex;flex-direction:column;gap:10px}
+.cl-envoi{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;margin-top:16px;border-radius:12px;background:var(--card,#fff);border:1px solid rgba(127,127,127,.35);box-shadow:0 -4px 12px rgba(0,0,0,.08)}
+.cl-envoi b{font-size:1.25em}
+</style>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% block title %}Annoncer la vente · EO_Sevel{% endblock %}{% block content %}
+<p><a href="/vente-directe">← Vente directe</a></p>
+<h1>Prévenir les clients que les commandes sont ouvertes</h1>
+
+{% if envoyes is not none %}<div class="alert">✓ Annonce envoyée à {{ envoyes }} client{% if envoyes != '1' %}s{% endif %}{% if echecs and echecs != '0' %} — <b>{{ echecs }} échec{% if echecs != '1' %}s{% endif %}</b> (voir l’historique dans <a href="/vente-directe/communications">Communications</a>){% endif %}.</div>{% endif %}
+{% if essai %}<div class="alert">✓ E-mail d’essai envoyé à {{ expediteur }}. Vérifiez-le avant l’envoi aux clients.</div>{% endif %}
+
+{% if not vente %}
+<section class="card"><p>Aucune vente active. <a href="/vente-directe/sessions">Créez une vente</a> avant de prévenir les clients.</p></section>
+{% else %}
+{% if not commandes_ouvertes %}<div class="alert danger">Les commandes sont actuellement <b>fermées</b> sur la page client : rouvrez-les avant d’annoncer la vente.</div>{% endif %}
+{% if vente.annonce_envoyee_le %}<div class="alert">Une annonce a déjà été envoyée pour « {{ vente.nom }} » le {{ vente.annonce_envoyee_le|date_fr }}. Un nouvel envoi servira de rappel.</div>{% endif %}
+{% if not brevo_pret %}<div class="alert danger">Brevo n’est pas configuré (clé API ou adresse expéditrice) : voir <a href="/vente-directe/communications">Communications</a>.</div>{% endif %}
+{% if not adresse %}<div class="alert danger">Adresse publique du logiciel inconnue : le lien « Passer ma commande » ne fonctionnerait pas chez les clients. Renseignez-la dans <a href="/parametres">Paramètres</a> (https://…).</div>{% endif %}
+
+<div class="an-grille">
+<section class="card">
+  <h2>1 · Destinataires : {{ destinataires|length }}</h2>
+  <p>{{ avec_accord }} client{% if avec_accord != 1 %}s ont{% else %} a{% endif %} demandé à être prévenu{% if avec_accord != 1 %}s{% endif %}.</p>
+  {% if sans_accord %}
+  <form method="get" action="/vente-directe/annonce" class="an-anciens">
+    <label class="an-case"><input type="checkbox" name="anciens" value="1" {% if anciens %}checked{% endif %} onchange="this.form.submit()"> Ajouter les {{ sans_accord }} ancien{% if sans_accord > 1 %}s{% endif %} client{% if sans_accord > 1 %}s{% endif %} sans accord enregistré</label>
+    <small class="muted">Clients ayant déjà commandé, jamais désinscrits. Chaque e-mail contient un lien « Ne plus recevoir ces messages ».</small>
+    <noscript><button>Mettre à jour la liste</button></noscript>
+  </form>
+  {% endif %}
+  <details{% if destinataires|length <= 15 %} open{% endif %}><summary>Voir la liste</summary>
+  <ul class="an-liste">{% for d in destinataires %}<li>{{ d.nom }} <small>{{ d.email }}</small>{% if not d.accord %} <span class="rust-badge">ancien client</span>{% endif %}</li>{% else %}<li class="muted">Personne pour l’instant. Les clients peuvent cocher « Prévenez-moi » en commandant, ou vous pouvez enregistrer leur accord dans <a href="/vente-directe/communications">Communications</a>.</li>{% endfor %}</ul>
+  </details>
+</section>
+
+<section class="card">
+  <h2>2 · Message</h2>
+  <form method="post" action="/vente-directe/annonce/envoyer" id="an-form" onsubmit="if(event.submitter && event.submitter.hasAttribute('formaction')) return true; return confirm('Envoyer maintenant cet e-mail à {{ destinataires|length }} client(s) ? Cet envoi est définitif.')">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+    <input type="hidden" name="anciens" value="{% if anciens %}1{% else %}0{% endif %}">
+    <input type="hidden" name="nb_attendu" value="{{ destinataires|length }}">
+    <label>Sujet<input name="sujet" value="{{ sujet }}" maxlength="200" required></label>
+    <label>Message<textarea name="message" rows="9" maxlength="5000" required>{{ message }}</textarea></label>
+    <p class="muted">Un bouton « Passer ma commande » vers {% if lien_commande %}<code>{{ lien_commande }}</code>{% else %}la page de commande{% endif %} et un lien de désinscription sont ajoutés automatiquement.</p>
+    <div class="rust-actions">
+      <button type="submit" formaction="/vente-directe/annonce/essai" formnovalidate class="ghost" {% if not brevo_pret or not adresse %}disabled{% endif %}>M’envoyer un essai{% if expediteur %} ({{ expediteur }}){% endif %}</button>
+    </div>
+    <h2>3 · Envoyer</h2>
+    <label class="an-case"><input type="checkbox" name="confirmer" value="1" required> J’ai relu le message et je confirme l’envoi à {{ destinataires|length }} client{% if destinataires|length != 1 %}s{% endif %}</label>
+    <button type="submit" {% if not destinataires or not brevo_pret or not adresse %}disabled{% endif %}>📧 Envoyer l’annonce à {{ destinataires|length }} client{% if destinataires|length != 1 %}s{% endif %}</button>
+  </form>
+</section>
+</div>
+
+{% if apercu %}<details class="card"><summary><b>Aperçu de l’e-mail</b> (message par défaut)</summary><div class="an-apercu">{{ apercu|safe }}</div></details>{% endif %}
+{% endif %}
+<style>
+.an-grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start}
+label.an-case{display:flex;flex-direction:row;gap:10px;align-items:flex-start;font-weight:600}label.an-case input{width:20px;height:20px;flex:none;margin:2px 0 0}
+.an-anciens{display:flex;flex-direction:column;gap:4px;margin:8px 0}
+.an-liste{max-height:320px;overflow:auto;padding-left:18px}.an-liste small{opacity:.7}
+.an-apercu{border:1px dashed rgba(127,127,127,.5);border-radius:10px;padding:14px;margin-top:10px;background:#fff;color:#222}
+</style>
+{% endblock %}

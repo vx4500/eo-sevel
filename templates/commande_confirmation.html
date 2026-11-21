@@ -1,8 +1,21 @@
-{% extends "base.html" %}{% block content %}
-<main style="max-width:900px;margin:auto">
-<h1>Commande n°{{ commande.id }} enregistrée</h1>
-<section class="alert"><p><b>Merci {{ commande.nom_client }}.</b> Votre commande pour « {{ commande.session_nom or 'vente directe' }} » est bien enregistrée.</p>{% if commande.date_livraison %}<p>Livraison prévue le {{ commande.date_livraison|date_fr }}.</p>{% endif %}</section>
-<section class="card"><h2>Votre récapitulatif</h2><div class="rust-scroll"><table><thead><tr><th>Produit</th><th>Quantité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>{% for l in lignes %}<tr><td>{{ l.nom_produit }}</td><td>{{ l.quantite }} {{ l.unite }}</td><td>{{ l.prix_unitaire|euro }}</td><td>{{ l.total_ligne|euro }}</td></tr>{% endfor %}</tbody><tfoot><tr><th colspan="3">Total</th><th>{{ commande.total|euro }}</th></tr></tfoot></table></div></section>
-<section class="card"><h2>Consulter ou modifier</h2><p>Votre code personnel est :</p><p style="font-size:1.7rem;font-weight:800;letter-spacing:.15em">{{ commande.code_modification }}</p>{% if commande.modification_ouverte %}<p>Vous pouvez modifier la commande jusqu’au {{ commande.date_limite_commandes|date_fr }}.</p><a class="button" href="/commande/modifier/{{ token }}">Modifier ma commande</a>{% else %}<p class="alert danger">La période de modification est terminée. Votre commande reste consultable ici.</p>{% endif %}</section>
+{% extends "base.html" %}{% block title %}Commande enregistrée{% endblock %}{% block content %}
+<main class="cf-page">
+<section class="cf-merci"><h1>✓ Commande n°{{ commande.id }} enregistrée</h1><p>Merci {{ commande.nom_client }}. Votre commande pour « {{ commande.session_nom or 'la vente directe' }} » est bien reçue.</p>{% if commande.date_livraison %}<p>🚚 Livraison prévue le <b>{{ commande.date_livraison|date_fr }}</b>.</p>{% endif %}</section>
+
+<section class="card cf-code"><h2>Votre code pour modifier la commande</h2>
+<p class="cf-chiffres">{{ commande.code_modification }}</p>
+{% if commande.recap_envoye_le and commande.email %}<p>📧 Ce code et le récapitulatif ont été envoyés à <b>{{ commande.email }}</b>. Pensez à regarder dans les indésirables.</p>
+{% elif commande.email %}<p class="alert danger">L’e-mail vers <b>{{ commande.email }}</b> n’a pas pu partir. <b>Notez ce code</b> ou gardez cette page dans vos favoris : l’éleveur peut aussi vous le renvoyer.</p>
+{% else %}<p class="alert">Vous n’avez pas donné d’e-mail : <b>notez ce code</b> et gardez cette page dans vos favoris pour modifier votre commande.</p>{% endif %}
+{% if commande.modification_ouverte %}<p>Vous pouvez modifier la commande{% if commande.date_limite_commandes %} jusqu’au <b>{{ commande.date_limite_commandes|date_fr }}</b>{% endif %}.</p><a class="button" href="/commande/modifier/{{ token }}">Modifier ma commande</a>{% else %}<p class="alert danger">La période de modification est terminée. Votre commande reste consultable ici.</p>{% endif %}
+</section>
+
+<section class="card"><h2>Récapitulatif</h2><div class="rust-scroll"><table><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th>Total</th></tr></thead><tbody>{% for l in lignes %}<tr><td>{{ l.nom_produit }}</td><td>{{ l.quantite }} {{ l.unite }}</td><td>{{ l.prix_unitaire|euro }}/{{ l.unite }}</td><td>{{ l.total_ligne|euro }}</td></tr>{% endfor %}</tbody><tfoot><tr><th colspan="3">Total estimé</th><th>{{ commande.total|euro }}</th></tr></tfoot></table></div></section>
 </main>
+<style>
+.cf-page{max-width:760px;margin:auto}
+.cf-merci{border-radius:12px;padding:14px 18px;margin:10px 0 14px;border:1px solid rgba(26,127,55,.45);background:rgba(26,127,55,.08)}
+.cf-merci h1{margin:0 0 6px}.cf-merci p{margin:4px 0}
+.cf-chiffres{font-size:2rem;font-weight:800;letter-spacing:.2em;margin:6px 0 10px}
+</style>
 {% endblock %}

@@ -18,6 +18,59 @@
   <a href="/vente-directe/bilan"><b>📊 Récapitulatif</b><small>Marges et communications</small></a>
 </nav>
 
+<section id="cette-vente">
+{% if vente %}
+<h2>Vente en cours : {{ vente.nom }}</h2>
+<p class="vd-sous">{{ vente.commandes }} commande{% if vente.commandes != 1 %}s{% endif %} · {{ vente.chiffre_affaires|euro }}{% if vente.date_limite_commandes %} · commandes jusqu’au {{ vente.date_limite_commandes|date_fr }}{% endif %}{% if vente.date_livraison %} · livraison le {{ vente.date_livraison|date_fr }}{% endif %}</p>
+{% if flash_inventaire %}<div class="alert">Inventaire enregistré : les quantités sont maintenant limitées.</div>{% endif %}
+{% if not adresse_ok %}<div class="alert danger">⚠ L’<b>adresse publique du logiciel</b> n’est pas une adresse web valide : les liens envoyés aux clients ne peuvent pas être construits correctement. Renseignez-la dans <a href="/parametres">Paramètres</a> (par exemple <code>https://elevage.mon-domaine.fr</code>).</div>{% endif %}
+<div class="vd-etapes">
+  <div class="vd-etape">
+    <small>1 · Disponibilité</small>
+    {% if not vente.inventaire_declare_le %}
+      <b class="vd-ok">Tout est disponible</b>
+      <p>Les clients commandent sans limite. Déclarez l’inventaire quand vous connaissez la viande produite.</p>
+      {% if nb_limites %}<p class="vd-attention">{{ nb_limites }} produit{% if nb_limites > 1 %}s ont{% else %} a{% endif %} encore une limite (reste d’une ancienne vente).</p><form method="post" action="/vente-directe/tout-disponible"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button>Tout remettre disponible</button></form>{% endif %}
+    {% else %}
+      <b>Inventaire déclaré</b>
+      <p>Depuis le {{ vente.inventaire_declare_le|date_fr }} : les quantités sont limitées au reste disponible.</p>
+      <form method="post" action="/vente-directe/tout-disponible" onsubmit="return confirm('Annuler l’inventaire et remettre tous les morceaux disponibles sans limite ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">Revenir à « tout disponible »</button></form>
+    {% endif %}
+  </div>
+  <div class="vd-etape">
+    <small>2 · Cochons à tuer</small>
+    {% if estimation.cochons_a_tuer %}<b class="vd-grand">{{ estimation.cochons_a_tuer }} cochon{% if estimation.cochons_a_tuer > 1 %}s{% endif %}</b>
+    <p>{% if estimation.produit_limitant %}Le morceau le plus demandé : <b>{{ estimation.produit_limitant }}</b> ({{ estimation.cochons_par_morceau }} cochons).{% endif %}{% if estimation.cochons_par_poids %} Au poids total ({{ estimation.total_kg }} kg) : {{ estimation.cochons_par_poids }} cochons.{% endif %}</p>
+    {% else %}<b class="vd-grand">—</b><p>{% if estimation.total_kg %}{{ estimation.total_kg }} kg commandés.{% else %}Pas encore de commande.{% endif %} Indiquez ce que donne un cochon dans le tableau ci-dessous.</p>{% endif %}
+    {% if estimation.sans_rendement %}<p class="vd-attention">{{ estimation.sans_rendement }} morceau{% if estimation.sans_rendement > 1 %}x{% endif %} commandé{% if estimation.sans_rendement > 1 %}s{% endif %} sans rendement par cochon : non compté{% if estimation.sans_rendement > 1 %}s{% endif %}.</p>{% endif %}
+  </div>
+  <div class="vd-etape">
+    <small>3 · Prévenir les clients</small>
+    {% if vente.annonce_envoyee_le %}<b class="vd-ok">Annonce envoyée</b><p>Le {{ vente.annonce_envoyee_le|date_fr }}.</p>{% else %}<b>Pas encore annoncée</b><p>Envoyez un e-mail aux clients pour dire que les commandes sont ouvertes.</p>{% endif %}
+    <a class="button{% if vente.annonce_envoyee_le %} ghost{% endif %}" href="/vente-directe/annonce">📧 Préparer l’annonce</a>
+  </div>
+</div>
+
+<form id="f-rendements" method="post" action="/vente-directe/rendements"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"></form>
+<form id="f-inventaire" method="post" action="/vente-directe/inventaire-declarer" onsubmit="return confirm('Déclarer cet inventaire ? Les commandes seront ensuite limitées au reste disponible.')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"></form>
+<details class="vd-pli vd-tableau" open><summary>Commandes par morceau, rendement et inventaire</summary>
+<p class="muted">« Un cochon donne » : quantité vendable d’un cochon pour ce morceau (kg ou pièces). « Produit » : ce que vous avez réellement après la découpe ; le reste disponible = produit − déjà commandé. Laissez « Produit » vide pour garder un morceau sans limite.</p>
+<div class="rust-scroll"><table><thead><tr><th>Morceau</th><th>Commandé</th><th>Un cochon donne</th><th>Cochons</th><th>Produit</th><th>Reste dispo</th></tr></thead><tbody>
+{% for l in estimation.lignes %}<tr{% if not l.actif %} class="vd-masque"{% endif %}><td>{{ l.nom }}{% if not l.actif %} <small>(masqué)</small>{% endif %}</td><td>{% if l.commande %}<b>{{ l.commande }}</b> {{ l.unite }}{% else %}—{% endif %}</td>
+<td><input form="f-rendements" name="par_porc_{{ l.id }}" value="{{ l.quantite_par_porc if l.quantite_par_porc is not none else '' }}" inputmode="decimal" placeholder="{{ l.unite }}" class="vd-petit"></td>
+<td>{% if l.cochons is not none %}{{ l.cochons }}{% else %}—{% endif %}</td>
+<td><input form="f-inventaire" name="inventaire_{{ l.id }}" value="{% if vente.inventaire_declare_le and l.quantite_disponible is not none %}{{ l.commande + l.quantite_disponible }}{% elif l.commande %}{{ l.commande }}{% endif %}" inputmode="decimal" placeholder="sans limite" class="vd-petit"></td>
+<td>{% if l.quantite_disponible is none %}<span class="vd-ok">sans limite</span>{% elif l.quantite_disponible <= 0 %}<span class="vd-epuise">épuisé</span>{% else %}{{ l.quantite_disponible }} {{ l.unite }}{% endif %}</td></tr>{% endfor %}
+</tbody><tfoot><tr><th>Total en kg</th><th>{{ estimation.total_kg }} kg</th><th><label class="vd-case">poids vendable moyen <input form="f-rendements" name="kg_par_porc" value="{{ estimation.kg_par_porc if estimation.kg_par_porc is not none else '' }}" inputmode="decimal" placeholder="kg" class="vd-petit"></label></th><th>{% if estimation.cochons_par_poids %}{{ estimation.cochons_par_poids }}{% else %}—{% endif %}</th><th></th><th></th></tr></tfoot></table></div>
+<div class="rust-actions"><button form="f-rendements" class="ghost">Enregistrer les rendements</button><button form="f-inventaire">Déclarer l’inventaire</button></div>
+</details>
+{% else %}
+<h2>Aucune vente en cours</h2>
+<p>Créez une vente pour ouvrir les commandes : tous les morceaux seront disponibles sans limite jusqu’à votre inventaire.</p>
+<a class="button" href="/vente-directe/sessions">Créer une vente</a>
+{% endif %}
+</section>
+
 <section id="produits"><h2>Produits ({{ produits|length }})</h2>
 <div class="vd-produits">
 {% for p in produits %}<details class="vd-pli vd-produit{% if not p.actif %} inactif{% endif %}">
@@ -32,7 +85,7 @@
   </summary>
   <div class="vd-edition">
     <form method="post" action="/vente-directe/produit/{{ p.id }}"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Produit et tarif</h3><label>Nom<input name="nom" value="{{ p.nom }}" required></label><label>Prix<input name="prix" value="{{ p.prix }}" inputmode="decimal" required></label><label>Unité<select name="unite"><option value="kg" {% if p.unite == 'kg' %}selected{% endif %}>kg</option><option value="pièce" {% if p.unite == 'pièce' %}selected{% endif %}>pièce</option></select></label><label class="vd-case"><input type="checkbox" name="actif" {% if p.actif %}checked{% endif %}> visible par les clients</label><button>Enregistrer</button></form>
-    <form method="post" action="/vente-directe/produit/{{ p.id }}/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Inventaire</h3><label>Quantité disponible<input name="quantite_disponible" value="{{ p.quantite_disponible if p.quantite_disponible is not none else '' }}" inputmode="decimal" placeholder="quantité"></label><label class="vd-case"><input type="checkbox" name="stock_illimite" {% if p.quantite_disponible is none %}checked{% endif %}> illimité</label><button>Valider l’inventaire</button></form>
+    <form method="post" action="/vente-directe/produit/{{ p.id }}/inventaire"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Reste disponible</h3><label>Quantité restante<input name="quantite_disponible" value="{{ p.quantite_disponible if p.quantite_disponible is not none else '' }}" inputmode="decimal" placeholder="quantité"></label><label class="vd-case"><input type="checkbox" name="stock_illimite" {% if p.quantite_disponible is none %}checked{% endif %}> illimité</label><button>Enregistrer</button></form>
     <form method="post" action="/vente-directe/produit/{{ p.id }}/image" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><h3>Photo</h3><input type="file" name="image" accept="image/jpeg,image/png,image/webp" {% if not p.image_mime %}required{% endif %}><small class="muted">JPEG, PNG ou WebP · 5 Mo maximum</small><div class="rust-actions"><button>Importer l’image</button>{% if p.image_mime %}<button name="supprimer_image" value="1" class="ghost danger" formnovalidate>Retirer</button>{% endif %}</div></form>
   </div>
 </details>{% else %}<p class="rust-empty">Aucun produit</p>{% endfor %}
@@ -68,6 +121,14 @@
 </section>
 
 <style>
+.vd-sous{margin-top:-6px;opacity:.8}
+.vd-etapes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:12px 0}
+.vd-etape{border:1px solid rgba(127,127,127,.3);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.vd-etape>small{text-transform:uppercase;letter-spacing:.04em;opacity:.7;font-weight:700}
+.vd-etape p{margin:0}.vd-etape form{margin:0}
+.vd-grand{font-size:1.6em}.vd-ok{color:#1a7f37}.vd-attention{color:#b35900}
+.vd-petit{max-width:100px}.vd-masque{opacity:.55}
+.vd-tableau td,.vd-tableau th{vertical-align:middle}
 .vd-etat{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;border-radius:12px;padding:14px 18px;margin:10px 0 14px;border:1px solid}
 .vd-etat.ouvert{background:rgba(26,127,55,.10);border-color:rgba(26,127,55,.45)}
 .vd-etat.ferme{background:rgba(207,34,46,.08);border-color:rgba(207,34,46,.45)}

@@ -124,8 +124,8 @@ fn version_227_calcule_les_couts_et_permet_la_modification_client() {
     assert!(sessions.contains("coût d’élevage"));
     assert!(sessions.contains("par porc"));
     assert!(sessions.contains("par kg"));
-    assert!(confirmation.contains("code personnel"));
-    assert!(edit.contains("Enregistrer toute la commande"));
+    assert!(confirmation.contains("Votre code pour modifier la commande"));
+    assert!(edit.contains("Enregistrer ma commande"));
     assert!(communications.contains("envoyer_recap_commande"));
     assert!(schema.contains("token_modification TEXT"));
     assert!(schema.contains("cout_par_porc REAL"));
@@ -255,7 +255,7 @@ fn vente_directe_classe_les_produits_et_peut_fermer_les_commandes() {
     assert!(routes.contains("AS chiffre_affaires"));
     assert!(management.contains("Classement des produits vendus"));
     assert!(management.contains("⏹ Fermer les commandes"));
-    assert!(customer.contains("⏹ Fin de la vente"));
+    assert!(customer.contains("Les commandes sont fermées"));
     assert!(customer.contains("{% if not reglage.commandes_ouvertes %}"));
     assert!(migration.contains("commandes_ouvertes INTEGER NOT NULL DEFAULT 1"));
 }

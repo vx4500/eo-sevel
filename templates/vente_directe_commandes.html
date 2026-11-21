@@ -4,11 +4,14 @@
 {% set en_cours = commandes|selectattr('statut','in',['validee','preparation','prete'])|list %}
 {% set terminees = commandes|selectattr('statut','in',['livree','annulee'])|list %}
 {% macro carte(c) %}
-<article class="cmd-carte cmd-{{ c.statut }}">
+<article class="cmd-carte cmd-{{ c.statut }}" id="cmd-{{ c.id }}">
   <header><div><b class="cmd-client">{{ c.nom_client }}</b><small>{{ c.cree_le[8:10] }}/{{ c.cree_le[5:7] }} à {{ c.cree_le[11:16] }}{% if c.session_nom %} · {{ c.session_nom }}{% endif %}</small></div><b class="cmd-total">{{ c.total|euro }}</b></header>
   <p class="cmd-produits">{{ c.lignes or '—' }}{% if c.kg_commandes %} <b>({{ c.kg_commandes }} kg commandés)</b>{% endif %}</p>
   {% if c.notes %}<p class="cmd-note">📝 {{ c.notes }}</p>{% endif %}
-  <p class="cmd-contact">📞 <a href="tel:{{ c.telephone }}">{{ c.telephone }}</a>{% if c.email %} · {{ c.email }}{% endif %}{% if c.recap_envoye_le %} · ✓ récap envoyé{% elif c.email %} · récap non envoyé{% endif %}{% if c.code_modification %} · code <b>{{ c.code_modification }}</b>{% endif %}</p>
+  <p class="cmd-contact">📞 <a href="tel:{{ c.telephone }}">{{ c.telephone }}</a>{% if c.email %} · {{ c.email }}{% endif %}</p>
+  {% if c.code_modification %}<p class="cmd-code">Code client <b>{{ c.code_modification }}</b> · {% if c.recap_envoye_le %}<span class="cmd-ok">✓ e-mail envoyé</span>{% elif c.email %}<span class="cmd-ko">e-mail non envoyé</span>{% else %}pas d’e-mail : donner le code par téléphone{% endif %}
+  {% if c.email %}<form method="post" action="/vente-directe/commande/{{ c.id }}/renvoyer-code" onsubmit="return confirm('Envoyer le code et le récapitulatif à {{ c.email }} ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost">📧 {% if c.recap_envoye_le %}Renvoyer{% else %}Envoyer{% endif %} le code</button></form>{% endif %}</p>
+  {% if flash_code.cmd == c.id and flash_code.code_envoye %}<p class="alert">Code envoyé à {{ c.email }}.</p>{% elif flash_code.cmd == c.id and flash_code.code_erreur %}<p class="alert danger">{{ flash_code.code_erreur }}</p>{% endif %}{% endif %}
   <footer>
     <form method="post" action="/vente-directe/commande/{{ c.id }}/statut"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
       {% if c.statut == 'nouvelle' %}<button name="statut" value="validee">✓ Valider</button>
@@ -25,6 +28,7 @@
 </article>
 {% endmacro %}
 <h1>Commandes clients</h1>
+{% if flash_code.code_erreur and not flash_code.cmd %}<p class="alert danger">{{ flash_code.code_erreur }}</p>{% endif %}
 <p class="rust-actions"><a href="/vente-directe">← Produits et inventaire</a><a href="/vente-directe/bilan">Récapitulatif des ventes</a>{% for s in sessions_vente %}{% if s.active %}<a href="/vente-directe/preparation/imprimer?session_id={{ s.id }}" target="_blank">🖨 Préparation {{ s.nom }}</a><form method="post" action="/vente-directe/session/{{ s.id }}/cloturer" onsubmit="return confirm('Clôturer cette vente et fermer la page client ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="danger">⏹ Fin de vente {{ s.nom }}</button></form>{% endif %}{% endfor %}</p>
 
 {% if nouvelles %}<div class="cmd-annonce" role="status">🔔 <b>{{ nouvelles|length }} nouvelle{% if nouvelles|length > 1 %}s{% endif %} commande{% if nouvelles|length > 1 %}s{% endif %}</b> à valider</div>{% endif %}
@@ -50,7 +54,8 @@
 .cmd-carte header{display:flex;justify-content:space-between;gap:8px}
 .cmd-carte header small{display:block;opacity:.7}
 .cmd-client{font-size:1.1em}.cmd-total{font-size:1.1em;white-space:nowrap}
-.cmd-carte p{margin:0}.cmd-contact,.cmd-note{font-size:.9em;opacity:.85}
+.cmd-carte p{margin:0}
+.cmd-code{font-size:.9em;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.cmd-code form{margin:0}.cmd-ok{color:#1a7f37}.cmd-ko{color:#cf222e;font-weight:700}.cmd-contact,.cmd-note{font-size:.9em;opacity:.85}
 .cmd-carte footer{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
 .cmd-carte footer form{display:flex;gap:6px;margin:0}.cmd-carte footer .grow{flex:1}
 </style>
