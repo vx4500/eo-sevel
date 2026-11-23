@@ -111,6 +111,11 @@ struct Memoire {
     suivi_sortie: regul_core::SuiviSortie,
     /// Dernier renvoi d'une commande que le module n'a pas appliquée.
     ts_renvoi: i64,
+    /// Bande et consigne de courbe du dernier cycle où la base a répondu.
+    /// Si la lecture échoue (base occupée un instant), on les garde au lieu
+    /// de retomber sur la consigne fixe : le 22/11 à 18 h 20, ce repli avait
+    /// poussé PS1 de 32 à 82 % pendant une minute.
+    derniere_lecture: Option<LectureCourbe>,
     /// Dernier *changement* observé par grandeur : valeur et horodatage. Une
     /// lecture réussie ne prouve pas qu'une sonde est vivante — une sonde
     /// débranchée ou gelée répond souvent la même chose indéfiniment. C'est
@@ -586,6 +591,54 @@ const PRECONDITIONNEMENT_GRACE_H: f64 = 48.0;
 /// enregistré a toujours priorité sur une simple hypothèse de planification.
 /// Renvoie jour 0 pendant toute la fenêtre de préchauffage — la salle se
 /// comporte comme si la bande venait d'arriver, jusqu'à l'arrivée réelle.
+/// Bande en place et valeurs de la courbe pour son âge, telles que lues dans
+/// la base à un cycle donné.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LectureCourbe {
+    bande: Option<(i64, i64)>,
+    /// Consigne, ventilation mini et maxi de la courbe (None : pas de courbe
+    /// applicable, on prend la consigne fixe).
+    courbe: Option<(f64, Option<f64>, Option<f64>)>,
+}
+
+/// Garde la lecture du cycle si la base a répondu ; sinon reprend celle du
+/// dernier cycle réussi. Renvoie aussi `true` quand on a dû se replier.
+fn retenir_lecture(
+    lue: std::result::Result<LectureCourbe, String>,
+    derniere: &mut Option<LectureCourbe>,
+) -> (LectureCourbe, bool) {
+    match lue {
+        Ok(lecture) => {
+            *derniere = Some(lecture);
+            (lecture, false)
+        }
+        Err(_) => (
+            derniere.unwrap_or(LectureCourbe { bande: None, courbe: None }),
+            true,
+        ),
+    }
+}
+
+async fn bande_de_la_salle(pool: &SqlitePool, salle_id: i64) -> Result<Option<(i64, i64)>> {
+    if let Some(bande) = bande_en_place(pool, salle_id).await? {
+        return Ok(Some(bande));
+    }
+    if let Some(bande) = bande_via_mise_bas(pool, salle_id).await? {
+        return Ok(Some(bande));
+    }
+    preconditionnement_en_attente(pool, salle_id).await
+}
+
+async fn lire_courbe(pool: &SqlitePool, salle: &SalleRegulee) -> Result<LectureCourbe> {
+    let bande = bande_de_la_salle(pool, salle.salle_id).await?;
+    let courbe = match (salle.courbe_id, bande) {
+        (Some(courbe_id), Some((_, jours))) => consigne_courbe(&points_courbe(pool, courbe_id).await?, jours)
+            .map(|valeur| (valeur.t_cible, valeur.ventil_min, valeur.ventil_max)),
+        _ => None,
+    };
+    Ok(LectureCourbe { bande, courbe })
+}
+
 async fn preconditionnement_en_attente(
     pool: &SqlitePool,
     salle_id: i64,
@@ -735,31 +788,24 @@ async fn traiter_salle(
     // où les entrées sont individuelles et ne créent jamais de transfert de
     // bande) ; à défaut, un préconditionnement en cours (arrivée prévue
     // proche, voir 0013) pour démarrer le préchauffage au jour 0.
-    let bande = match bande_en_place(pool, salle.salle_id).await.unwrap_or(None) {
-        Some(bande) => Some(bande),
-        None => match bande_via_mise_bas(pool, salle.salle_id)
-            .await
-            .unwrap_or(None)
-        {
-            Some(bande) => Some(bande),
-            None => preconditionnement_en_attente(pool, salle.salle_id)
-                .await
-                .unwrap_or(None),
-        },
-    };
+    // Une erreur de lecture (base occupée un instant) ne doit pas faire
+    // retomber sur la consigne fixe : on garde celle du dernier cycle.
+    let lue = lire_courbe(pool, salle).await.map_err(|error| error.to_string());
+    if let Err(error) = &lue {
+        tracing::warn!(salle = %salle.nom, error = %error, "bande ou courbe illisible : dernière consigne gardée");
+    }
+    let (lecture, _repli) =
+        retenir_lecture(lue, &mut memoire.entry(salle.salle_id).or_default().derniere_lecture);
+    let bande = lecture.bande;
     let mut reglages = salle.reglages.clone();
     let mut consigne = salle.t_cible_fixe;
-    if let (Some(courbe_id), Some((_, jours))) = (salle.courbe_id, bande) {
-        if let Ok(points) = points_courbe(pool, courbe_id).await {
-            if let Some(valeur) = consigne_courbe(&points, jours) {
-                consigne = valeur.t_cible;
-                if let Some(mini) = valeur.ventil_min {
-                    reglages.ventil_min = mini;
-                }
-                if let Some(maxi) = valeur.ventil_max {
-                    reglages.ventil_max = maxi;
-                }
-            }
+    if let Some((t_cible, mini, maxi)) = lecture.courbe {
+        consigne = t_cible;
+        if let Some(mini) = mini {
+            reglages.ventil_min = mini;
+        }
+        if let Some(maxi) = maxi {
+            reglages.ventil_max = maxi;
         }
     }
 
@@ -1871,6 +1917,22 @@ mod tests {
         assert!(est_objet_io("api/core/io/65536"));
         assert!(!est_objet_io("api/core/ana/262204"));
         assert_eq!(extraire_nombre(&corps, "on"), Some(1.0));
+    }
+
+    #[test]
+    fn une_lecture_ratee_garde_la_derniere_consigne() {
+        let mut derniere = None;
+        // Rien encore en mémoire : repli sur la consigne fixe (courbe vide).
+        let (lecture, repli) = retenir_lecture(Err("base occupée".into()), &mut derniere);
+        assert!(repli && lecture.courbe.is_none());
+        let bonne = LectureCourbe { bande: Some((2, 11)), courbe: Some((25.9, Some(35.0), None)) };
+        assert_eq!(retenir_lecture(Ok(bonne), &mut derniere), (bonne, false));
+        // La base ne répond pas : on garde la courbe, pas la consigne fixe.
+        assert_eq!(retenir_lecture(Err("database is locked".into()), &mut derniere), (bonne, true));
+        // Une salle réellement vidée (lecture réussie, sans bande) est suivie.
+        let vide = LectureCourbe { bande: None, courbe: None };
+        assert_eq!(retenir_lecture(Ok(vide), &mut derniere), (vide, false));
+        assert_eq!(derniere, Some(vide));
     }
 
     #[test]

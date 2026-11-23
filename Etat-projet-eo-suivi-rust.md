@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.84.0** — vente directe : produits déplaçables à la place voulue, annonce avec adresses ajoutées à la main et texte enregistré.
+Version actuelle : **2.84.1** — régulation : si la bande ou la courbe d'une salle est illisible un instant, la dernière consigne est gardée (plus de repli sur la consigne fixe).
 
+
+Version Rust 2.84.1 : eo-regul — la bande en place et la consigne de courbe sont lues par lire_courbe (bande_de_la_salle : transfert, mise-bas, préconditionnement, erreurs propagées). En cas d'erreur, retenir_lecture reprend Memoire.derniere_lecture (dernier cycle réussi) au lieu de la consigne fixe, avec un avertissement « bande ou courbe illisible ». Origine : le 22/11 à 18 h 20, un cycle avait pris t_cible_fixe (24 °C) au lieu de la courbe (25,9 °C) et poussé PS1 de 32 à 82 %. Test une_lecture_ratee_garde_la_derniere_consigne.
 
 Version Rust 2.84.0 : (1) Ordre des produits : POST /vente-directe/produit/{id}/deplacer accepte direction haut/bas/premier/dernier ou position (1 = en haut) et renumérote tout l'ordre (enregistrer_ordre_produits) ; POST /vente-directe/produits/ordre (ordre = ids séparés par des virgules, ids inconnus ignorés, oubliés remis à la fin) pour le glisser-déposer par la poignée ⠿ (pointer events, souris et doigt) sur /vente-directe#produits ; champ « Place dans la liste » dans Modifier. (2) Annonce : sessionventedirecte.annonce_sujet / annonce_message (texte gardé par vente, enregistré aussi à l'essai et à l'envoi ; bouton « Revenir au texte proposé ») ; POST /vente-directe/annonce/enregistrer ; POST /vente-directe/annonce/adresses (une adresse par ligne, « Nom <adresse> » accepté, une adresse invalide = rien n'est ajouté ; client existant → newsletter_email=1 et desinscrit_le effacé, sinon fiche client sans commande) ; POST /vente-directe/annonce/retirer/{id} (newsletter_email=0 + desinscrit_le). Tests : produit_deplace_a_la_place_choisie, adresses_saisies_a_la_main, annonce_ajout_d_adresses_et_texte_enregistre.
 
