@@ -8166,6 +8166,15 @@ async fn transferts(
             ctx.insert("reste_nom".into(), json!(format!("{salle} · {case_nom}")));
         }
     }
+    if let Some(n) = query.get("quai").and_then(|v| v.parse::<i64>().ok()).filter(|n| *n > 0) {
+        ctx.insert("quai_n".into(), json!(n));
+        let attente: i64 = departs::quai_en_attente(&state.pool)
+            .await?
+            .iter()
+            .filter_map(|q| q["reste"].as_i64())
+            .sum();
+        ctx.insert("quai_total".into(), json!(attente));
+    }
     ctx.insert(
         "today".into(),
         json!(Local::now().date_naive().format("%Y-%m-%d").to_string()),
@@ -8497,6 +8506,91 @@ mod transfert_maternite_tests {
         Ok(())
     }
 
+    /// Le quai est une destination de la page Transferts : depuis une case
+    /// (« Déplacer des porcs ») ou pour une salle entière. Les porcs sortent
+    /// de la case et attendent le bon d'apport ; une bande comme source est
+    /// refusée avec une explication.
+    #[tokio::test]
+    async fn mettre_des_porcs_sur_le_quai_depuis_transferts() -> anyhow::Result<()> {
+        let (state, _maternity_pen, dest_pen) = test_state().await?;
+        sqlx::raw_sql(include_str!("../../migrations/0002_ventelot.sql")).execute(&state.pool).await?;
+        let room: i64 = sqlx::query_scalar("SELECT salle_id FROM casesalle WHERE id=?")
+            .bind(dest_pen)
+            .fetch_one(&state.pool)
+            .await?;
+        let mut cases = Vec::new();
+        for (nom, n) in [("Q1", 40), ("Q2", 20)] {
+            let id = sqlx::query("INSERT INTO casesalle(salle_id,nom,nb_max_porcs) VALUES(?,?,100)")
+                .bind(room)
+                .bind(nom)
+                .execute(&state.pool)
+                .await?
+                .last_insert_rowid();
+            sqlx::query("INSERT INTO inventairecase(case_id,date,nombre) VALUES(?,'2026-08-01',?)")
+                .bind(id)
+                .bind(n)
+                .execute(&state.pool)
+                .await?;
+            cases.push(id);
+        }
+        // Une case, 35 porcs sur 40 : il en reste 5, la question suit.
+        let mut form = movement_form(cases[0], 0, "35");
+        form.insert("case_dest_id".into(), "quai".into());
+        let reponse = transferts_porcs(State(state.clone()), Extension(session()), Form(form.clone())).await?;
+        let cible = reponse.headers().get("location").and_then(|v| v.to_str().ok()).unwrap_or("");
+        assert_eq!(cible, format!("/transferts?quai=35&reste={}&n=5", cases[0]));
+        assert_eq!(case_pig_count(&state.pool, cases[0]).await?, 5);
+        let quai: i64 = sqlx::query_scalar("SELECT SUM(nombre) FROM quai_porc").fetch_one(&state.pool).await?;
+        assert_eq!(quai, 35);
+        // Une bande comme source : refus expliqué.
+        form.insert("source".into(), "bande:1".into());
+        let err = transferts_porcs(State(state.clone()), Extension(session()), Form(form))
+            .await
+            .expect_err("bande refusée");
+        assert!(matches!(err, AppError::Invalid(ref m) if m.contains("case")), "{err:?}");
+        // Salle entière vers le quai ; trop demandé dans Q2 : rien d'écrit.
+        let salle = |nb2: &str| -> HashMap<String, String> {
+            [
+                ("csrf_token".to_string(), "csrf-test".to_string()),
+                ("date".into(), "2026-08-10".into()),
+                (format!("dest_{}", cases[0]), "quai".into()),
+                (format!("nb_{}", cases[0]), "5".into()),
+                (format!("dest_{}", cases[1]), "quai".into()),
+                (format!("nb_{}", cases[1]), nb2.to_string()),
+            ]
+            .into_iter()
+            .collect()
+        };
+        transferts_salle(State(state.clone()), Extension(session()), Form(salle("21")))
+            .await
+            .expect_err("trop demandé");
+        let quai: i64 = sqlx::query_scalar("SELECT SUM(nombre) FROM quai_porc").fetch_one(&state.pool).await?;
+        assert_eq!(quai, 35);
+        let reponse = transferts_salle(State(state.clone()), Extension(session()), Form(salle("20"))).await?;
+        let cible = reponse.headers().get("location").and_then(|v| v.to_str().ok()).unwrap_or("");
+        assert_eq!(cible, "/transferts?quai=25");
+        assert_eq!(case_pig_count(&state.pool, cases[0]).await?, 0);
+        assert_eq!(case_pig_count(&state.pool, cases[1]).await?, 0);
+        let quai: i64 = sqlx::query_scalar("SELECT SUM(nombre) FROM quai_porc").fetch_one(&state.pool).await?;
+        assert_eq!(quai, 60);
+        // La page affiche le bandeau du quai et la destination « Quai ».
+        let attente: i64 = departs::quai_en_attente(&state.pool)
+            .await?
+            .iter()
+            .filter_map(|q| q["reste"].as_i64())
+            .sum();
+        assert_eq!(attente, 60);
+        let page = crate::templates::build()?
+            .get_template("transferts.html")?
+            .render(minijinja::context! {
+                quai_n => 25, quai_total => attente,
+                session => serde_json::json!({"peut_modifier": true, "csrf": "x"}),
+            })?;
+        assert!(page.contains("25 porc(s) mis sur le quai") && page.contains("60 porc(s) en attente"));
+        assert!(page.contains("value=\"quai\""));
+        Ok(())
+    }
+
     /// Toujours refuser un déplacement au-delà de la portée réellement
     /// présente, avec le vrai effectif plutôt qu'un compte de case figé à 0.
     #[tokio::test]
@@ -8594,6 +8688,24 @@ async fn transferts_porcs(
     verify_csrf(&session, &form)?;
     let source =
         form_text(&form, "source").ok_or_else(|| AppError::Invalid("Source obligatoire".into()))?;
+    // Destination « Quai abattoir » : les porcs sortent de leur case et
+    // attendent le bon d'apport (même enregistrement que la saisie rapide).
+    if form_text(&form, "case_dest_id").as_deref() == Some("quai") {
+        let nombre = form_i64(&form, "nombre")
+            .filter(|value| *value > 0)
+            .ok_or_else(|| AppError::Invalid("Nombre invalide".into()))?;
+        let date = form_date_or_today(&form, "date")?;
+        let case_id = source
+            .strip_prefix("case:")
+            .and_then(|id| id.parse::<i64>().ok())
+            .ok_or_else(|| {
+                AppError::Invalid(
+                    "Pour le quai, choisissez comme source la case d'où partent les porcs".into(),
+                )
+            })?;
+        departs::sortie_quai(&state.pool, case_id, nombre, &date, form_text(&form, "note")).await?;
+        return Ok(Redirect::to(&apres_quai(&state.pool, &[case_id], nombre).await?).into_response());
+    }
     let destination = form_i64(&form, "case_dest_id")
         .ok_or_else(|| AppError::Invalid("Case de destination obligatoire".into()))?;
     let number = form_i64(&form, "nombre")
@@ -8773,7 +8885,15 @@ async fn transferts_salle(
     let date = form_date_or_today(&form, "date")?;
     let note = form_text(&form, "note");
     let mut lignes: Vec<(i64, i64, i64)> = Vec::new();
+    let mut vers_quai: Vec<(i64, i64)> = Vec::new();
     for source in form_selected_ids(&form, "dest_") {
+        if form_text(&form, &format!("dest_{source}")).as_deref() == Some("quai") {
+            let nombre = form_i64(&form, &format!("nb_{source}")).unwrap_or(0);
+            if nombre > 0 {
+                vers_quai.push((source, nombre));
+            }
+            continue;
+        }
         let Some(dest) = form_i64(&form, &format!("dest_{source}")) else {
             continue; // « ne pas déplacer »
         };
@@ -8782,6 +8902,31 @@ async fn transferts_salle(
             continue;
         }
         lignes.push((source, dest, nombre));
+    }
+    if !vers_quai.is_empty() {
+        // Toute la salle part au quai : on contrôle chaque case avant
+        // d'écrire quoi que ce soit.
+        for &(source, nombre) in &vers_quai {
+            let present = case_pig_count(&state.pool, source).await?;
+            if nombre > present {
+                let nom: Option<String> = sqlx::query_scalar(
+                    "SELECT s.nom||' · '||c.nom FROM casesalle c JOIN salle s ON s.id=c.salle_id WHERE c.id=?",
+                )
+                .bind(source)
+                .fetch_optional(&state.pool)
+                .await?;
+                return Err(AppError::Invalid(format!(
+                    "{} : {present} porc(s) présent(s), {nombre} demandé(s)",
+                    nom.unwrap_or_else(|| format!("case {source}"))
+                )));
+            }
+        }
+        for &(source, nombre) in &vers_quai {
+            departs::sortie_quai(&state.pool, source, nombre, &date, note.clone()).await?;
+        }
+        let cases: Vec<i64> = vers_quai.iter().map(|(c, _)| *c).collect();
+        let total = vers_quai.iter().map(|(_, n)| n).sum();
+        return Ok(Redirect::to(&apres_quai(&state.pool, &cases, total).await?).into_response());
     }
     if lignes.is_empty() {
         return Err(AppError::Invalid("Aucune case à déplacer".into()));
@@ -8875,6 +9020,18 @@ async fn transferts_salle(
         }
     }
     Ok(Redirect::to("/transferts").into_response())
+}
+
+/// Page affichée après une mise sur le quai depuis Transferts : le nombre
+/// de porcs partis, et la question habituelle s'il reste un petit groupe.
+async fn apres_quai(pool: &SqlitePool, cases: &[i64], total: i64) -> AppResult<String> {
+    for &case_id in cases {
+        let reste = case_pig_count(pool, case_id).await?;
+        if (1..=9).contains(&reste) {
+            return Ok(format!("/transferts?quai={total}&reste={case_id}&n={reste}"));
+        }
+    }
+    Ok(format!("/transferts?quai={total}"))
 }
 
 async fn transfert_supprimer(

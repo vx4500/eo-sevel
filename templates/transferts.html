@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% block content %}
 <h1>Transferts et occupation des cases</h1>
+{% if quai_n %}<section class="card" role="status" style="border-left:4px solid #2d6a4f;background:#eef7f1"><h2 style="margin-top:0">🚚 {{ quai_n }} porc(s) mis sur le quai</h2>
+<p>Ils sont sortis de leur case et restent comptés à l’élevage jusqu’au bon d’apport de l’abattoir{% if quai_total %} ({{ quai_total }} porc(s) en attente sur le quai){% endif %}. Quand le bon arrive, ils sont repris automatiquement.</p>
+<p><a class="button ghost" href="/departs">Voir le quai et les départs</a></p></section>{% endif %}
 {% if reste_n %}<section class="card" role="status" style="border-left:4px solid #e0b84a;background:#fff8e6"><h2 style="margin-top:0">Il reste {{ reste_n }} porc(s) dans {{ reste_nom }}</h2>
 <p>Le transfert est enregistré. Que sont devenus les {{ reste_n }} porc(s) restants ?</p>
 <p style="display:flex;flex-wrap:wrap;gap:8px"><a class="button" href="/quotidien">Ils sont morts : le déclarer</a> <a class="button ghost" href="#deplacer-porcs">Ils ont été déplacés aussi</a> <a class="button ghost" href="/inventaire">Le compte était faux : refaire l’inventaire</a> <a class="button ghost" href="/transferts">Ils sont encore là</a></p></section>{% endif %}
@@ -29,6 +32,7 @@
   var zone=document.getElementById('ds-zone'), body=document.getElementById('ds-lignes'), total=document.getElementById('ds-total');
   var salles=[], vu={};
   cases.forEach(function(c){ if(!vu[c.salle_id]){ vu[c.salle_id]={id:c.salle_id,nom:c.site+' · '+c.salle,mater:String(c.salle_type||'').indexOf('mater')===0,porcs:0}; salles.push(vu[c.salle_id]); } vu[c.salle_id].porcs+=Math.max(0,c.presents||0); });
+  dst.add(new Option('🚚 Quai abattoir (départ)','quai'));
   salles.forEach(function(s){
     if(!s.mater && s.porcs>0) src.add(new Option(s.nom+' — '+s.porcs+' porc(s)',s.id));
     dst.add(new Option(s.nom,s.id));
@@ -43,13 +47,15 @@
     body.replaceChildren();
     if(!src.value||!dst.value){zone.hidden=true;return;}
     var departs=dans(src.value).filter(function(c){return (c.presents||0)>0;});
-    var arrivees=dans(dst.value);
+    var quai=dst.value==='quai';
+    var arrivees=quai?[]:dans(dst.value);
     departs.forEach(function(c,i){
       var tr=document.createElement('tr');
       var td1=document.createElement('td'); td1.textContent=c.case_nom;
       var td2=document.createElement('td'); td2.textContent=c.presents;
       var td3=document.createElement('td'); var sel=document.createElement('select'); sel.name='dest_'+c.case_id;
       sel.add(new Option('— ne pas déplacer —',''));
+      if(quai){ sel.add(new Option('Quai abattoir','quai')); sel.value='quai'; }
       arrivees.forEach(function(a){
         if(a.case_id===c.case_id) return;
         var place=a.nb_max_porcs?' ('+Math.max(0,a.presents||0)+'/'+a.nb_max_porcs+')':'';
@@ -57,7 +63,7 @@
       });
       // Proposition : la case de même nom, sinon celle de même rang.
       var meme=arrivees.filter(function(a){return cle(a)===cle(c)&&a.case_id!==c.case_id;})[0]||arrivees[i];
-      if(meme&&meme.case_id!==c.case_id) sel.value=String(meme.case_id);
+      if(!quai&&meme&&meme.case_id!==c.case_id) sel.value=String(meme.case_id);
       td3.appendChild(sel);
       var td4=document.createElement('td'); var nb=document.createElement('input'); nb.type='number'; nb.min='0'; nb.max=String(c.presents); nb.name='nb_'+c.case_id; nb.value=String(c.presents); nb.style.maxWidth='90px';
       td4.appendChild(nb);
@@ -84,7 +90,7 @@
       {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
       </optgroup>
     </select></label>
-    <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>
+    <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option><option value="quai">🚚 Quai abattoir — départ (choisir une case comme source)</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>
     <div class="rust-actions"><label>Nombre<input type="number" name="nombre" min="1" required></label><label>Date<input type="date" name="date" value="{{ today }}" required></label></div>
     <label>Note<input name="note"></label><button>Enregistrer le transfert</button>
   </form>

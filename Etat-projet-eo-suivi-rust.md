@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.84.1** — régulation : si la bande ou la courbe d'une salle est illisible un instant, la dernière consigne est gardée (plus de repli sur la consigne fixe).
+Version actuelle : **2.84.2** — Transferts : destination « Quai abattoir » (une case ou une salle entière).
 
+
+Version Rust 2.84.2 : page /transferts — destination « Quai abattoir » (valeur case_dest_id=quai dans « Déplacer des porcs », source obligatoirement une case ; salle d'arrivée « quai » dans « Déplacer une salle entière », dest_{case}=quai). Les deux passent par departs::sortie_quai (transfert sans destination + quai_porc), contrôle de toutes les cases avant écriture pour la salle entière. apres_quai redirige vers /transferts?quai=N (+ reste/n si 1 à 9 porcs restent) ; bandeau avec le total en attente (departs::quai_en_attente). Test mettre_des_porcs_sur_le_quai_depuis_transferts.
 
 Version Rust 2.84.1 : eo-regul — la bande en place et la consigne de courbe sont lues par lire_courbe (bande_de_la_salle : transfert, mise-bas, préconditionnement, erreurs propagées). En cas d'erreur, retenir_lecture reprend Memoire.derniere_lecture (dernier cycle réussi) au lieu de la consigne fixe, avec un avertissement « bande ou courbe illisible ». Origine : le 22/11 à 18 h 20, un cycle avait pris t_cible_fixe (24 °C) au lieu de la courbe (25,9 °C) et poussé PS1 de 32 à 82 %. Test une_lecture_ratee_garde_la_derniere_consigne.
 
