@@ -731,6 +731,7 @@ pub fn router(state: AppState) -> Router {
         .route("/departs/{id}/confirmer", post(departs::confirmer))
         .route("/departs/{id}/supprimer", post(departs::supprimer))
         .route("/departs/quai/{id}/annuler", post(departs::quai_annuler))
+        .route("/departs/quai/{id}/sortir", post(departs::quai_sortir))
         .route("/salles/{id}", get(salles::fiche))
         .route("/salles/{id}/reglages", post(salles::reglages))
         .route("/structure/site", post(structure_site))
@@ -1766,6 +1767,16 @@ async fn farm_alerts(pool: &SqlitePool) -> AppResult<Value> {
     .await
     {
         push_farm_alert(&mut alerts, piles, "Sondes Zigbee à pile faible (moins de 25 %)", "/ambiance/zigbee", "information");
+    }
+    // Porcs laissés sur le quai sans bon d'apport ni sortie notée.
+    if let Ok(n) = departs::quai_en_retard(pool).await {
+        push_farm_alert(
+            &mut alerts,
+            n,
+            &format!("Porcs sur le quai depuis plus de {} jours : saisir le bon d’apport ou noter où ils sont partis", departs::QUAI_JOURS_MAX),
+            "/departs",
+            "attention",
+        );
     }
     let case_anomalies = cases_incoherentes(pool).await?.len() as i64;
     push_farm_alert(
@@ -8103,7 +8114,7 @@ async fn transferts(
 ) -> AppResult<Html<String>> {
     let cases = generic_rows(
         &state.pool,
-        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,lower(COALESCE(s.type,'')) AS salle_type,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
+        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,lower(COALESCE(s.type,'')) AS salle_type,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies,(SELECT b.code FROM transfert t JOIN bande b ON b.id=t.bande_id WHERE t.case_dest_id=c.id AND t.espece='porc' ORDER BY t.date DESC,t.id DESC LIMIT 1) AS bande_code FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
     )
     .await?;
     // « Déplacer une salle entière » : l'effectif réel (inventaire compris)
@@ -10686,6 +10697,10 @@ async fn synchronise_sortie_abattoir(
         .bind(sale_id)
         .execute(&mut **tx)
         .await?;
+    sqlx::query("UPDATE quai_sortie SET vente_id=NULL WHERE vente_id=?")
+        .bind(sale_id)
+        .execute(&mut **tx)
+        .await?;
     // Truies de réforme : ce ne sont pas des porcs de la bande, aucune sortie
     // d'effectif de bande (elles sortent par la réforme de la truie).
     if lots_json.is_some_and(crate::economic_import::lots_reforme) {
@@ -10768,7 +10783,8 @@ async fn synchronise_sortie_abattoir(
         // Porcs déjà mis sur le quai : sortis de case, ils partent avec ce
         // bon d'apport sans être retirés une seconde fois des cases.
         let quai: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT q.id,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) AS reste \
+            "SELECT q.id,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) \
+             -COALESCE((SELECT SUM(x.nombre) FROM quai_sortie x WHERE x.quai_id=q.id),0) AS reste \
              FROM quai_porc q WHERE q.bande_id=? AND date(q.date)<=date(?) AND reste>0 ORDER BY q.date,q.id",
         )
         .bind(band)
@@ -10784,6 +10800,25 @@ async fn synchronise_sortie_abattoir(
                 .bind(quai_id).bind(sale_id).bind(pris)
                 .execute(&mut **tx).await?;
             remaining -= pris;
+        }
+        // Porcs du quai notés « partis à l'abattoir » avant l'arrivée du bon :
+        // déjà sortis de l'élevage, le bon les reprend sans autre retrait.
+        let sorties: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT x.id,x.nombre FROM quai_sortie x JOIN quai_porc q ON q.id=x.quai_id \
+             WHERE x.motif='abattoir' AND x.vente_id IS NULL AND q.bande_id=? AND date(q.date)<=date(?) ORDER BY x.date,x.id",
+        )
+        .bind(band)
+        .bind(&movement_date)
+        .fetch_all(&mut **tx)
+        .await?;
+        for (sortie_id, nombre) in sorties {
+            if remaining < nombre {
+                break;
+            }
+            sqlx::query("UPDATE quai_sortie SET vente_id=? WHERE id=?")
+                .bind(sale_id).bind(sortie_id)
+                .execute(&mut **tx).await?;
+            remaining -= nombre;
         }
         for (case_id, available) in cases {
             if remaining <= 0 {

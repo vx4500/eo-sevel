@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.84.2** — Transferts : destination « Quai abattoir » (une case ou une salle entière).
+Version actuelle : **2.85.0** — Quai : bande visible dans Transferts, sortie du quai sans bon d'apport, alerte après 7 jours.
 
+
+Version Rust 2.85.0 : /transferts — la requête des cases ajoute bande_code (bande du dernier transfert de porcs entré dans la case), affiché dans les sources (case et salle entière), les destinations occupées et les lignes de salle entière. Nouvelle table quai_sortie (dans 0002_ventelot.sql) : sortie du quai sans bon d'apport (motif abattoir | vente_directe | autre), route POST /departs/quai/{id}/sortir (departs::quai_sortir). quai_en_attente déduit quai_affectation et quai_sortie, renvoie jours et en_retard (QUAI_JOURS_MAX = 7) ; alerte farm_alerts « Porcs sur le quai depuis plus de 7 jours ». synchronise_sortie_abattoir rattache les sorties « abattoir » sans vente_id de la bande (vente_id) au bon d'apport arrivé après coup, sans retrait des cases ; suppression du bon : vente_id remis à NULL (ventes.rs et resynchronisation). quai_annuler refuse un lot déjà sorti. Test sorties_du_quai_sans_bon_et_alerte.
 
 Version Rust 2.84.2 : page /transferts — destination « Quai abattoir » (valeur case_dest_id=quai dans « Déplacer des porcs », source obligatoirement une case ; salle d'arrivée « quai » dans « Déplacer une salle entière », dest_{case}=quai). Les deux passent par departs::sortie_quai (transfert sans destination + quai_porc), contrôle de toutes les cases avant écriture pour la salle entière. apres_quai redirige vers /transferts?quai=N (+ reste/n si 1 à 9 porcs restent) ; bandeau avec le total en attente (departs::quai_en_attente). Test mettre_des_porcs_sur_le_quai_depuis_transferts.
 

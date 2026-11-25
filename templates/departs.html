@@ -6,9 +6,14 @@
 {% if quai %}
 <section class="card" style="border-left:4px solid #2b6cb8">
   <h2>Sur le quai — {{ quai | map(attribute="reste") | sum }} porcs en attente du bon d'apport</h2>
-  <p class="muted">Sortis des salles mais toujours à l'élevage. Ils seront retirés de l'élevage à l'enregistrement du bon d'apport de leur bande.</p>
-  <table><thead><tr><th>Date</th><th>Bande</th><th>Venant de</th><th>Porcs</th><th></th></tr></thead><tbody>
-  {% for q in quai %}<tr><td>{{ q.date }}</td><td>{{ q.bande | default("—") }}</td><td>{{ q.origine }}</td><td>{{ q.reste }}{% if q.reste != q.nombre %} / {{ q.nombre }}{% endif %}</td>
+  <p class="muted">Sortis des salles mais toujours à l'élevage. Ils seront retirés de l'élevage à l'enregistrement du bon d'apport de leur bande. Sans bon d'apport (vente directe, autre sortie, bon jamais reçu), notez où ils sont partis.</p>
+  <table><thead><tr><th>Date</th><th>Bande</th><th>Venant de</th><th>Porcs</th><th>Sortie sans bon d'apport</th><th></th></tr></thead><tbody>
+  {% for q in quai %}<tr{% if q.en_retard %} style="background:#fff4e0"{% endif %}><td>{{ q.date|date_fr }}<span class="muted" style="display:block;font-size:12px">{% if q.jours == 0 %}aujourd'hui{% elif q.jours == 1 %}hier{% else %}depuis {{ q.jours }} jours{% endif %}{% if q.en_retard %} · ⚠ bon d'apport attendu{% endif %}</span></td><td>{{ q.bande | default("—") }}</td><td>{{ q.origine }}</td><td>{{ q.reste }}{% if q.reste != q.nombre %} / {{ q.nombre }}{% endif %}</td>
+    <td>{% if session.peut_modifier %}<form method="post" action="/departs/quai/{{ q.id }}/sortir" class="rust-actions" style="gap:6px;align-items:center;flex-wrap:wrap" onsubmit="return confirm('Ces porcs quittent l’élevage. Confirmer ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+      <select name="motif" required aria-label="Où sont partis les porcs"><option value="">Partis où ?</option><option value="abattoir">🏭 Abattoir (bon pas reçu)</option><option value="vente_directe">🥩 Vente directe</option><option value="autre">Autre sortie</option></select>
+      <input type="number" name="nombre" min="1" max="{{ q.reste }}" value="{{ q.reste }}" style="width:5em" aria-label="Nombre de porcs">
+      <input type="date" name="date" value="{{ q.date }}" aria-label="Date de sortie">
+      <button type="submit">Sortir du quai</button></form>{% endif %}</td>
     <td>{% if q.annulable %}<form method="post" action="/departs/quai/{{ q.id }}/annuler" onsubmit="return confirm('Remettre ces porcs dans leur case ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button type="submit" class="ghost">Remettre en case</button></form>{% endif %}</td></tr>{% endfor %}
   </tbody></table>
 </section>

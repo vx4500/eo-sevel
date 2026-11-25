@@ -252,12 +252,62 @@ pub(super) async fn sortie_quai(
     Ok(())
 }
 
+/// Au-delà, des porcs restés sur le quai sans bon d'apport sont signalés
+/// dans les alertes : bon oublié, ou sortie à noter (vente directe…).
+pub(super) const QUAI_JOURS_MAX: i64 = 7;
+
+/// Nombre de lots du quai en attente depuis plus de `QUAI_JOURS_MAX` jours.
+pub(super) async fn quai_en_retard(pool: &SqlitePool) -> AppResult<i64> {
+    Ok(quai_en_attente(pool).await?.iter().filter(|q| q["en_retard"].as_bool() == Some(true)).count() as i64)
+}
+
+/// Porcs sortis du quai sans bon d'apport : partis à l'abattoir (bon pas
+/// arrivé), en vente directe ou ailleurs. Ils quittent l'élevage.
+pub(super) async fn quai_sortir(
+    State(state): State<AppState>,
+    Extension(session): Extension<SessionData>,
+    Path(id): Path<i64>,
+    Form(form): Form<HashMap<String, String>>,
+) -> AppResult<Response> {
+    require_writer(&session)?;
+    verify_csrf(&session, &form)?;
+    let motif = form.get("motif").map(String::as_str).unwrap_or_default();
+    if !["abattoir", "vente_directe", "autre"].contains(&motif) {
+        return Err(AppError::Invalid("Choisissez où sont partis les porcs".into()));
+    }
+    let date = form
+        .get("date")
+        .filter(|d| !d.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| chrono::Local::now().date_naive().format("%Y-%m-%d").to_string());
+    let note = form.get("note").map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let reste = quai_en_attente(&state.pool)
+        .await?
+        .iter()
+        .find(|q| q["id"].as_i64() == Some(id))
+        .and_then(|q| q["reste"].as_i64())
+        .ok_or_else(|| AppError::Invalid("Plus aucun porc en attente sur ce lot du quai".into()))?;
+    let nombre = match form.get("nombre").map(|n| n.trim()).filter(|n| !n.is_empty()) {
+        Some(n) => n.parse::<i64>().map_err(|_| AppError::Invalid("Nombre de porcs invalide".into()))?,
+        None => reste,
+    };
+    if nombre <= 0 || nombre > reste {
+        return Err(AppError::Invalid(format!("Nombre de porcs entre 1 et {reste}")));
+    }
+    sqlx::query("INSERT INTO quai_sortie(quai_id,date,nombre,motif,note) VALUES(?,?,?,?,?)")
+        .bind(id).bind(&date).bind(nombre).bind(motif).bind(note)
+        .execute(&state.pool)
+        .await?;
+    db::journal(&state.pool, &session.nom, "sortir", "quai", &format!("{id} · {nombre} porcs · {motif}"), "/departs").await;
+    Ok(Redirect::to("/departs").into_response())
+}
+
 /// Porcs sur le quai pas encore repris par un bon d'apport : sortis des
 /// salles mais toujours à l'élevage.
 pub(super) async fn quai_en_attente(pool: &SqlitePool) -> AppResult<Vec<Value>> {
-    let lignes: Vec<(i64, String, i64, i64, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT q.id,q.date,q.nombre,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0) AS reste, \
-                b.code,COALESCE(s.nom,''),COALESCE(c.nom,'') \
+    let lignes: Vec<(i64, String, i64, i64, Option<String>, String, String, i64)> = sqlx::query_as(
+        "SELECT q.id,q.date,q.nombre,q.nombre-COALESCE((SELECT SUM(a.nombre) FROM quai_affectation a WHERE a.quai_id=q.id),0)-COALESCE((SELECT SUM(x.nombre) FROM quai_sortie x WHERE x.quai_id=q.id),0) AS reste, \
+                b.code,COALESCE(s.nom,''),COALESCE(c.nom,''),CAST(julianday(date('now','localtime'))-julianday(date(q.date)) AS INTEGER) \
          FROM quai_porc q LEFT JOIN bande b ON b.id=q.bande_id LEFT JOIN casesalle c ON c.id=q.case_id LEFT JOIN salle s ON s.id=c.salle_id \
          WHERE reste>0 ORDER BY q.date,q.id",
     )
@@ -265,10 +315,10 @@ pub(super) async fn quai_en_attente(pool: &SqlitePool) -> AppResult<Vec<Value>> 
     .await?;
     Ok(lignes
         .into_iter()
-        .map(|(id, date, nombre, reste, bande, salle, case)| {
+        .map(|(id, date, nombre, reste, bande, salle, case, jours)| {
             let origine = [salle, case].into_iter().filter(|v| !v.is_empty()).collect::<Vec<_>>().join(" · ");
             json!({"id": id, "date": date, "nombre": nombre, "reste": reste, "bande": bande,
-                   "origine": origine,
+                   "origine": origine, "jours": jours, "en_retard": jours > QUAI_JOURS_MAX,
                    "annulable": reste == nombre})
         })
         .collect())
@@ -283,12 +333,13 @@ pub(super) async fn quai_annuler(
 ) -> AppResult<Response> {
     require_writer(&session)?;
     verify_csrf(&session, &form)?;
-    let affecte: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quai_affectation WHERE quai_id=?")
+    let affecte: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM quai_affectation WHERE quai_id=?)+(SELECT COUNT(*) FROM quai_sortie WHERE quai_id=?)")
+        .bind(id)
         .bind(id)
         .fetch_one(&state.pool)
         .await?;
     if affecte > 0 {
-        return Err(AppError::Invalid("Ces porcs sont déjà repris par un bon d'apport".into()));
+        return Err(AppError::Invalid("Ces porcs sont déjà sortis du quai (bon d'apport ou sortie notée)".into()));
     }
     let mut tx = state.pool.begin().await?;
     let transfert: Option<i64> = sqlx::query_scalar("SELECT transfert_id FROM quai_porc WHERE id=?")

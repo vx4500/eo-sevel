@@ -304,6 +304,10 @@ pub(super) async fn remove_apport(
             .bind(sale)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE quai_sortie SET vente_id=NULL WHERE vente_id=?")
+            .bind(sale)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM venteapport WHERE id=?")
             .bind(sale)
             .execute(&mut *tx)
@@ -566,6 +570,31 @@ mod tests {
         // 30 pris sur le quai, 10 seulement retirés de la case.
         assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 10);
         assert!(super::super::departs::quai_en_attente(&state.pool).await?.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sorties_du_quai_sans_bon_et_alerte() -> anyhow::Result<()> {
+        use super::super::departs;
+        use super::super::documents::tests::state;
+        let state = state().await;
+        sqlx::raw_sql("INSERT INTO bande(id,code) VALUES(1,'A'); INSERT INTO site(id,code) VALUES(1,'S'); INSERT INTO salle(id,site_id,nom) VALUES(1,1,'R'); INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'C1'); INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-01-01','porc',1,1,50); INSERT INTO venteapport(id,date,num_apport,nb_porcs,montant_ht) VALUES(1,'2026-02-10','AP',30,2000);").execute(&state.pool).await?;
+        departs::sortie_quai(&state.pool, 1, 30, "2026-02-01", None).await?;
+        departs::sortie_quai(&state.pool, 1, 5, "2026-02-01", None).await?;
+        // Vieux de plus de 7 jours : alerte.
+        assert_eq!(departs::quai_en_retard(&state.pool).await?, 2);
+        // 30 notés partis à l'abattoir (bon pas encore reçu), 5 en vente directe.
+        sqlx::raw_sql("INSERT INTO quai_sortie(quai_id,date,nombre,motif) VALUES(1,'2026-02-01',30,'abattoir'),(2,'2026-02-01',5,'vente_directe')").execute(&state.pool).await?;
+        assert!(departs::quai_en_attente(&state.pool).await?.is_empty());
+        assert_eq!(departs::quai_en_retard(&state.pool).await?, 0);
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 15);
+        // Le bon arrive ensuite : il reprend les 30 sans les retirer de la case.
+        let mut tx = state.pool.begin().await?;
+        assign(&mut tx, 1, -1, Some(1)).await?;
+        tx.commit().await?;
+        assert_eq!(super::super::case_pig_count(&state.pool, 1).await?, 15);
+        let lie: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM quai_sortie WHERE vente_id=1").fetch_one(&state.pool).await?;
+        assert_eq!(lie, 1);
         Ok(())
     }
 

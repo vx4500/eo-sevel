@@ -31,10 +31,10 @@
   var src=document.getElementById('ds-source'), dst=document.getElementById('ds-dest');
   var zone=document.getElementById('ds-zone'), body=document.getElementById('ds-lignes'), total=document.getElementById('ds-total');
   var salles=[], vu={};
-  cases.forEach(function(c){ if(!vu[c.salle_id]){ vu[c.salle_id]={id:c.salle_id,nom:c.site+' · '+c.salle,mater:String(c.salle_type||'').indexOf('mater')===0,porcs:0}; salles.push(vu[c.salle_id]); } vu[c.salle_id].porcs+=Math.max(0,c.presents||0); });
+  cases.forEach(function(c){ if(!vu[c.salle_id]){ vu[c.salle_id]={id:c.salle_id,nom:c.site+' · '+c.salle,mater:String(c.salle_type||'').indexOf('mater')===0,porcs:0,bandes:[]}; salles.push(vu[c.salle_id]); } vu[c.salle_id].porcs+=Math.max(0,c.presents||0); if((c.presents||0)>0 && c.bande_code && vu[c.salle_id].bandes.indexOf(c.bande_code)<0) vu[c.salle_id].bandes.push(c.bande_code); });
   dst.add(new Option('🚚 Quai abattoir (départ)','quai'));
   salles.forEach(function(s){
-    if(!s.mater && s.porcs>0) src.add(new Option(s.nom+' — '+s.porcs+' porc(s)',s.id));
+    if(!s.mater && s.porcs>0) src.add(new Option(s.nom+' — '+(s.bandes.length?'bande '+s.bandes.join(', ')+' · ':'')+s.porcs+' porc(s)',s.id));
     dst.add(new Option(s.nom,s.id));
   });
   function cle(c){return String(c.case_nom);}
@@ -51,7 +51,7 @@
     var arrivees=quai?[]:dans(dst.value);
     departs.forEach(function(c,i){
       var tr=document.createElement('tr');
-      var td1=document.createElement('td'); td1.textContent=c.case_nom;
+      var td1=document.createElement('td'); td1.textContent=c.case_nom+(c.bande_code?' — bande '+c.bande_code:'');
       var td2=document.createElement('td'); td2.textContent=c.presents;
       var td3=document.createElement('td'); var sel=document.createElement('select'); sel.name='dest_'+c.case_id;
       sel.add(new Option('— ne pas déplacer —',''));
@@ -87,10 +87,10 @@
       {% for b in bandes %}{% if b.restant > 0 %}<option value="bande:{{ b.id }}">Bande {{ b.code }} — {{ b.restant }} disponible(s)</option>{% endif %}{% endfor %}
       </optgroup>
       <optgroup label="Cases occupées">
-      {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
+      {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {% if c.bande_code %}bande {{ c.bande_code }} · {% endif %}{{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
       </optgroup>
     </select></label>
-    <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option><option value="quai">🚚 Quai abattoir — départ (choisir une case comme source)</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>
+    <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option><option value="quai">🚚 Quai abattoir — départ (choisir une case comme source)</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.porcs > 0 and c.bande_code %} — bande {{ c.bande_code }}{% endif %}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>
     <div class="rust-actions"><label>Nombre<input type="number" name="nombre" min="1" required></label><label>Date<input type="date" name="date" value="{{ today }}" required></label></div>
     <label>Note<input name="note"></label><button>Enregistrer le transfert</button>
   </form>

@@ -39,3 +39,18 @@ CREATE TABLE IF NOT EXISTS quai_affectation (
     nombre INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS quai_affectation_vente ON quai_affectation(vente_id);
+-- (2.85) Sortie du quai sans passer par le bon d'apport : vente directe,
+-- autre sortie, ou abattoir quand le bon n'arrive pas. Une sortie
+-- « abattoir » est reprise par le bon d'apport s'il arrive ensuite
+-- (vente_id), sans retirer les porcs une seconde fois.
+CREATE TABLE IF NOT EXISTS quai_sortie (
+    id INTEGER PRIMARY KEY,
+    quai_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    nombre INTEGER NOT NULL,
+    motif TEXT NOT NULL,               -- abattoir | vente_directe | autre
+    note TEXT,
+    vente_id INTEGER,                  -- bon d'apport arrivé après coup
+    cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS quai_sortie_quai ON quai_sortie(quai_id);
