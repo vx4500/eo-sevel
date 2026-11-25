@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.85.1** — Cases à plusieurs bandes : bande la plus nombreuse, choix de la bande dans Transferts.
+Version actuelle : **2.85.2** — Porcs présents d'une bande justes (déplacements entre cases non comptés), emplacement par bande.
 
+
+Version Rust 2.85.2 : band_stock_balance (stock − morts − vendus) ; remaining_band_pigs ne retire que les placements depuis le stock (case_source_id NULL, case_dest_id non NULL) ; total_band_pigs = bilan − sorties du quai sans bon (quai_sortie.vente_id NULL) — avant, unassigned + tous les transferts (B1.05 506/533 au lieu de 252, B2.12 951 au lieu de 288, B3.14 739 au lieu de 35). Fiche bande « Emplacement actuel » : porcs de la bande seulement (bandes_de_la_case), total de la case en plus si différent, cases sans porc de la bande masquées. Test un_deplacement_entre_cases_ne_compte_pas_de_porcs_en_plus.
 
 Version Rust 2.85.1 : bandes_de_la_case(case, date) (entrées − sorties par bande, moins morts par bande_code, positives, la plus nombreuse d'abord) ; bande_de_la_case renvoie la plus nombreuse (repli : dernière arrivée) — avant, la dernière arrivée (La Berru Case 1 : 252 B1.05 + 28 B2.12 vue « B2.12 »). repartir_par_bande : salle entière et salle au quai donnent un mouvement par bande. Source « case:ID:BANDE » dans /transferts (option par bande pour une case mixte, aussi vers le quai via departs::sortie_quai_bande). Transferts : porcs = effectif réel (inventaire compris) hors maternité, bande_code = « B1.05 (252) + B2.12 (28) ». api_cases_porcs : bandes réelles. Test case_avec_deux_bandes_la_plus_nombreuse_d_abord.
 

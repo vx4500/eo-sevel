@@ -3430,9 +3430,8 @@ async fn bande_detail(
     // Emplacement actuel (stade + effectif réel), déduit des cases où la
     // bande a été affectée : contrairement au journal ci-dessus (historique
     // brut des mouvements), chaque case n'apparaît qu'une fois, avec son
-    // stade actuel et son effectif réellement présent aujourd'hui. Limite
-    // connue : l'effectif compte tous les porcs de la case, pas seulement
-    // ceux de cette bande, si plusieurs bandes y ont été mêlées.
+    // stade actuel et l'effectif de cette bande présent aujourd'hui (une case
+    // qui loge deux bandes montre aussi son total).
     let emplacement_cases = generic_rows(
         &state.pool,
         &format!("SELECT c.id,COALESCE(si.nom,si.code) AS site,s.nom AS salle,c.nom AS unite,MAX(t.date) AS derniere_arrivee FROM transfert t JOIN casesalle c ON c.id=t.case_dest_id JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id WHERE t.espece='porc' AND t.bande_id={} GROUP BY c.id ORDER BY derniere_arrivee DESC", band.id),
@@ -3442,11 +3441,21 @@ async fn bande_detail(
         let Some(case_id) = case.get("id").and_then(Value::as_i64) else {
             continue;
         };
-        let effectif = case_pig_count(&state.pool, case_id).await?;
+        // Porcs de cette bande dans la case (une case peut en loger deux).
+        let total_case = case_pig_count(&state.pool, case_id).await?;
+        let de_la_bande = bandes_de_la_case(&state.pool, case_id, &Local::now().date_naive().format("%Y-%m-%d").to_string())
+            .await?
+            .into_iter()
+            .find(|b| b.0 == band.id)
+            .map(|b| b.2.min(total_case))
+            .unwrap_or(0);
+        if de_la_bande <= 0 {
+            continue;
+        }
         let stade = stade_from_case(&state.pool, case_id).await?;
         emplacement_actuel.push(json!({
             "case_id": case_id, "site": case.get("site"), "salle": case.get("salle"), "unite": case.get("unite"),
-            "stade": stade, "effectif": effectif,
+            "stade": stade, "effectif": de_la_bande, "total_case": total_case,
         }));
     }
     let vente_reelle: Option<String> = sqlx::query_scalar(
@@ -8697,7 +8706,9 @@ mod transfert_maternite_tests {
     }
 }
 
-async fn remaining_band_pigs(pool: &SqlitePool, band_id: i64, code: &str) -> AppResult<i64> {
+/// Bilan de la bande depuis son dernier stock : stock − morts − vendus
+/// (bons d'apport). `None` sans stock saisi.
+async fn band_stock_balance(pool: &SqlitePool, band_id: i64, code: &str) -> AppResult<Option<(String, i64)>> {
     let stock_date: Option<String> = sqlx::query_scalar(
         "SELECT MAX(date) FROM mouvementstock WHERE est_stock=1 AND bande_code=?",
     )
@@ -8705,7 +8716,7 @@ async fn remaining_band_pigs(pool: &SqlitePool, band_id: i64, code: &str) -> App
     .fetch_one(pool)
     .await?;
     let Some(stock_date) = stock_date else {
-        return Ok(0);
+        return Ok(None);
     };
     let base = sqlx::query_scalar::<_, i64>(
         "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM mouvementstock WHERE est_stock=1 AND bande_code=? AND date=? AND lower(COALESCE(libelle,'')) NOT LIKE '%truie%' AND lower(COALESCE(libelle,'')) NOT LIKE '%pleine%' AND lower(COALESCE(libelle,'')) NOT LIKE '%lactation%'",
@@ -8736,31 +8747,43 @@ async fn remaining_band_pigs(pool: &SqlitePool, band_id: i64, code: &str) -> App
     .bind(&stock_date)
     .fetch_one(pool)
     .await?;
-    let transferred = sqlx::query_scalar::<_, i64>(
-        "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM transfert WHERE espece='porc' AND bande_id=? AND date>?",
+    Ok(Some((stock_date, base - deaths - slaughter_deaths - sold)))
+}
+
+/// Porcs de la bande pas encore placés en case. Seuls les porcs placés depuis
+/// le stock (transfert sans case de départ) en sortent : un déplacement d'une
+/// case à l'autre ou une sortie de case n'en retire pas une seconde fois.
+async fn remaining_band_pigs(pool: &SqlitePool, band_id: i64, code: &str) -> AppResult<i64> {
+    let Some((stock_date, bilan)) = band_stock_balance(pool, band_id, code).await? else {
+        return Ok(0);
+    };
+    let placed: i64 = sqlx::query_scalar(
+        "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM transfert WHERE espece='porc' AND bande_id=? AND date>? \
+         AND case_source_id IS NULL AND case_dest_id IS NOT NULL",
     )
     .bind(band_id)
     .bind(&stock_date)
     .fetch_one(pool)
     .await?;
-    Ok((base - deaths - slaughter_deaths - sold - transferred).max(0))
+    Ok((bilan - placed).max(0))
 }
 
+/// Porcs de la bande encore à l'élevage (en case ou sur le quai) : bilan
+/// depuis le stock, moins les sorties du quai sans bon d'apport. Avant
+/// 2.85.2, chaque transfert s'ajoutait au total (B1.05 : 533 au lieu de 252,
+/// le passage Case 2 → Case 1 compté comme de nouveaux porcs).
 async fn total_band_pigs(pool: &SqlitePool, band_id: i64, code: &str) -> AppResult<i64> {
-    let unassigned = remaining_band_pigs(pool, band_id, code).await?;
-    let stock_date: Option<String> = sqlx::query_scalar(
-        "SELECT MAX(date) FROM mouvementstock WHERE est_stock=1 AND bande_code=?",
+    let Some((_, bilan)) = band_stock_balance(pool, band_id, code).await? else {
+        return Ok(0);
+    };
+    let sorties_quai: i64 = sqlx::query_scalar(
+        "SELECT CAST(COALESCE(SUM(x.nombre),0) AS INTEGER) FROM quai_sortie x JOIN quai_porc q ON q.id=x.quai_id \
+         WHERE q.bande_id=? AND x.vente_id IS NULL",
     )
-    .bind(code)
+    .bind(band_id)
     .fetch_one(pool)
     .await?;
-    let Some(stock_date) = stock_date else {
-        return Ok(unassigned);
-    };
-    let placed: i64 = sqlx::query_scalar(
-        "SELECT CAST(COALESCE(SUM(nombre),0) AS INTEGER) FROM transfert WHERE espece='porc' AND bande_id=? AND date>?",
-    ).bind(band_id).bind(stock_date).fetch_one(pool).await?;
-    Ok(unassigned + placed)
+    Ok((bilan - sorties_quai).max(0))
 }
 
 async fn transferts_porcs(

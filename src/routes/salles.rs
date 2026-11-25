@@ -956,6 +956,34 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn un_deplacement_entre_cases_ne_compte_pas_de_porcs_en_plus() -> anyhow::Result<()> {
+        let state = super::super::documents::tests::state().await;
+        // B1.05 : stock 258 le 23/07, 254 placés en Case 2, 6 morts, puis
+        // Case 2 → Case 1 (252). Avant 2.85.2 : 258−6−506 → 0, +506 = 506.
+        sqlx::raw_sql(
+            "INSERT INTO site(id,code) VALUES(1,'S'); \
+             INSERT INTO salle(id,site_id,nom,nb_cases) VALUES(1,1,'35G6K',2); \
+             INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'Case 1'),(2,1,'Case 2'); \
+             INSERT INTO bande(id,code,active) VALUES(4,'B1.05',1); \
+             INSERT INTO mouvementstock(date,bande_code,nombre,libelle,est_stock) VALUES('2026-07-23','B1.05',258,'stock PS',1); \
+             INSERT INTO declarationmort(date,bande_code,nombre) VALUES('2026-08-05','B1.05',4); \
+             INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-08-10','porc',4,2,254); \
+             INSERT INTO declarationmort(date,bande_code,case_id,nombre) VALUES('2026-08-19','B1.05',2,2); \
+             INSERT INTO transfert(date,espece,bande_id,case_source_id,case_dest_id,nombre) VALUES('2026-10-17','porc',4,2,1,252);",
+        )
+        .execute(&state.pool)
+        .await?;
+        assert_eq!(super::super::total_band_pigs(&state.pool, 4, "B1.05").await?, 252);
+        assert_eq!(super::super::remaining_band_pigs(&state.pool, 4, "B1.05").await?, 0);
+        // Sur le quai, toujours à l'élevage ; sortie en vente directe : en moins.
+        super::super::departs::sortie_quai(&state.pool, 1, 27, "2026-11-25", None).await?;
+        assert_eq!(super::super::total_band_pigs(&state.pool, 4, "B1.05").await?, 252);
+        sqlx::raw_sql("INSERT INTO quai_sortie(quai_id,date,nombre,motif) VALUES(1,'2026-11-26',5,'vente_directe')").execute(&state.pool).await?;
+        assert_eq!(super::super::total_band_pigs(&state.pool, 4, "B1.05").await?, 247);
+        Ok(())
+    }
+
     async fn fiche_texte(state: &AppState) -> AppResult<String> {
         Ok(fiche(State(state.clone()), Extension(super::super::documents::tests::session()), Path(1)).await?.0)
     }
