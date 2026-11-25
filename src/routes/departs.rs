@@ -198,12 +198,9 @@ pub(super) async fn api_cases_porcs(State(state): State<AppState>) -> AppResult<
         if n <= 0 {
             continue;
         }
-        let bande: Option<String> = sqlx::query_scalar(
-            "SELECT b.code FROM transfert t JOIN bande b ON b.id=t.bande_id WHERE t.case_dest_id=? ORDER BY t.date DESC,t.id DESC LIMIT 1",
-        )
-        .bind(id)
-        .fetch_optional(&state.pool)
-        .await?;
+        let auj = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let codes: Vec<String> = super::bandes_de_la_case(&state.pool, id, &auj).await?.into_iter().map(|b| b.1).collect();
+        let bande: Option<String> = if codes.is_empty() { None } else { Some(codes.join(" + ")) };
         sortie.push(json!({"id": id, "site": site, "salle": salle, "nom": nom, "porcs": n, "bande": bande}));
     }
     Ok(axum::Json(Value::Array(sortie)))
@@ -218,6 +215,19 @@ pub(super) async fn sortie_quai(
     date: &str,
     note: Option<String>,
 ) -> AppResult<()> {
+    sortie_quai_bande(pool, case_id, nombre, date, note, None).await
+}
+
+/// Comme `sortie_quai`, avec la bande choisie quand la case en loge
+/// plusieurs ; sinon la plus nombreuse de la case (`bande_de_la_case`).
+pub(super) async fn sortie_quai_bande(
+    pool: &SqlitePool,
+    case_id: i64,
+    nombre: i64,
+    date: &str,
+    note: Option<String>,
+    bande: Option<i64>,
+) -> AppResult<()> {
     let (salle_id,): (i64,) = sqlx::query_as("SELECT salle_id FROM casesalle WHERE id=?")
         .bind(case_id)
         .fetch_optional(pool)
@@ -227,13 +237,10 @@ pub(super) async fn sortie_quai(
     if nombre > present {
         return Err(AppError::Invalid(format!("Effectif insuffisant dans la case : {present} porc(s) présent(s)")));
     }
-    let bande: Option<i64> = sqlx::query_scalar(
-        "SELECT bande_id FROM transfert WHERE case_dest_id=? AND bande_id IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1",
-    )
-    .bind(case_id)
-    .fetch_optional(pool)
-    .await?
-    .flatten();
+    let bande = match bande {
+        Some(b) => Some(b),
+        None => super::bande_de_la_case(pool, case_id, date).await?,
+    };
     let note = match note {
         Some(n) => format!("Quai — départ abattoir · {n}"),
         None => "Quai — départ abattoir".to_string(),

@@ -922,6 +922,40 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn case_avec_deux_bandes_la_plus_nombreuse_d_abord() -> anyhow::Result<()> {
+        let state = super::super::documents::tests::state().await;
+        // La Berru, 17/10 : 252 porcs de B1.05 puis 28 de B2.12 dans la Case 1.
+        sqlx::raw_sql(
+            "INSERT INTO site(id,code) VALUES(1,'S'); \
+             INSERT INTO salle(id,site_id,nom,nb_cases) VALUES(1,1,'35G6K',2); \
+             INSERT INTO casesalle(id,salle_id,nom) VALUES(1,1,'Case 1'),(2,1,'Case 2'); \
+             INSERT INTO bande(id,code,active) VALUES(4,'B1.05',1),(1,'B2.12',1); \
+             INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-08-10','porc',4,2,254); \
+             INSERT INTO declarationmort(date,bande_code,case_id,nombre) VALUES('2026-08-19','B1.05',2,2); \
+             INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-10-13','porc',1,2,204); \
+             INSERT INTO transfert(date,espece,bande_id,case_source_id,case_dest_id,nombre) VALUES('2026-10-17','porc',4,2,1,252); \
+             INSERT INTO transfert(date,espece,bande_id,case_dest_id,nombre) VALUES('2026-10-17','porc',1,1,28);",
+        )
+        .execute(&state.pool)
+        .await?;
+        let bandes = super::super::bandes_de_la_case(&state.pool, 1, "2026-11-25").await?;
+        assert_eq!(bandes, vec![(4, "B1.05".to_string(), 252), (1, "B2.12".to_string(), 28)]);
+        assert_eq!(super::super::bande_de_la_case(&state.pool, 1, "2026-11-25").await?, Some(4));
+        assert_eq!(super::super::bande_de_la_case(&state.pool, 2, "2026-11-25").await?, Some(1));
+        assert_eq!(
+            super::super::repartir_par_bande(&state.pool, 1, 280, "2026-11-25").await?,
+            vec![(Some(4), 252), (Some(1), 28)]
+        );
+        // Sur le quai, les porcs gardent la bande de la case (la plus nombreuse)
+        // ou celle choisie.
+        super::super::departs::sortie_quai(&state.pool, 1, 30, "2026-11-25", None).await?;
+        super::super::departs::sortie_quai_bande(&state.pool, 1, 28, "2026-11-25", None, Some(1)).await?;
+        let quai: Vec<(i64, i64)> = sqlx::query_as("SELECT bande_id,nombre FROM quai_porc ORDER BY id").fetch_all(&state.pool).await?;
+        assert_eq!(quai, vec![(4, 30), (1, 28)]);
+        Ok(())
+    }
+
     async fn fiche_texte(state: &AppState) -> AppResult<String> {
         Ok(fiche(State(state.clone()), Extension(super::super::documents::tests::session()), Path(1)).await?.0)
     }

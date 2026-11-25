@@ -87,7 +87,7 @@
       {% for b in bandes %}{% if b.restant > 0 %}<option value="bande:{{ b.id }}">Bande {{ b.code }} — {{ b.restant }} disponible(s)</option>{% endif %}{% endfor %}
       </optgroup>
       <optgroup label="Cases occupées">
-      {% for c in cases %}{% if c.porcs > 0 %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {% if c.bande_code %}bande {{ c.bande_code }} · {% endif %}{{ c.porcs }} présent(s)</option>{% endif %}{% endfor %}
+      {% for c in cases %}{% if c.porcs > 0 %}{% if c.bandes|length > 1 %}{% for b in c.bandes %}<option value="case:{{ c.case_id }}:{{ b.id }}"{% if reste_case == c.case_id and loop.first %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — bande {{ b.code }} · {{ b.n }} porc(s)</option>{% endfor %}{% else %}<option value="case:{{ c.case_id }}"{% if reste_case == c.case_id %} selected{% endif %}>{{ c.site }} · {{ c.salle }} · {{ c.case_nom }} — {% if c.bande_code %}bande {{ c.bande_code }} · {% endif %}{{ c.porcs }} présent(s)</option>{% endif %}{% endif %}{% endfor %}
       </optgroup>
     </select></label>
     <label>Destination<select name="case_dest_id" required><option value="">Choisir…</option><option value="quai">🚚 Quai abattoir — départ (choisir une case comme source)</option>{% for c in cases %}<option value="{{ c.case_id }}">{{ c.site }} · {{ c.salle }} · {{ c.case_nom }}{% if c.porcs > 0 and c.bande_code %} — bande {{ c.bande_code }}{% endif %}{% if c.nb_max_porcs %} ({{ c.porcs }}/{{ c.nb_max_porcs }}){% endif %}</option>{% endfor %}</select></label>

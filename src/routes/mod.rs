@@ -8114,11 +8114,12 @@ async fn transferts(
 ) -> AppResult<Html<String>> {
     let cases = generic_rows(
         &state.pool,
-        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,lower(COALESCE(s.type,'')) AS salle_type,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies,(SELECT b.code FROM transfert t JOIN bande b ON b.id=t.bande_id WHERE t.case_dest_id=c.id AND t.espece='porc' ORDER BY t.date DESC,t.id DESC LIMIT 1) AS bande_code FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
+        "SELECT si.code AS site,s.id AS salle_id,s.nom AS salle,lower(COALESCE(s.type,'')) AS salle_type,c.id AS case_id,c.nom AS case_nom,c.nb_max_porcs,CAST(COALESCE((SELECT SUM(CASE WHEN t.case_dest_id=c.id THEN COALESCE(t.nombre,0) WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) FROM transfert t WHERE t.espece='porc' AND (t.case_dest_id=c.id OR t.case_source_id=c.id)),0)-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=c.id),0) AS INTEGER) AS porcs,(SELECT COUNT(*) FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS nb_truies,(SELECT GROUP_CONCAT(tr.num_travail,', ') FROM truie tr WHERE tr.reformee=0 AND tr.case_id=c.id) AS truies FROM casesalle c JOIN salle s ON s.id=c.salle_id JOIN site si ON si.id=s.site_id ORDER BY si.code,COALESCE(s.ordre,0),s.nom,c.nom",
     )
     .await?;
     // « Déplacer une salle entière » : l'effectif réel (inventaire compris)
     // de chaque case, celui que le contrôle de l'enregistrement utilisera.
+    let aujourdhui = Local::now().date_naive().format("%Y-%m-%d").to_string();
     let mut cases = cases;
     for row in &mut cases {
         let object = json_object_mut(row, "les cases de transfert")?;
@@ -8129,6 +8130,22 @@ async fn transferts(
             .is_some_and(|t| t.starts_with("mater"));
         let presents = if maternite { 0 } else { case_pig_count(&state.pool, id).await? };
         object.insert("presents".into(), json!(presents));
+        if !maternite {
+            // Effectif réel (inventaire compris), comme le contrôle à l'enregistrement.
+            object.insert("porcs".into(), json!(presents));
+        }
+        let bandes = if presents > 0 { bandes_de_la_case(&state.pool, id, &aujourdhui).await? } else { Vec::new() };
+        let somme: i64 = bandes.iter().map(|b| b.2).sum();
+        let libelle = if bandes.len() > 1 && somme == presents {
+            bandes.iter().map(|(_, code, n)| format!("{code} ({n})")).collect::<Vec<_>>().join(" + ")
+        } else {
+            bandes.iter().map(|(_, code, _)| code.clone()).collect::<Vec<_>>().join(" + ")
+        };
+        object.insert("bande_code".into(), if libelle.is_empty() { Value::Null } else { json!(libelle) });
+        object.insert(
+            "bandes".into(),
+            json!(bandes.iter().map(|(bid, code, n)| json!({"id": bid, "code": code, "n": n})).collect::<Vec<_>>()),
+        );
     }
     let mut bands = generic_rows(
         &state.pool,
@@ -8198,13 +8215,69 @@ async fn transferts(
 /// inventaire ou des mortalités incohérents ; voir aussi la même logique
 /// répliquée en SQL pur dans `etat_donnees` (« Cases avec effectif calculé
 /// négatif ») pour le rapport de contrôles structurels.
-/// Bande logée dans une case à une date : celle du dernier transfert de
-/// porcs arrivé dans la case avec une bande connue.
+/// Bandes présentes dans une case à une date, la plus nombreuse d'abord :
+/// entrées moins sorties de chaque bande, moins ses morts déclarés dans la
+/// case. Une case peut loger deux bandes (La Berru, 17/10 : 252 porcs de
+/// B1.05 et 28 de B2.12 dans la Case 1).
+pub(super) async fn bandes_de_la_case(
+    pool: &SqlitePool,
+    case_id: i64,
+    date: &str,
+) -> AppResult<Vec<(i64, String, i64)>> {
+    Ok(sqlx::query_as(
+        "SELECT b.id,b.code,CAST(x.n-COALESCE((SELECT SUM(d.nombre) FROM declarationmort d WHERE d.case_id=?1 AND d.bande_code=b.code AND date(d.date)<=date(?2)),0) AS INTEGER) AS reste \
+         FROM (SELECT t.bande_id AS bid,SUM(CASE WHEN t.case_dest_id=?1 THEN COALESCE(t.nombre,0) \
+                 WHEN t.id IN (SELECT transfert_id FROM sortienourrice WHERE transfert_id IS NOT NULL) THEN 0 ELSE -COALESCE(t.nombre,0) END) AS n \
+               FROM transfert t WHERE t.espece='porc' AND t.bande_id IS NOT NULL AND (t.case_dest_id=?1 OR t.case_source_id=?1) \
+               AND t.case_dest_id IS NOT t.case_source_id AND date(t.date)<=date(?2) GROUP BY t.bande_id) x \
+         JOIN bande b ON b.id=x.bid WHERE reste>0 ORDER BY reste DESC,b.code",
+    )
+    .bind(case_id)
+    .bind(date)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Répartit `nombre` porcs sortant d'une case entre ses bandes (la plus
+/// nombreuse d'abord) ; le surplus éventuel va à la plus nombreuse.
+pub(super) async fn repartir_par_bande(
+    pool: &SqlitePool,
+    case_id: i64,
+    nombre: i64,
+    date: &str,
+) -> AppResult<Vec<(Option<i64>, i64)>> {
+    let bandes = bandes_de_la_case(pool, case_id, date).await?;
+    if bandes.len() < 2 {
+        return Ok(vec![(bande_de_la_case(pool, case_id, date).await?, nombre)]);
+    }
+    let mut parts: Vec<(Option<i64>, i64)> = Vec::new();
+    let mut reste = nombre;
+    for (id, _, n) in &bandes {
+        if reste <= 0 {
+            break;
+        }
+        let pris = reste.min(*n);
+        parts.push((Some(*id), pris));
+        reste -= pris;
+    }
+    if reste > 0 {
+        parts[0].1 += reste;
+    }
+    Ok(parts)
+}
+
+/// Bande logée dans une case à une date : la plus nombreuse (voir
+/// `bandes_de_la_case`), sinon celle du dernier transfert de porcs arrivé
+/// dans la case avec une bande connue. Avant 2.85.1, toujours la dernière
+/// arrivée : 28 porcs de B2.12 faisaient passer 252 porcs de B1.05 pour B2.12.
 pub(super) async fn bande_de_la_case(
     pool: &SqlitePool,
     case_id: i64,
     date: &str,
 ) -> AppResult<Option<i64>> {
+    if let Some((id, _, _)) = bandes_de_la_case(pool, case_id, date).await?.into_iter().next() {
+        return Ok(Some(id));
+    }
     Ok(sqlx::query_scalar(
         "SELECT bande_id FROM transfert WHERE case_dest_id=? AND bande_id IS NOT NULL \
          AND espece='porc' AND date<=? ORDER BY date DESC, id DESC LIMIT 1",
@@ -8706,15 +8779,18 @@ async fn transferts_porcs(
             .filter(|value| *value > 0)
             .ok_or_else(|| AppError::Invalid("Nombre invalide".into()))?;
         let date = form_date_or_today(&form, "date")?;
-        let case_id = source
+        let (case_id, bande) = source
             .strip_prefix("case:")
-            .and_then(|id| id.parse::<i64>().ok())
+            .and_then(|reste| match reste.split_once(':') {
+                Some((id, bande)) => Some((id.parse::<i64>().ok()?, Some(bande.parse::<i64>().ok()?))),
+                None => Some((reste.parse::<i64>().ok()?, None)),
+            })
             .ok_or_else(|| {
                 AppError::Invalid(
                     "Pour le quai, choisissez comme source la case d'où partent les porcs".into(),
                 )
             })?;
-        departs::sortie_quai(&state.pool, case_id, nombre, &date, form_text(&form, "note")).await?;
+        departs::sortie_quai_bande(&state.pool, case_id, nombre, &date, form_text(&form, "note"), bande).await?;
         return Ok(Redirect::to(&apres_quai(&state.pool, &[case_id], nombre).await?).into_response());
     }
     let destination = form_i64(&form, "case_dest_id")
@@ -8742,6 +8818,14 @@ async fn transferts_porcs(
     let (kind, raw_id) = source
         .split_once(':')
         .ok_or_else(|| AppError::Invalid("Source invalide".into()))?;
+    // « case:ID:BANDE » : case qui loge plusieurs bandes, bande choisie.
+    let (raw_id, bande_choisie) = match raw_id.split_once(':') {
+        Some((id, bande)) => (
+            id,
+            Some(bande.parse::<i64>().map_err(|_| AppError::Invalid("Source invalide".into()))?),
+        ),
+        None => (raw_id, None),
+    };
     let source_id = raw_id
         .parse::<i64>()
         .map_err(|_| AppError::Invalid("Source invalide".into()))?;
@@ -8794,7 +8878,10 @@ async fn transferts_porcs(
             // Les porcs gardent leur bande en changeant de case : sans elle,
             // la salle d'arrivée ne savait plus quel lot elle logeait (vu le
             // 26/09 : 313 porcs de B2.12 en Post-Engraissement « sans bande »).
-            band_id = bande_de_la_case(&state.pool, source_id, &date).await?;
+            band_id = match bande_choisie {
+                Some(bande) => Some(bande),
+                None => bande_de_la_case(&state.pool, source_id, &date).await?,
+            };
         }
         _ => return Err(AppError::Invalid("Type de source invalide".into())),
     }
@@ -8933,7 +9020,9 @@ async fn transferts_salle(
             }
         }
         for &(source, nombre) in &vers_quai {
-            departs::sortie_quai(&state.pool, source, nombre, &date, note.clone()).await?;
+            for (bande, n) in repartir_par_bande(&state.pool, source, nombre, &date).await? {
+                departs::sortie_quai_bande(&state.pool, source, n, &date, note.clone(), bande).await?;
+            }
         }
         let cases: Vec<i64> = vers_quai.iter().map(|(c, _)| *c).collect();
         let total = vers_quai.iter().map(|(_, n)| n).sum();
@@ -8984,8 +9073,10 @@ async fn transferts_salle(
             .ok_or_else(|| AppError::Invalid("Case d'arrivée introuvable".into()))?;
         *variation.entry(source).or_default() -= nombre;
         *variation.entry(dest).or_default() += nombre;
-        let bande = bande_de_la_case(&state.pool, source, &date).await?;
-        a_ecrire.push((source, salle_source, dest, salle_dest, nombre, bande));
+        // Une case qui loge deux bandes donne un mouvement par bande.
+        for (bande, n) in repartir_par_bande(&state.pool, source, nombre, &date).await? {
+            a_ecrire.push((source, salle_source, dest, salle_dest, n, bande));
+        }
     }
     for (&case_id, &delta) in &variation {
         if delta <= 0 {
