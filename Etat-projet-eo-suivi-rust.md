@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.85.2** — Porcs présents d'une bande justes (déplacements entre cases non comptés), emplacement par bande.
+Version actuelle : **2.85.3** — Destination d’aliment « Sous la mère » (porcelets en maternité).
 
+
+Version Rust 2.85.3 : stade d'aliment « sous_mere » (valid_stage, stage_matches et stage_bounds de 0 au sevrage, répartition au prorata des truies) ; GTE : compté avec le post-sevrage ; tableau des bandes : compté dans l'aliment des porcs. Choix ajouté à l'import de facture et à la facture enregistrée. Test dans stades_et_sites_selon_le_cycle.
 
 Version Rust 2.85.2 : band_stock_balance (stock − morts − vendus) ; remaining_band_pigs ne retire que les placements depuis le stock (case_source_id NULL, case_dest_id non NULL) ; total_band_pigs = bilan − sorties du quai sans bon (quai_sortie.vente_id NULL) — avant, unassigned + tous les transferts (B1.05 506/533 au lieu de 252, B2.12 951 au lieu de 288, B3.14 739 au lieu de 35). Fiche bande « Emplacement actuel » : porcs de la bande seulement (bandes_de_la_case), total de la case en plus si différent, cases sans porc de la bande masquées. Test un_deplacement_entre_cases_ne_compte_pas_de_porcs_en_plus.
 

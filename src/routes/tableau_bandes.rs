@@ -65,7 +65,7 @@ async fn ic_bande(
         "SELECT CAST(COALESCE(SUM(tonnage*1000.0*COALESCE(af.part,1.0/(SELECT COUNT(*) FROM affectationfacturebande n \
          WHERE n.categorie='aliment' AND n.facture_id=livraisonaliment.id))),0) AS REAL) \
          FROM affectationfacturebande af JOIN livraisonaliment ON livraisonaliment.id=af.facture_id \
-         WHERE af.categorie='aliment' AND af.bande_id=? AND {} IN ('ps','croissance','finition')",
+         WHERE af.categorie='aliment' AND af.bande_id=? AND {} IN ('sous_mere','ps','croissance','finition')",
         gte_periode::STADE_EFFECTIF
     ))
     .bind(id)

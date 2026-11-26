@@ -64,13 +64,15 @@ pub fn feed_stage(product: &str) -> &'static str {
 pub fn valid_stage(stage: &str) -> bool {
     matches!(
         stage,
-        "auto" | "gestation" | "lactation" | "ps" | "croissance" | "finition" | "tous" | "inconnu"
+        "auto" | "gestation" | "lactation" | "sous_mere" | "ps" | "croissance" | "finition" | "tous" | "inconnu"
     )
 }
 fn stage_matches(stage: &str, age: i64, s: crate::routes::BandSchedule) -> bool {
     match stage {
         "gestation" => (-s.gestation..-s.maternity_before_farrowing).contains(&age),
         "lactation" => (-s.maternity_before_farrowing..s.weaning).contains(&age),
+        // Aliment porcelets distribué sous la mère : de la mise-bas au sevrage.
+        "sous_mere" => (0..s.weaning).contains(&age),
         "ps" => (s.weaning..s.transfer_finishing).contains(&age),
         "croissance" => (s.transfer_finishing..s.finishing_feed).contains(&age),
         "finition" => (s.finishing_feed..s.departure).contains(&age),
@@ -85,6 +87,7 @@ fn stage_bounds(stage: &str, s: crate::routes::BandSchedule) -> Option<(i64, i64
     match stage {
         "gestation" => Some((-s.gestation, -s.maternity_before_farrowing)),
         "lactation" => Some((-s.maternity_before_farrowing, s.weaning)),
+        "sous_mere" => Some((0, s.weaning)),
         "ps" => Some((s.weaning, s.transfer_finishing)),
         "croissance" => Some((s.transfer_finishing, s.finishing_feed)),
         "finition" => Some((s.finishing_feed, s.departure)),
@@ -195,7 +198,8 @@ async fn parts_presence(
             None => (0, 0),
         };
         poids.push(match stage {
-            "gestation" | "lactation" => truies,
+            // Sous la mère : au prorata des portées (truies en maternité).
+            "gestation" | "lactation" | "sous_mere" => truies,
             "ps" | "croissance" | "finition" => porcs,
             _ => truies + porcs,
         } as f64);
@@ -439,6 +443,12 @@ mod tests {
                 vec![id]
             );
         }
+        // Aliment sous la mère : seulement la bande entre mise-bas et sevrage.
+        assert!(valid_stage("sous_mere"));
+        assert_eq!(
+            cycle_present(p, "2026-07-01", &[1], "sous_mere").await?,
+            vec![2]
+        );
         assert_eq!(
             cycle_present(p, "2026-07-01", &[1, 2], "gestation").await?,
             vec![1, 6]

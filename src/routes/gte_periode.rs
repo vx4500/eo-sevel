@@ -265,9 +265,9 @@ pub(super) const STADE_EFFECTIF: &str = "(CASE WHEN COALESCE(stade_aliment,'auto
 /// fausserait l'indice de consommation de la phase concernée.
 const ALIMENT_SQL_MODELE: &str = "SELECT \
     CAST(COALESCE(SUM(CASE WHEN {S} IN('gestation','lactation') THEN tonnage END),0)*1000 AS REAL),\
-    CAST(COALESCE(SUM(CASE WHEN {S}='ps' THEN tonnage END),0)*1000 AS REAL),\
+    CAST(COALESCE(SUM(CASE WHEN {S} IN('ps','sous_mere') THEN tonnage END),0)*1000 AS REAL),\
     CAST(COALESCE(SUM(CASE WHEN {S} IN('croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
-    CAST(COALESCE(SUM(CASE WHEN {S} NOT IN('gestation','lactation','ps','croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
+    CAST(COALESCE(SUM(CASE WHEN {S} NOT IN('gestation','lactation','sous_mere','ps','croissance','finition') THEN tonnage END),0)*1000 AS REAL),\
     CAST(COALESCE(SUM(tonnage),0)*1000 AS REAL) \
     FROM livraisonaliment WHERE COALESCE(NULLIF(trim(date_reference),''),date) BETWEEN ?1 AND ?2";
 
