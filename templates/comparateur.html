@@ -8,6 +8,7 @@
 .cmp-prix{font-size:1.15em;font-weight:800;font-variant-numeric:tabular-nums}
 .cmp-sous{display:block;font-size:12px;color:var(--muted)}
 .cmp-apercu{padding:8px 12px;border-radius:8px;background:#f2f6fb;font-weight:600;min-height:1.4em}
+.cmp-fact{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:11.5px;background:#eaf2fd;color:#1f5ea8;font-weight:700}
 .cmp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
 </style>
 {% if comp %}
@@ -22,7 +23,7 @@
 <div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Produit</th><th>Quantité achetée</th><th>Prix payé</th><th>Prix d’une unité</th><th>Prix par {{ comp.unite }}</th><th>Écart</th><th></th></tr></thead><tbody>
 {% for o in offres %}<tr class="{% if o.meilleur %}cmp-meilleur{% endif %}">
 <td><b>{{ o.rang }}</b></td>
-<td><b>{{ o.produit }}</b>{% if o.fournisseur %}<span class="cmp-sous">{{ o.fournisseur }}</span>{% endif %}{% if o.note %}<span class="cmp-sous">{{ o.note }}</span>{% endif %}</td>
+<td><b>{{ o.produit }}</b>{% if o.facture %}<span class="cmp-fact">📄 ma facture</span>{% endif %}{% if o.fournisseur %}<span class="cmp-sous">{{ o.fournisseur }}</span>{% endif %}{% if o.note %}<span class="cmp-sous">{{ o.note }}</span>{% endif %}</td>
 <td>{% if o.lot %}Lot de {{ o.nombre }}{% else %}1 unité{% endif %}{% if o.contenance %} × {{ o.contenance }} {{ comp.unite }}<span class="cmp-sous">soit {{ o.quantite_totale }} {{ comp.unite }}</span>{% endif %}</td>
 <td>{{ o.total|euro }}<span class="cmp-sous">{% if o.prix_pour == 'lot' %}prix du lot{% else %}prix à l’unité × {{ o.nombre }}{% endif %}</span></td>
 <td>{% if par_mesure %}{{ o.par_unite }}{% else %}<span class="cmp-prix">{{ o.par_unite }}</span>{% endif %}</td>
@@ -35,6 +36,17 @@
 </section>
 
 {% if session.peut_modifier %}
+{% if achats_proches or achats_autres %}<section class="card">
+<h2>📄 Ajouter un prix de mes factures</h2>
+<p class="muted">Reprend la quantité et le montant HT d’un achat importé, pour comparer ce que vous payez aux nouvelles offres.</p>
+<form method="post" action="/comparateur/{{ comp.id }}/depuis-facture" class="cmp-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label style="grid-column:span 3">Achat<select name="cle" required><option value="">Choisir…</option>
+{% if achats_proches %}<optgroup label="Proches de « {{ comp.nom }} »">{% for a in achats_proches %}<option value="{{ a.cle }}">{{ a.libelle }}</option>{% endfor %}</optgroup>{% endif %}
+{% if achats_autres %}<optgroup label="Tous mes autres achats">{% for a in achats_autres %}<option value="{{ a.cle }}">{{ a.famille }} · {{ a.libelle }}</option>{% endfor %}</optgroup>{% endif %}
+</select></label>
+<button>Ajouter ce prix</button>
+</form>
+</section>{% endif %}
 <section class="card">
 <h2>Ajouter une offre</h2>
 <form method="post" action="/comparateur/{{ comp.id }}/offre" id="cmp-offre"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
@@ -81,6 +93,7 @@
 
 {% else %}
 <h1>⚖️ Comparateur de prix</h1>
+<p class="muted"><a href="#mes-produits">📄 Partir d’un produit de mes factures ↓</a></p>
 <p class="muted">Pour un produit à acheter, notez chaque offre : à l’unité ou en lot, avec la quantité et le prix. Le comparateur ramène tout au même prix par kg, litre ou dose et classe les offres de la moins chère à la plus chère.</p>
 {% if session.peut_modifier %}
 <section class="card">
@@ -99,6 +112,24 @@
 {% for c in comparatifs %}<tr><td><a href="/comparateur/{{ c.id }}"><b>{{ c.nom }}</b></a>{% if c.note %}<span class="cmp-sous">{{ c.note }}</span>{% endif %}</td><td>{{ c.unite }}</td><td>{{ c.offres }}</td><td>{{ c.cree_le|date_fr }}</td></tr>
 {% else %}<tr><td colspan="4" class="rust-empty">Aucun comparatif pour l’instant</td></tr>{% endfor %}
 </tbody></table></div>
+</section>
+<section class="card" id="mes-produits">
+<h2>📄 Mes produits achetés</h2>
+<p class="muted">D’après les factures importées (aliment, véto, semence, cochettes). « Comparer » ouvre le comparatif du produit avec le dernier prix payé : il ne reste qu’à ajouter les autres offres.</p>
+{% if produits %}
+<label>Chercher<input type="search" id="cmp-cherche" placeholder="ex. GESTA, Virbagest, désinfectant…" autocomplete="off"></label>
+<div class="rust-scroll"><table id="cmp-produits"><thead><tr><th>Produit</th><th>Famille</th><th>Dernier prix</th><th>Achats</th><th>Dernier achat</th><th></th></tr></thead><tbody>
+{% for pr in produits %}<tr><td><b>{{ pr.produit }}</b>{% if pr.fournisseur %}<span class="cmp-sous">{{ pr.fournisseur }}</span>{% endif %}</td><td>{{ pr.famille }}</td><td>{{ pr.dernier }} / {{ pr.unite }}{% if pr.fourchette %}<span class="cmp-sous">de {{ pr.fourchette }}</span>{% endif %}</td><td>{{ pr.achats }}</td><td>{{ pr.date|date_fr }}</td>
+<td>{% if session.peut_modifier %}<form method="post" action="/comparateur/depuis-facture"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="cle" value="{{ pr.cle }}"><button class="ghost">⚖️ Comparer</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<script>
+(function(){
+  var q=document.getElementById('cmp-cherche'), rows=document.querySelectorAll('#cmp-produits tbody tr');
+  function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+  q.addEventListener('input',function(){var v=norm(q.value.trim());rows.forEach(function(r){r.hidden=v&&norm(r.textContent).indexOf(v)<0;});});
+})();
+</script>
+{% else %}<p class="rust-empty">Aucune facture importée avec quantité et montant.</p>{% endif %}
 </section>
 {% endif %}
 {% endblock %}

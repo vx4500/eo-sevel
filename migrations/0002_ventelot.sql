@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS comparatif_offre (
     prix_total REAL NOT NULL,
     prix_pour TEXT NOT NULL DEFAULT 'unite',  -- unite | lot (prix saisi)
     note TEXT,
+    source TEXT,                       -- aliment:ID, veto:ID… quand repris d'une facture
+    date_achat TEXT,
     cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS comparatif_offre_comp ON comparatif_offre(comparatif_id);

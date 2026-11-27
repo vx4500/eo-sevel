@@ -492,6 +492,8 @@ pub fn router(state: AppState) -> Router {
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/comparateur", get(comparateur::liste).post(comparateur::creer))
         .route("/comparateur/{id}", get(comparateur::fiche))
+        .route("/comparateur/depuis-facture", post(comparateur::creer_depuis_facture))
+        .route("/comparateur/{id}/depuis-facture", post(comparateur::ajouter_depuis_facture))
         .route("/comparateur/{id}/modifier", post(comparateur::modifier))
         .route("/comparateur/{id}/supprimer", post(comparateur::supprimer))
         .route("/comparateur/{id}/offre", post(comparateur::ajouter_offre))

@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.86.0** — Comparateur de prix (offres à l’unité ou en lot, prix au kg).
+Version actuelle : **2.86.1** — Comparateur relié aux factures importées (produits achetés, dernier prix payé).
 
+
+Version Rust 2.86.1 : comparateur relié aux factures — achats_factures (livraisonaliment en t, achatveto à la pièce, achatsemence à la dose, achatgenetique par animal ; lignes sans quantité ou montant ignorées), catalogue par produit et fournisseur (dernier prix, fourchette, nombre d'achats) avec recherche, POST /comparateur/depuis-facture (ouvre ou crée le comparatif du produit avec le dernier prix payé), POST /comparateur/{id}/depuis-facture (reprend un achat, ceux au nom proche d'abord). Conversion t → kg. Colonnes comparatif_offre.source et date_achat (ajoutées après 0002 dans db.rs). Test produits_des_factures_et_conversion_tonne_kilo.
 
 Version Rust 2.86.0 : comparateur de prix /comparateur (src/routes/comparateur.rs, templates/comparateur.html, tables comparatif et comparatif_offre dans 0002_ventelot.sql, section d'accès economique, menu Achats). Offre : contenance d'une unité, nombre d'unités, prix pour 1 unité ou pour le lot → prix_total ; classement au prix par unité de mesure si toutes les offres ont une contenance, sinon au prix d'une unité ; écart en % au moins cher ; aperçu du calcul en direct dans le formulaire. Tests prix_ramenes_a_l_unite_et_au_kg et offres_classees_du_moins_cher_au_plus_cher.
 

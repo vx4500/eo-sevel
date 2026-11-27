@@ -466,6 +466,19 @@ pub async fn etablir_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::raw_sql(include_str!("../migrations/0002_ventelot.sql"))
         .execute(pool)
         .await?;
+    // (2.86.1) Offres du comparateur reprises d'une facture : colonnes
+    // ajoutées après la création de la table en 2.86.0.
+    for (colonne, definition) in [("source", "TEXT"), ("date_achat", "TEXT")] {
+        let existe: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info('comparatif_offre') WHERE name=?")
+            .bind(colonne)
+            .fetch_one(pool)
+            .await?;
+        if existe == 0 {
+            sqlx::query(&format!("ALTER TABLE comparatif_offre ADD COLUMN {colonne} {definition}"))
+                .execute(pool)
+                .await?;
+        }
+    }
     sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS ux_importjournal_contenu_sha256 ON importjournal(contenu_sha256) WHERE contenu_sha256 IS NOT NULL")
         .execute(pool)
         .await?;
