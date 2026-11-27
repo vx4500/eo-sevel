@@ -1,0 +1,86 @@
+{% extends "base.html" %}{% block title %}Diagramme résultat élevage — EO_Sevel{% endblock %}{% block content %}
+<style>
+.dr-entete{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.dr-entete h1{margin:0}
+.dr-legende{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:6px 0 10px}
+.dr-legende i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.dr-zone{overflow-x:auto;padding:6px 0 10px}
+.dr-arbre,.dr-arbre ul{list-style:none;margin:0;padding:0}
+.dr-arbre ul{position:relative;padding-left:16px;display:flex;flex-direction:column;justify-content:center}
+.dr-arbre ul::before{content:"";position:absolute;left:0;top:50%;width:16px;border-top:2px solid #3d5466}
+.dr-arbre li{position:relative;display:flex;align-items:center;padding:3px 0 3px 16px}
+.dr-arbre>li{padding-left:0}
+.dr-arbre ul>li::before{content:"";position:absolute;left:0;top:50%;width:16px;border-top:2px solid #3d5466}
+.dr-arbre ul>li::after{content:"";position:absolute;left:0;top:0;bottom:0;border-left:2px solid #3d5466}
+.dr-arbre ul>li:first-child::after{top:50%}
+.dr-arbre ul>li:last-child::after{bottom:50%}
+.dr-arbre ul>li:only-child::after{display:none}
+.dr-case{flex:0 0 auto;width:152px;border:1px solid #9aa7b2;border-radius:4px;background:#fff;font-size:12px;overflow:hidden;cursor:help}
+.dr-titre{padding:4px 6px;font-weight:700;color:#fff;line-height:1.15;min-height:2.3em;display:flex;align-items:center}
+.dr-vals{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #9aa7b2}
+.dr-vals span{padding:3px 5px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dr-vals .dr-moi{font-weight:800}
+.dr-vals .dr-comp{background:#e3e7ec;color:#333;border-left:1px solid #9aa7b2}
+.dr-ecart{border-top:1px solid #9aa7b2;padding:3px 5px;min-height:1.6em;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.dr-bon{color:#1d7a3e}.dr-mauvais{color:#c0221a}.dr-neutre{color:#555}
+.f-marge .dr-titre{background:#d9547a}.f-produit .dr-titre{background:#1f3f73}.f-produit2 .dr-titre{background:#4f86bd}
+.f-aliment .dr-titre{background:#74431c}.f-aliment2 .dr-titre{background:#bf9558}
+.f-renouv .dr-titre{background:#4a525c}.f-renouv2 .dr-titre{background:#97a3ae}
+.f-marge{width:170px}.f-marge .dr-titre{font-size:13px}
+.dr-saisie{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px 12px;align-items:end}
+.dr-saisie label small{color:var(--muted)}
+.dr-print{display:none}
+@media print{
+  @page{size:A4 landscape;margin:7mm}
+  body{background:#fff!important}
+  header,nav,footer,.no-print,#page-alert,details.card{display:none!important}
+  .rust-main,main{padding:0!important;margin:0!important;max-width:none!important}
+  .dr-print{display:flex!important;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1f3f73;padding-bottom:3px;margin-bottom:4px}
+  .dr-print b{font-size:13pt;color:#1f3f73}.dr-print span{font-size:9pt}
+  .dr-entete h1{display:none}
+  .dr-zone{overflow:visible;padding:0;zoom:.6}
+  .dr-arbre li{padding-top:1px!important;padding-bottom:1px!important}
+  .dr-legende{margin:2px 0 4px;font-size:9pt}
+  .dr-case,.dr-titre,.dr-comp,.dr-arbre li::before,.dr-arbre li::after,.dr-arbre ul::before{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .card{border:none!important;box-shadow:none!important;padding:0!important}
+}
+</style>
+<div class="dr-print"><b>{{ nom_elevage or 'EO_Sevel' }} · Diagramme résultat élevage</b><span>Du {{ debut_fr }} au {{ fin_fr }} · comparé à : {{ comp_libelle }}</span></div>
+<div class="dr-entete"><h1>🌳 Diagramme résultat élevage</h1>
+<button type="button" class="no-print" onclick="window.print()">🖨 Imprimer le diagramme</button></div>
+<p class="muted no-print">Marge sur coût alimentaire et renouvellement, et les chiffres qui l’expliquent. Montants en € par truie présente et par an, calculés comme dans la <a href="/gte?debut={{ debut }}&fin={{ fin }}">GTE</a>. Passez la souris sur une case pour savoir comment elle est calculée.</p>
+
+<section class="card no-print">
+<form method="get" action="/diagramme-resultat" class="dr-saisie">
+<label>Du<input type="date" name="debut" value="{{ debut }}" required></label>
+<label>Au<input type="date" name="fin" value="{{ fin }}" required></label>
+<label>Comparer à<select name="comparer">{% for c in comparaisons %}<option value="{{ c.cle }}" {% if c.cle == comparer %}selected{% endif %}>{{ c.libelle }}</option>{% endfor %}</select></label>
+<button>Afficher</button>
+</form>
+</section>
+
+<div class="dr-legende"><span><i style="background:#1f3f73"></i>Mon élevage : {{ debut_fr }} au {{ fin_fr }}</span><span><i style="background:#e3e7ec;border:1px solid #9aa7b2"></i>{{ comp_libelle }}</span><span><b class="dr-bon">vert</b> = mieux, <b class="dr-mauvais">rouge</b> = moins bien</span></div>
+{% if comparer == 'cooperl' and cooperl_vide %}<p class="rust-empty no-print">Aucun chiffre Cooperl saisi : remplissez le bloc « Chiffres Cooperl » en bas de la page.</p>{% endif %}
+
+<div class="dr-zone"><ul class="dr-arbre">
+{% for n in [arbre] recursive %}<li><div class="dr-case f-{{ n.famille }}" title="{{ n.aide }}">
+<div class="dr-titre">{{ n.libelle }}</div>
+<div class="dr-vals"><span class="dr-moi">{{ n.moi or '—' }}</span><span class="dr-comp">{{ n.comp or '—' }}</span></div>
+<div class="dr-ecart dr-{{ n.classe }}">{{ n.ecart or '' }}</div>
+</div>{% if n.enfants %}<ul>{{ loop(n.enfants) }}</ul>{% endif %}</li>
+{% endfor %}
+</ul></div>
+
+{% if session.peut_modifier %}
+<details class="card" {% if comparer == 'cooperl' and cooperl_vide %}open{% endif %}><summary>📋 Chiffres Cooperl (colonne de référence)</summary>
+<p class="muted">Recopiez les valeurs « REF » de votre diagramme Cooperl. Une case laissée vide n’est pas comparée. Montants en € par truie et par an, comme sur la feuille Cooperl.</p>
+<form method="post" action="/diagramme-resultat/reference"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><input type="hidden" name="debut" value="{{ debut }}"><input type="hidden" name="fin" value="{{ fin }}">
+<div class="dr-saisie">
+<label style="grid-column:1/-1">Nom de la référence<input name="libelle" value="{{ cooperl_libelle or '' }}" placeholder="ex. REF NE du 01/04/26 au 30/09/26"></label>
+{% for s in saisie %}<label>{{ s.libelle }}{% if s.unite %} <small>({{ s.unite }})</small>{% endif %}<input name="ref_{{ s.cle }}" inputmode="decimal" value="{% if s.valeur is not none %}{{ s.valeur }}{% endif %}"></label>{% endfor %}
+</div>
+<p><button>Enregistrer les chiffres Cooperl</button></p>
+</form>
+</details>
+{% endif %}
+{% endblock %}

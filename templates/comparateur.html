@@ -10,17 +10,33 @@
 .cmp-apercu{padding:8px 12px;border-radius:8px;background:#f2f6fb;font-weight:600;min-height:1.4em}
 .cmp-fact{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:11.5px;background:#eaf2fd;color:#1f5ea8;font-weight:700}
 .cmp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+.cmp-print-entete{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff!important;color:#111}
+  header,nav,footer,.no-print,details.card,.cmp-saisie,#page-alert{display:none!important}
+  .rust-main,main{padding:0!important;margin:0!important;max-width:none!important}
+  .cmp-print-entete{display:flex!important;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1e4d3a;padding-bottom:4px;margin-bottom:8px}
+  .cmp-print-entete span{font-size:9pt;color:#444}
+  #cmp-resultat{border:none!important;box-shadow:none!important;padding:0!important}
+  #cmp-resultat .rust-scroll{overflow:visible!important}
+  #cmp-resultat table{width:100%;font-size:10pt}
+  #cmp-resultat th:last-child,#cmp-resultat td:last-child{display:none}
+  #cmp-resultat tr{break-inside:avoid}
+  .cmp-meilleur td,.cmp-badge{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}
 </style>
 {% if comp %}
-<p><a href="/comparateur">← Tous les comparatifs</a></p>
+<p class="no-print"><a href="/comparateur">← Tous les comparatifs</a></p>
+<div class="cmp-print-entete"><b>EO_Sevel · Comparateur de prix</b><span id="cmp-print-date"></span></div>
 <h1>⚖️ {{ comp.nom }}</h1>
 {% if comp.note %}<p class="muted">{{ comp.note }}</p>{% endif %}
 
-<section class="card">
-<h2>Offres, de la moins chère à la plus chère</h2>
+<section class="card" id="cmp-resultat">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Offres, de la moins chère à la plus chère</h2>{% if offres %}<button type="button" class="no-print" onclick="window.print()">🖨 Imprimer la comparaison</button>{% endif %}</div>
 {% if offres %}
 <p class="muted">{% if par_mesure %}Classement au prix par {{ comp.unite }} : toutes les offres sont ramenées à la même quantité.{% else %}Classement au prix d’une unité achetée : indiquez la quantité dans une unité (en {{ comp.unite }}) sur chaque offre pour comparer au prix par {{ comp.unite }}.{% endif %}</p>
-<div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Produit</th><th>Quantité achetée</th><th>Prix payé</th><th>Prix d’une unité</th><th>Prix par {{ comp.unite }}</th><th>Écart</th><th></th></tr></thead><tbody>
+<div class="rust-scroll"><table data-sans-pli><thead><tr><th>Rang</th><th>Produit</th><th>Quantité achetée</th><th>Prix payé</th><th>Prix d’une unité</th><th>Prix par {{ comp.unite }}</th><th>Écart</th><th></th></tr></thead><tbody>
 {% for o in offres %}<tr class="{% if o.meilleur %}cmp-meilleur{% endif %}">
 <td><b>{{ o.rang }}</b></td>
 <td><b>{{ o.produit }}</b>{% if o.facture %}<span class="cmp-fact">📄 ma facture</span>{% endif %}{% if o.fournisseur %}<span class="cmp-sous">{{ o.fournisseur }}</span>{% endif %}{% if o.note %}<span class="cmp-sous">{{ o.note }}</span>{% endif %}</td>
@@ -35,7 +51,9 @@
 {% else %}<p class="rust-empty">Aucune offre pour l’instant : ajoutez la première ci-dessous.</p>{% endif %}
 </section>
 
+<script>(function(){var d=document.getElementById('cmp-print-date');if(d){d.textContent='Imprimé le '+new Date().toLocaleDateString('fr-FR');}})();</script>
 {% if session.peut_modifier %}
+<div class="cmp-saisie">
 {% if achats_proches or achats_autres %}<section class="card">
 <h2>📄 Ajouter un prix de mes factures</h2>
 <p class="muted">Reprend la quantité et le montant HT d’un achat importé, pour comparer ce que vous payez aux nouvelles offres.</p>
@@ -99,6 +117,7 @@
   f.addEventListener('input',calc); f.addEventListener('change',calc);
 })();
 </script>
+</div>
 
 <details class="card"><summary>Renommer ou supprimer ce comparatif</summary>
 <form method="post" action="/comparateur/{{ comp.id }}/modifier" class="cmp-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">

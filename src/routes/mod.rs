@@ -26,6 +26,7 @@ mod accueil;
 pub mod session_web;
 mod adoptions;
 mod comparateur;
+mod diagramme_resultat;
 mod acces;
 mod ambiance;
 mod ameliorations;
@@ -491,6 +492,8 @@ pub fn router(state: AppState) -> Router {
         .route("/electricite/prix", post(electricite::prix))
         .route("/aliment-previsions", get(aliment_previsions))
         .route("/comparateur", get(comparateur::liste).post(comparateur::creer))
+        .route("/diagramme-resultat", get(diagramme_resultat::page))
+        .route("/diagramme-resultat/reference", post(diagramme_resultat::enregistrer_reference))
         .route("/comparateur/{id}", get(comparateur::fiche))
         .route("/comparateur/depuis-facture", post(comparateur::creer_depuis_facture))
         .route("/comparateur/{id}/depuis-facture", post(comparateur::ajouter_depuis_facture))

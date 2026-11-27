@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.86.3** — Comparateur : recherche par texte dans « Ajouter un prix de mes factures ».
+Version actuelle : **2.87.0** — Diagramme résultat élevage (arbre de marge) et impression du comparatif.
 
+
+Version Rust 2.87.0 : nouveau module routes/diagramme_resultat.rs (GET /diagramme-resultat, POST /diagramme-resultat/reference, section economique, menu Ma gestion → Résultats, profils avec truies). Arbre de 24 cases (marge sur coût alimentaire et renouvellement → produits / aliment / renouvellement → indicateurs techniques), calculé avec gte_periode (charger, charger_couts + variation de stock, tableau) et une requête EXTRAS_SQL (sevrés/portée, prix de vente €/kg carcasse et plus-value hors réformes, truies mortes, prix cochette et réforme). Comparaison au choix : période précédente de même longueur, références IFIP du livret, chiffres Cooperl saisis (table arbre_reference dans 0002, libellé dans parametre.arbre_reference_libelle). Écart coloré selon le sens de chaque case. Impression A4 paysage une page. Comparateur : bouton « Imprimer la comparaison » (A4 paysage, formulaires masqués). Tests : nombres_et_couleurs_des_ecarts, chaque_case_de_l_arbre_existe_une_seule_fois, calcul_sur_une_base_avec_ventes_et_achats, la_page_s_affiche_pour_les_trois_comparaisons.
 
 Version Rust 2.86.3 : comparateur.html, champ « Chercher dans mes achats » (#cmp-cherche-achat) qui filtre les options du select #cmp-achat (tous les mots, sans accents), masque les groupes vides, affiche le nombre trouvé et sélectionne seul l'unique résultat.
 

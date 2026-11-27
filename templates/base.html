@@ -243,6 +243,7 @@
       <a href="/productivite"><b>Productivité</b><small>Porcs produits par truie et par an</small></a>
       <a href="/analyse-bandes"><b>Analyse des bandes</b><small>Comparer B1, B2, B3 et repérer les truies faibles</small></a>{% endif %}
       {% if 'economique' in session.pages %}<a href="/gte"><b>GTE</b><small>Coûts, marges et indice de consommation</small></a>{% endif %}
+      {% if session.a_truies and 'economique' in session.pages %}<a href="/diagramme-resultat"><b>Diagramme résultat élevage</b><small>Arbre de marge comparé à la période précédente, l’IFIP ou Cooperl</small></a>{% endif %}
       {% if 'ifip' in session.pages %}<a href="/ifip"><b>Références IFIP</b><small>Comparaison à la moyenne nationale</small></a>{% endif %}
     </div>{% endif %}
     {% if 'charcutiers' in session.pages or 'engraissement' in session.pages %}<div class="rust-sub-groupe"><h3>Abattoir et engraissement</h3>

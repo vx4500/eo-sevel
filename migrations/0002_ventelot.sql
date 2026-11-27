@@ -80,3 +80,10 @@ CREATE TABLE IF NOT EXISTS comparatif_offre (
     cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS comparatif_offre_comp ON comparatif_offre(comparatif_id);
+
+-- (2.87) Diagramme résultat élevage : chiffres de référence Cooperl saisis
+-- à la main, une valeur par case du diagramme.
+CREATE TABLE IF NOT EXISTS arbre_reference (
+    cle TEXT PRIMARY KEY,
+    valeur REAL
+);
