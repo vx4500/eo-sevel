@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.86.2** — Correctif : la page Comparateur ne plante plus avec les factures de semence et de cochettes.
+Version actuelle : **2.86.3** — Comparateur : recherche par texte dans « Ajouter un prix de mes factures ».
 
+
+Version Rust 2.86.3 : comparateur.html, champ « Chercher dans mes achats » (#cmp-cherche-achat) qui filtre les options du select #cmp-achat (tous les mots, sans accents), masque les groupes vides, affiche le nombre trouvé et sélectionne seul l'unique résultat.
 
 Version Rust 2.86.2 : achats_factures lit quantités et montants avec CAST(... AS REAL) — achatsemence.nb_doses et achatgenetique.nb_animaux sont INTEGER et faisaient échouer le décodage en Option<f64> (erreur 500 sur /comparateur). Le test produits_des_factures_et_conversion_tonne_kilo couvre semence et génétique.
 

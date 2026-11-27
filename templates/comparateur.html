@@ -40,12 +40,32 @@
 <h2>📄 Ajouter un prix de mes factures</h2>
 <p class="muted">Reprend la quantité et le montant HT d’un achat importé, pour comparer ce que vous payez aux nouvelles offres.</p>
 <form method="post" action="/comparateur/{{ comp.id }}/depuis-facture" class="cmp-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
-<label style="grid-column:span 3">Achat<select name="cle" required><option value="">Choisir…</option>
+<label style="grid-column:1/-1">Chercher dans mes achats<input type="search" id="cmp-cherche-achat" placeholder="ex. Virbagest, GESTA, Piétrain…" autocomplete="off"><small class="muted" id="cmp-achat-compte" aria-live="polite"></small></label>
+<label style="grid-column:span 3">Achat<select name="cle" id="cmp-achat" required><option value="">Choisir…</option>
 {% if achats_proches %}<optgroup label="Proches de « {{ comp.nom }} »">{% for a in achats_proches %}<option value="{{ a.cle }}">{{ a.libelle }}</option>{% endfor %}</optgroup>{% endif %}
 {% if achats_autres %}<optgroup label="Tous mes autres achats">{% for a in achats_autres %}<option value="{{ a.cle }}">{{ a.famille }} · {{ a.libelle }}</option>{% endfor %}</optgroup>{% endif %}
 </select></label>
 <button>Ajouter ce prix</button>
 </form>
+<script>
+(function(){
+  var q=document.getElementById('cmp-cherche-achat'), sel=document.getElementById('cmp-achat'), out=document.getElementById('cmp-achat-compte');
+  function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+  q.addEventListener('input',function(){
+    var mots=norm(q.value.trim()).split(/\s+/).filter(Boolean), vus=[];
+    sel.querySelectorAll('option').forEach(function(o){
+      if(!o.value){return;}
+      var t=norm(o.textContent), ok=mots.every(function(m){return t.indexOf(m)>=0;});
+      o.hidden=!ok; o.disabled=!ok; if(ok){vus.push(o);}
+    });
+    sel.querySelectorAll('optgroup').forEach(function(g){g.hidden=!g.querySelector('option:not([hidden])');});
+    if(!mots.length){out.textContent='';return;}
+    if(sel.selectedOptions[0]&&sel.selectedOptions[0].hidden){sel.value='';}
+    if(vus.length===1){sel.value=vus[0].value;}
+    out.textContent=vus.length?(vus.length===1?'1 achat trouvé, sélectionné':vus.length+' achats trouvés : choisissez dans la liste'):'Aucun achat ne correspond';
+  });
+})();
+</script>
 </section>{% endif %}
 <section class="card">
 <h2>Ajouter une offre</h2>
