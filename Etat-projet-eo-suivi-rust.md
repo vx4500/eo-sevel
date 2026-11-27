@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.86.1** — Comparateur relié aux factures importées (produits achetés, dernier prix payé).
+Version actuelle : **2.86.2** — Correctif : la page Comparateur ne plante plus avec les factures de semence et de cochettes.
 
+
+Version Rust 2.86.2 : achats_factures lit quantités et montants avec CAST(... AS REAL) — achatsemence.nb_doses et achatgenetique.nb_animaux sont INTEGER et faisaient échouer le décodage en Option<f64> (erreur 500 sur /comparateur). Le test produits_des_factures_et_conversion_tonne_kilo couvre semence et génétique.
 
 Version Rust 2.86.1 : comparateur relié aux factures — achats_factures (livraisonaliment en t, achatveto à la pièce, achatsemence à la dose, achatgenetique par animal ; lignes sans quantité ou montant ignorées), catalogue par produit et fournisseur (dernier prix, fourchette, nombre d'achats) avec recherche, POST /comparateur/depuis-facture (ouvre ou crée le comparatif du produit avec le dernier prix payé), POST /comparateur/{id}/depuis-facture (reprend un achat, ceux au nom proche d'abord). Conversion t → kg. Colonnes comparatif_offre.source et date_achat (ajoutées après 0002 dans db.rs). Test produits_des_factures_et_conversion_tonne_kilo.
 

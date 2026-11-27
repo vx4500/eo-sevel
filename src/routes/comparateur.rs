@@ -53,10 +53,10 @@ fn espaces(s: &str) -> String {
 pub(super) async fn achats_factures(pool: &SqlitePool) -> AppResult<Vec<Achat>> {
     type Ligne = (String, Option<String>, Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>);
     let familles: [(&'static str, &'static str, &'static str); 4] = [
-        ("aliment", "t", "SELECT 'aliment:'||id,COALESCE(NULLIF(trim(date_reference),''),date),produit,fournisseur,num_facture,tonnage,montant_ht FROM livraisonaliment"),
-        ("veto", "pièce", "SELECT 'veto:'||id,COALESCE(NULLIF(trim(date_reference),''),date),produit,fournisseur,num_facture,quantite,COALESCE(montant_ht,pu_ht*quantite) FROM achatveto"),
-        ("semence", "dose", "SELECT 'semence:'||id,date,designation,fournisseur,num_facture,nb_doses,montant_ht FROM achatsemence"),
-        ("genetique", "pièce", "SELECT 'genetique:'||id,date,designation,fournisseur,num_facture,nb_animaux,montant_ht FROM achatgenetique"),
+        ("aliment", "t", "SELECT 'aliment:'||id,COALESCE(NULLIF(trim(date_reference),''),date),produit,fournisseur,num_facture,CAST(tonnage AS REAL),CAST(montant_ht AS REAL) FROM livraisonaliment"),
+        ("veto", "pièce", "SELECT 'veto:'||id,COALESCE(NULLIF(trim(date_reference),''),date),produit,fournisseur,num_facture,CAST(quantite AS REAL),CAST(COALESCE(montant_ht,pu_ht*quantite) AS REAL) FROM achatveto"),
+        ("semence", "dose", "SELECT 'semence:'||id,date,designation,fournisseur,num_facture,CAST(nb_doses AS REAL),CAST(montant_ht AS REAL) FROM achatsemence"),
+        ("genetique", "pièce", "SELECT 'genetique:'||id,date,designation,fournisseur,num_facture,CAST(nb_animaux AS REAL),CAST(montant_ht AS REAL) FROM achatgenetique"),
     ];
     let mut achats = Vec::new();
     for (famille, unite, sql) in familles {
@@ -498,13 +498,15 @@ mod tests {
         sqlx::raw_sql(
             "INSERT INTO livraisonaliment(id,date,produit,fournisseur,tonnage,montant_ht) VALUES\
              (1,'2026-10-01','GESTA PLUS','Coop',10,2900),(2,'2026-11-01','GESTA  PLUS','Coop',5,1500),(3,'2026-11-02','Vide','Coop',0,0);\
-             INSERT INTO achatveto(id,date,produit,fournisseur,quantite,pu_ht,montant_ht) VALUES(1,'2026-10-26','VIRBAGEST FL 900ML','Coop',1,94.36,94.36);",
+             INSERT INTO achatveto(id,date,produit,fournisseur,quantite,pu_ht,montant_ht) VALUES(1,'2026-10-26','VIRBAGEST FL 900ML','Coop',1,94.36,94.36);\
+             INSERT INTO achatsemence(id,date,designation,fournisseur,nb_doses,montant_ht) VALUES(1,'2026-11-03','Piétrain','LB-CIA',20,90);\
+             INSERT INTO achatgenetique(id,date,designation,fournisseur,nb_animaux,montant_ht) VALUES(1,'2026-11-04','Cochettes','DanBred',12,3600);",
         )
         .execute(p)
         .await
         .unwrap();
         let achats = achats_factures(p).await.unwrap();
-        assert_eq!(achats.len(), 3, "la ligne sans quantité ni montant est ignorée");
+        assert_eq!(achats.len(), 5, "la ligne sans quantité ni montant est ignorée");
         let cat = catalogue(&achats);
         let gesta = cat.iter().find(|c| c["produit"] == json!("GESTA PLUS")).unwrap();
         assert_eq!(gesta["achats"], json!(2));
