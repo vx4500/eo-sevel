@@ -1,7 +1,9 @@
 # EO-Suivi Élevage Rust — État du projet
 
-Version actuelle : **2.85.3** — Destination d’aliment « Sous la mère » (porcelets en maternité).
+Version actuelle : **2.86.0** — Comparateur de prix (offres à l’unité ou en lot, prix au kg).
 
+
+Version Rust 2.86.0 : comparateur de prix /comparateur (src/routes/comparateur.rs, templates/comparateur.html, tables comparatif et comparatif_offre dans 0002_ventelot.sql, section d'accès economique, menu Achats). Offre : contenance d'une unité, nombre d'unités, prix pour 1 unité ou pour le lot → prix_total ; classement au prix par unité de mesure si toutes les offres ont une contenance, sinon au prix d'une unité ; écart en % au moins cher ; aperçu du calcul en direct dans le formulaire. Tests prix_ramenes_a_l_unite_et_au_kg et offres_classees_du_moins_cher_au_plus_cher.
 
 Version Rust 2.85.3 : stade d'aliment « sous_mere » (valid_stage, stage_matches et stage_bounds de 0 au sevrage, répartition au prorata des truies) ; GTE : compté avec le post-sevrage ; tableau des bandes : compté dans l'aliment des porcs. Choix ajouté à l'import de facture et à la facture enregistrée. Test dans stades_et_sites_selon_le_cycle.
 

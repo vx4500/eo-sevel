@@ -54,3 +54,27 @@ CREATE TABLE IF NOT EXISTS quai_sortie (
     cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS quai_sortie_quai ON quai_sortie(quai_id);
+
+-- (2.86) Comparateur de prix : un comparatif par produit à acheter, une
+-- ligne par offre. prix_total = prix payé pour `nombre` unités ;
+-- contenance = quantité (kg, L, dose…) dans une unité.
+CREATE TABLE IF NOT EXISTS comparatif (
+    id INTEGER PRIMARY KEY,
+    nom TEXT NOT NULL,
+    unite TEXT NOT NULL DEFAULT 'kg',
+    note TEXT,
+    cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS comparatif_offre (
+    id INTEGER PRIMARY KEY,
+    comparatif_id INTEGER NOT NULL,
+    produit TEXT NOT NULL,
+    fournisseur TEXT,
+    contenance REAL,
+    nombre REAL NOT NULL DEFAULT 1,
+    prix_total REAL NOT NULL,
+    prix_pour TEXT NOT NULL DEFAULT 'unite',  -- unite | lot (prix saisi)
+    note TEXT,
+    cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS comparatif_offre_comp ON comparatif_offre(comparatif_id);

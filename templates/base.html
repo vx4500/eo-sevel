@@ -251,7 +251,8 @@
       {% if session.engraisse and session.module_prestataires and 'engraissement' in session.pages %}<a href="/engraissement"><b>Prestataire</b><small>Engraissement confié à un tiers</small></a>{% endif %}
     </div>{% endif %}
     <div class="rust-sub-groupe"><h3>Achats, stocks et consommations</h3>
-      {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>{% endif %}
+      {% if 'economique' in session.pages %}<a href="/economique"><b>Économie</b><small>Factures, apports, affectation par bande</small></a>
+      <a href="/comparateur"><b>Comparateur de prix</b><small>Offres à l’unité ou en lot, prix au kg</small></a>{% endif %}
       {% if 'stock' in session.pages %}<a href="/aliment-previsions"><b>Aliment</b><small>Livraisons, silos, prévisions de commande</small></a>
       <a href="/stock"><b>Stocks</b><small>Inventaires et consommables</small></a>{% endif %}
       {% if 'energie' in session.pages %}<a href="/energie"><b>Eau et électricité</b><small>Relevés de compteurs</small></a>

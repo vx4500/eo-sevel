@@ -25,6 +25,7 @@ use std::sync::Arc;
 mod accueil;
 pub mod session_web;
 mod adoptions;
+mod comparateur;
 mod acces;
 mod ambiance;
 mod ameliorations;
@@ -489,6 +490,12 @@ pub fn router(state: AppState) -> Router {
         .route("/eau", get(electricite::page_eau))
         .route("/electricite/prix", post(electricite::prix))
         .route("/aliment-previsions", get(aliment_previsions))
+        .route("/comparateur", get(comparateur::liste).post(comparateur::creer))
+        .route("/comparateur/{id}", get(comparateur::fiche))
+        .route("/comparateur/{id}/modifier", post(comparateur::modifier))
+        .route("/comparateur/{id}/supprimer", post(comparateur::supprimer))
+        .route("/comparateur/{id}/offre", post(comparateur::ajouter_offre))
+        .route("/comparateur/{id}/offre/{offre}/supprimer", post(comparateur::supprimer_offre))
         .route("/aliment-previsions/silo", post(silo_ajouter))
         .route("/aliment-previsions/plan/ajouter", post(parity::aliment_ajouter))
         .route("/aliment-previsions/plan/{id}/modifier", post(parity::aliment_modifier))

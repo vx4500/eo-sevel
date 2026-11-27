@@ -1,4 +1,4 @@
-# EO_Sevel — portage Rust 2.85.3
+# EO_Sevel — portage Rust 2.86.0
 
 ## Ce qui est déjà natif Rust
 

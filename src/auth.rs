@@ -230,7 +230,7 @@ fn section_for_path(path: &str) -> Option<&'static str> {
         "cochettes" => Some("cochettes"),
         "sanitaire" | "soins" => Some("sanitaire"),
         "stock" | "aliment-previsions" | "machine-soupe" => Some("stock"),
-        "economique" | "gte" => Some("economique"),
+        "economique" | "gte" | "comparateur" => Some("economique"),
         "structure" | "salle" | "salles" | "inventaire" => Some("structure"),
         "archives" => Some("archives"),
         "entretien" | "taches" => Some("entretien"),

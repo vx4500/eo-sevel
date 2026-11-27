@@ -1,0 +1,104 @@
+{% extends "base.html" %}{% block title %}{% if comp %}{{ comp.nom }} — {% endif %}Comparateur de prix — EO_Sevel{% endblock %}{% block content %}
+<style>
+.cmp-meilleur td{background:#e9f7ef}
+.cmp-meilleur td:first-child{box-shadow:inset 4px 0 0 #2f8f5b}
+.cmp-badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.cmp-ok{background:#2f8f5b;color:#fff}
+.cmp-plus{background:#fdeee0;color:#9a4b10}
+.cmp-prix{font-size:1.15em;font-weight:800;font-variant-numeric:tabular-nums}
+.cmp-sous{display:block;font-size:12px;color:var(--muted)}
+.cmp-apercu{padding:8px 12px;border-radius:8px;background:#f2f6fb;font-weight:600;min-height:1.4em}
+.cmp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+</style>
+{% if comp %}
+<p><a href="/comparateur">← Tous les comparatifs</a></p>
+<h1>⚖️ {{ comp.nom }}</h1>
+{% if comp.note %}<p class="muted">{{ comp.note }}</p>{% endif %}
+
+<section class="card">
+<h2>Offres, de la moins chère à la plus chère</h2>
+{% if offres %}
+<p class="muted">{% if par_mesure %}Classement au prix par {{ comp.unite }} : toutes les offres sont ramenées à la même quantité.{% else %}Classement au prix d’une unité achetée : indiquez la quantité dans une unité (en {{ comp.unite }}) sur chaque offre pour comparer au prix par {{ comp.unite }}.{% endif %}</p>
+<div class="rust-scroll"><table><thead><tr><th>Rang</th><th>Produit</th><th>Quantité achetée</th><th>Prix payé</th><th>Prix d’une unité</th><th>Prix par {{ comp.unite }}</th><th>Écart</th><th></th></tr></thead><tbody>
+{% for o in offres %}<tr class="{% if o.meilleur %}cmp-meilleur{% endif %}">
+<td><b>{{ o.rang }}</b></td>
+<td><b>{{ o.produit }}</b>{% if o.fournisseur %}<span class="cmp-sous">{{ o.fournisseur }}</span>{% endif %}{% if o.note %}<span class="cmp-sous">{{ o.note }}</span>{% endif %}</td>
+<td>{% if o.lot %}Lot de {{ o.nombre }}{% else %}1 unité{% endif %}{% if o.contenance %} × {{ o.contenance }} {{ comp.unite }}<span class="cmp-sous">soit {{ o.quantite_totale }} {{ comp.unite }}</span>{% endif %}</td>
+<td>{{ o.total|euro }}<span class="cmp-sous">{% if o.prix_pour == 'lot' %}prix du lot{% else %}prix à l’unité × {{ o.nombre }}{% endif %}</span></td>
+<td>{% if par_mesure %}{{ o.par_unite }}{% else %}<span class="cmp-prix">{{ o.par_unite }}</span>{% endif %}</td>
+<td>{% if o.par_mesure %}{% if par_mesure %}<span class="cmp-prix">{{ o.par_mesure }}</span>{% else %}{{ o.par_mesure }}{% endif %}{% else %}—{% endif %}</td>
+<td>{% if o.meilleur %}<span class="cmp-badge cmp-ok">✓ Le moins cher</span>{% else %}<span class="cmp-badge cmp-plus">+{{ o.ecart|decimal1 }} %</span>{% endif %}</td>
+<td>{% if session.peut_modifier %}<form method="post" action="/comparateur/{{ comp.id }}/offre/{{ o.id }}/supprimer" onsubmit="return confirm('Supprimer cette offre ?')"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer</button></form>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="rust-empty">Aucune offre pour l’instant : ajoutez la première ci-dessous.</p>{% endif %}
+</section>
+
+{% if session.peut_modifier %}
+<section class="card">
+<h2>Ajouter une offre</h2>
+<form method="post" action="/comparateur/{{ comp.id }}/offre" id="cmp-offre"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<div class="cmp-form">
+<label>Produit<input name="produit" required placeholder="ex. sac 25 kg, palette…"></label>
+<label>Fournisseur<input name="fournisseur"></label>
+<label>Quantité dans une unité ({{ comp.unite }})<input name="contenance" inputmode="decimal" placeholder="ex. 25"></label>
+<label>Nombre d’unités<input name="nombre" inputmode="decimal" value="1"><small class="muted">1 = à l’unité, 40 = lot de 40</small></label>
+<label>Prix (€)<input name="prix" inputmode="decimal" required></label>
+<label>Ce prix est pour<select name="prix_pour"><option value="unite">1 unité</option><option value="lot">tout le lot</option></select></label>
+<label>Note<input name="note" placeholder="livraison comprise, promo…"></label>
+</div>
+<p class="cmp-apercu" id="cmp-apercu" aria-live="polite"></p>
+<button>Ajouter l’offre</button>
+</form>
+</section>
+<script>
+(function(){
+  var f=document.getElementById('cmp-offre'), out=document.getElementById('cmp-apercu'), u={{ comp.unite|tojson }};
+  function n(v){v=String(v||'').replace(/\s/g,'').replace(',','.');var x=parseFloat(v);return isFinite(x)?x:null;}
+  function e(x){return x.toLocaleString('fr-FR',{minimumFractionDigits:x<10?3:2,maximumFractionDigits:x<10?3:2})+' €';}
+  function calc(){
+    var c=n(f.contenance.value), nb=n(f.nombre.value)||1, p=n(f.prix.value);
+    if(p===null||nb<=0){out.textContent='';return;}
+    var total=f.prix_pour.value==='lot'?p:p*nb, unite=total/nb;
+    var t='Total '+e(total)+' · '+e(unite)+' l’unité';
+    if(c&&c>0){t+=' · '+e(unite/c)+' le '+u;}
+    out.textContent=t;
+  }
+  f.addEventListener('input',calc); f.addEventListener('change',calc);
+})();
+</script>
+
+<details class="card"><summary>Renommer ou supprimer ce comparatif</summary>
+<form method="post" action="/comparateur/{{ comp.id }}/modifier" class="cmp-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label>Nom<input name="nom" value="{{ comp.nom }}" required></label>
+<label>Unité de mesure<select name="unite">{% for u in unites %}<option value="{{ u }}" {% if u == comp.unite %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+<label>Note<input name="note" value="{{ comp.note or '' }}"></label>
+<button>Enregistrer</button>
+</form>
+<form method="post" action="/comparateur/{{ comp.id }}/supprimer" onsubmit="return confirm('Supprimer ce comparatif et toutes ses offres ?')" style="margin-top:10px"><input type="hidden" name="csrf_token" value="{{ session.csrf }}"><button class="ghost danger">Supprimer le comparatif</button></form>
+</details>
+{% endif %}
+
+{% else %}
+<h1>⚖️ Comparateur de prix</h1>
+<p class="muted">Pour un produit à acheter, notez chaque offre : à l’unité ou en lot, avec la quantité et le prix. Le comparateur ramène tout au même prix par kg, litre ou dose et classe les offres de la moins chère à la plus chère.</p>
+{% if session.peut_modifier %}
+<section class="card">
+<h2>Nouveau comparatif</h2>
+<form method="post" action="/comparateur" class="cmp-form"><input type="hidden" name="csrf_token" value="{{ session.csrf }}">
+<label>Produit à comparer<input name="nom" required placeholder="ex. Chaux, Désinfectant, Paille"></label>
+<label>Comparer au prix par<select name="unite">{% for u in unites %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select></label>
+<label>Note<input name="note"></label>
+<button>Créer</button>
+</form>
+</section>
+{% endif %}
+<section class="card">
+<h2>Mes comparatifs</h2>
+<div class="rust-scroll"><table><thead><tr><th>Produit</th><th>Unité</th><th>Offres</th><th>Créé le</th></tr></thead><tbody>
+{% for c in comparatifs %}<tr><td><a href="/comparateur/{{ c.id }}"><b>{{ c.nom }}</b></a>{% if c.note %}<span class="cmp-sous">{{ c.note }}</span>{% endif %}</td><td>{{ c.unite }}</td><td>{{ c.offres }}</td><td>{{ c.cree_le|date_fr }}</td></tr>
+{% else %}<tr><td colspan="4" class="rust-empty">Aucun comparatif pour l’instant</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+{% endif %}
+{% endblock %}
